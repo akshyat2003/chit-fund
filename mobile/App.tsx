@@ -97,7 +97,7 @@ function MainApp() {
                   style={[styles.navItem, activeTab === 'backups' && styles.navItemActive]}
                   onPress={() => setActiveTab('backups')}
                 >
-                  <Text style={[styles.navText, activeTab === 'backups' && styles.navTextActive]}>💾 Backups & Database</Text>
+                  <Text style={[styles.navText, activeTab === 'backups' && styles.navTextActive]}>💾 Backups & Export</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -1748,7 +1748,14 @@ function AuditsTab({ user }: { user: any }) {
 
   // Filtered audit records
   const filteredAudits = auditLogs.filter((log) => {
-    const matchesAction = actionFilter === 'ALL' || log.action?.includes(actionFilter);
+    const isSessionMatch =
+      actionFilter === 'SESSION' &&
+      (log.action?.includes('SESSION') ||
+        log.action?.includes('LOGIN') ||
+        log.action?.includes('LOGOUT') ||
+        log.action?.includes('AUTH') ||
+        Boolean(log.sessionId));
+    const matchesAction = actionFilter === 'ALL' || isSessionMatch || log.action?.includes(actionFilter);
     const searchLow = auditSearch.toLowerCase();
     const matchesSearch =
       !auditSearch ||
@@ -1756,6 +1763,7 @@ function AuditsTab({ user }: { user: any }) {
       log.entity?.toLowerCase().includes(searchLow) ||
       log.user?.fullName?.toLowerCase().includes(searchLow) ||
       log.user?.username?.toLowerCase().includes(searchLow) ||
+      log.sessionId?.toLowerCase().includes(searchLow) ||
       log.ipAddress?.includes(searchLow) ||
       log.details?.toLowerCase().includes(searchLow);
     return matchesAction && matchesSearch;
@@ -1821,14 +1829,14 @@ function AuditsTab({ user }: { user: any }) {
             />
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
               <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B', marginRight: 4 }}>Action Filter:</Text>
-              {['ALL', 'LOGIN', 'PASSWORD', 'COMPANY', 'EXPORT', 'IMPORT', 'SESSION'].map((act) => (
+              {['ALL', 'SESSION', 'LOGIN', 'PASSWORD', 'COMPANY', 'EXPORT'].map((act) => (
                 <TouchableOpacity
                   key={act}
                   style={[styles.filterChip, actionFilter === act && styles.filterChipActive]}
                   onPress={() => setActionFilter(act)}
                 >
                   <Text style={actionFilter === act ? styles.filterChipTextActive : styles.filterChipText}>
-                    {act === 'ALL' ? 'All Actions' : act}
+                    {act === 'ALL' ? 'All Actions' : act === 'SESSION' ? '🔑 Session Activity' : act}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -1889,6 +1897,11 @@ function AuditsTab({ user }: { user: any }) {
                       )}
                       <Text style={{ fontSize: 12, color: '#475569' }}>
                         🌐 Client IP: <Text style={{ fontWeight: '700' }}>{log.ipAddress || 'Internal'}</Text>
+                      </Text>
+                      <Text style={{ fontSize: 12, color: '#475569' }}>
+                        🔑 Session: <Text style={{ fontWeight: '700', fontFamily: 'monospace', color: '#0284C7' }}>
+                          {log.sessionId || log.user?.activeSessionId || `sess_${(log.id || 'active').replace(/-/g, '').slice(0, 10)}`}
+                        </Text>
                       </Text>
                     </View>
 
@@ -2196,12 +2209,6 @@ function BackupsTab({ user }: { user: any }) {
   const [exporting, setExporting] = useState(false);
   const [exportedData, setExportedData] = useState<any | null>(null);
 
-  // Data Import State
-  const [importEntity, setImportEntity] = useState<'companies' | 'subscribers'>('companies');
-  const [importJson, setImportJson] = useState('');
-  const [importing, setImporting] = useState(false);
-  const [importMsg, setImportMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
   useEffect(() => {
     loadBackups();
   }, []);
@@ -2271,73 +2278,6 @@ function BackupsTab({ user }: { user: any }) {
       alert(e.response?.data?.message || 'Data export failed');
     } finally {
       setExporting(false);
-    }
-  };
-
-  const handleImportData = async () => {
-    setImportMsg(null);
-    if (!importJson.trim()) {
-      setImportMsg({ type: 'error', text: 'Please paste a valid JSON array of records to import.' });
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(importJson.trim());
-      if (!Array.isArray(parsed)) {
-        setImportMsg({ type: 'error', text: 'Import payload must be a JSON array [ {...}, {...} ].' });
-        return;
-      }
-
-      setImporting(true);
-      const res = await api.post('/super-admin/import', {
-        entity: importEntity,
-        records: parsed,
-      });
-
-      setImportMsg({ type: 'success', text: res.data.message || `Successfully ingested ${parsed.length} records into database!` });
-      setImportJson('');
-    } catch (e: any) {
-      setImportMsg({ type: 'error', text: e.message || e.response?.data?.message || 'Failed to process import.' });
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const loadSampleTemplate = () => {
-    if (importEntity === 'companies') {
-      setImportJson(
-        JSON.stringify(
-          [
-            {
-              code: 'DEMO01',
-              name: 'Demo Chit Finance Ltd',
-              stateRegistrationNo: 'TN/REG/2026/001',
-              address: 'Anna Salai, Chennai, TN',
-              phone: '9876500001',
-              email: 'contact@demochit.com',
-            },
-          ],
-          null,
-          2
-        )
-      );
-    } else {
-      setImportJson(
-        JSON.stringify(
-          [
-            {
-              fullName: 'Venkatesh Rao',
-              phone: '9876543210',
-              email: 'venkat@example.com',
-              address: '12 Temple Street, Bengaluru',
-              idProofType: 'AADHAAR',
-              idProofNumber: '1234-5678-9012',
-            },
-          ],
-          null,
-          2
-        )
-      );
     }
   };
 
@@ -2493,70 +2433,6 @@ function BackupsTab({ user }: { user: any }) {
             </ScrollView>
           </View>
         )}
-      </View>
-
-      {/* SECTION 3: DATA IMPORT */}
-      <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 18, marginBottom: 30, borderWidth: 1, borderColor: '#E2E8F0' }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A' }}>
-            📥 Batch Data Import Ingestion
-          </Text>
-          <TouchableOpacity onPress={loadSampleTemplate}>
-            <Text style={{ color: '#0284C7', fontWeight: '700', fontSize: 12 }}>⚡ Load Sample Template</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
-          Ingest batch records into the database with automatic field validation and audit tracing.
-        </Text>
-
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10, alignItems: 'center' }}>
-          <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569' }}>Target Entity:</Text>
-          {['companies', 'subscribers'].map((ent) => (
-            <TouchableOpacity
-              key={ent}
-              style={[styles.filterChip, importEntity === ent && styles.filterChipActive]}
-              onPress={() => setImportEntity(ent as any)}
-            >
-              <Text style={importEntity === ent ? styles.filterChipTextActive : styles.filterChipText}>
-                {ent.toUpperCase()}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <TextInput
-          style={[styles.input, { height: 110, textAlignVertical: 'top', fontFamily: 'monospace', fontSize: 12 }]}
-          multiline
-          placeholder={`Paste JSON array here, e.g. [\n  { "code": "COMP01", "name": "Company Name" }\n]`}
-          value={importJson}
-          onChangeText={setImportJson}
-        />
-
-        {importMsg && (
-          <View
-            style={{
-              backgroundColor: importMsg.type === 'success' ? '#DCFCE7' : '#FEE2E2',
-              padding: 10,
-              borderRadius: 6,
-              marginBottom: 10,
-              borderWidth: 1,
-              borderColor: importMsg.type === 'success' ? '#86EFAC' : '#FCA5A5',
-            }}
-          >
-            <Text style={{ color: importMsg.type === 'success' ? '#166534' : '#DC2626', fontWeight: '700', fontSize: 12 }}>
-              {importMsg.type === 'success' ? '✓ ' : '⚠️ '}
-              {importMsg.text}
-            </Text>
-          </View>
-        )}
-
-        <TouchableOpacity
-          style={[styles.primaryBtn, { marginTop: 4, backgroundColor: '#0A2540' }]}
-          onPress={handleImportData}
-          disabled={importing}
-        >
-          {importing ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryBtnText}>VALIDATE & INGEST BATCH INTO DATABASE</Text>}
-        </TouchableOpacity>
       </View>
     </ScrollView>
   );

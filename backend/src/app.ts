@@ -179,8 +179,7 @@ router.put('/super-admin/integrations', authenticateToken, requireRoles('SUPER_A
 router.get('/super-admin/backups', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getBackups);
 router.post('/super-admin/backups/trigger', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.triggerManualBackup);
 
-// SA-16, SA-17: Data Import & Export
-router.post('/super-admin/import', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.importData);
+// SA-17: Database Data Export
 router.get('/super-admin/export/:entity', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.exportData);
 
 // SA-19, SA-20: Financial Periods & Archival Policy

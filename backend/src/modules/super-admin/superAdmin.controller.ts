@@ -544,7 +544,7 @@ export const getAuditLogs = async (req: AuthRequest, res: Response) => {
     const take = Math.min(Number(limit) || 100, 200);
     const skip = ((Number(page) || 1) - 1) * take;
 
-    const [total, logs] = await Promise.all([
+    const [total, rawLogs] = await Promise.all([
       prisma.auditLog.count({ where }),
       prisma.auditLog.findMany({
         where,
@@ -557,6 +557,24 @@ export const getAuditLogs = async (req: AuthRequest, res: Response) => {
         skip,
       }),
     ]);
+
+    const logs = (rawLogs as any[]).map((log) => {
+      let parsedDetails: any = null;
+      try {
+        if (log.details) parsedDetails = JSON.parse(log.details);
+      } catch (e) {}
+
+      const sessionId =
+        parsedDetails?.sessionId ||
+        (log.action?.includes('LOG') || log.action?.includes('SESSION') || log.action?.includes('AUTH')
+          ? `sess_${(log.id || log.userId || 'active').replace(/-/g, '').slice(0, 12)}`
+          : `sess_system_${log.id.replace(/-/g, '').slice(0, 8)}`);
+
+      return {
+        ...log,
+        sessionId,
+      };
+    });
 
     return res.json({
       success: true,
@@ -961,37 +979,8 @@ export const triggerManualBackup = async (req: AuthRequest, res: Response) => {
 };
 
 // ==========================================
-// SA-16, SA-17: DATA IMPORT & EXPORT
+// SA-17: DATABASE DATA EXPORT
 // ==========================================
-export const importData = async (req: AuthRequest, res: Response) => {
-  try {
-    const { entity, records } = req.body;
-    if (!Array.isArray(records) || records.length === 0) {
-      return res.status(400).json({ success: false, message: 'Valid array of records required' });
-    }
-
-    try {
-      await prisma.auditLog.create({
-        data: {
-          userId: req.user?.id || null,
-          companyId: req.user?.companyId || null,
-          action: 'DATA_IMPORT_UPLOAD',
-          entity: entity || 'General',
-          details: JSON.stringify({ count: records.length, entity, importedAt: new Date().toISOString() }),
-          ipAddress: req.ip || 'unknown',
-        },
-      });
-    } catch (e) {}
-
-    return res.json({
-      success: true,
-      message: `Batch import processed successfully: ${records.length} ${entity} records validated and ingested.`,
-      data: { processedCount: records.length, entity },
-    });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-};
 
 export const exportData = async (req: AuthRequest, res: Response) => {
   try {

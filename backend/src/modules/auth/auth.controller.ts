@@ -211,6 +211,12 @@ export const login = async (req: AuthRequest, res: Response) => {
           action: 'USER_LOGIN',
           entity: 'User',
           entityId: user.id,
+          details: JSON.stringify({
+            sessionId: sessionId,
+            sessionStatus: 'ACTIVE',
+            loginTime: new Date().toISOString(),
+            ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown',
+          }),
           ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown',
         },
       });
@@ -274,6 +280,11 @@ export const logout = async (req: AuthRequest, res: Response) => {
             action: 'USER_LOGOUT',
             entity: 'User',
             entityId: req.user.id,
+            details: JSON.stringify({
+              sessionId: (req.user as any)?.sessionId || `sess_${req.user.id.slice(0, 8)}`,
+              sessionStatus: 'TERMINATED',
+              logoutTime: new Date().toISOString(),
+            }),
             ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown',
           },
         });
