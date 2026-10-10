@@ -8,9 +8,10 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     const companyId = req.user?.companyId!;
 
     if (role === 'SUPER_ADMIN') {
-      const [activeCompanies, activeBranches, totalUsers, totalSubscribers, activeGroups] = await Promise.all([
+      const [activeCompanies, activeBranches, totalUsers, activeUsers, totalSubscribers, activeGroups] = await Promise.all([
         prisma.company.count({ where: { status: 'ACTIVE' } }),
         prisma.branch.count({ where: { status: 'ACTIVE' } }),
+        prisma.user.count(),
         prisma.user.count({ where: { status: 'ACTIVE' } }),
         prisma.subscriber.count({ where: { status: 'ACTIVE' } }),
         prisma.chitGroup.count({ where: { status: 'ACTIVE' } }),
@@ -23,6 +24,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
           activeCompanies,
           activeBranches,
           totalUsers,
+          activeUsers,
           totalSubscribers,
           activeGroups,
           systemStatus: 'ONLINE',

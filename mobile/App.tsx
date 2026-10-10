@@ -637,6 +637,7 @@ function DashboardTab({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab
             <MetricCard title="Active Branches" value={stats.activeBranches || 0} color="#27AE60" />
             <MetricCard title="Total Subscribers" value={stats.totalSubscribers || 0} color="#8E44AD" />
             <MetricCard title="Active Chit Groups" value={stats.activeGroups || 0} color="#D35400" />
+            <MetricCard title="Active Users" value={stats.activeUsers ?? stats.totalUsers ?? 0} color="#10B981" />
             <MetricCard title="Total Platform Users" value={stats.totalUsers || 0} color="#2563EB" />
             <MetricCard title="System Engine Status" value={stats.systemStatus || 'ONLINE'} color="#16A34A" />
           </View>
@@ -2119,7 +2120,7 @@ function ProfileModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
             {/* User Profile Card */}
             <View style={styles.profileCard}>
               <View style={styles.profileHeaderRow}>
@@ -2170,18 +2171,18 @@ function ProfileModal({
             <View style={styles.changePasswordSection}>
               <Text style={styles.subSectionTitle}>🔐 Update Password</Text>
               <Text style={styles.subSectionDesc}>
-                Protect your account. Minimum 8 characters with at least one letter and one number.
+                Protect your account. Minimum 8 characters with uppercase, lowercase, number, and special character.
               </Text>
 
               {error ? (
-                <View style={[styles.errorBadge, { width: '100%', marginBottom: 12 }]}>
-                  <Text style={styles.errorBadgeText}>{error}</Text>
+                <View style={styles.modalErrorBadge}>
+                  <Text style={styles.modalErrorBadgeText}>⚠️ {error}</Text>
                 </View>
               ) : null}
 
               {success ? (
-                <View style={[styles.successBadge, { width: '100%', marginBottom: 12 }]}>
-                  <Text style={styles.successBadgeText}>{success}</Text>
+                <View style={styles.modalSuccessBadge}>
+                  <Text style={styles.modalSuccessBadgeText}>✓ {success}</Text>
                 </View>
               ) : null}
 
@@ -2206,11 +2207,33 @@ function ProfileModal({
                   value={newPassword}
                   onChangeText={setNewPassword}
                   secureTextEntry={!showNewPassword}
-                  placeholder="Min 8 chars, letter + number"
+                  placeholder="Min 8 chars, Aa, 1-9, !@#$"
                 />
                 <TouchableOpacity onPress={() => setShowNewPassword(!showNewPassword)} style={styles.eyeBtn}>
                   <Text>{showNewPassword ? '👁' : '👁‍🗨'}</Text>
                 </TouchableOpacity>
+              </View>
+
+              {/* Dynamic Password Requirements Checklist */}
+              <View style={styles.passwordRequirementsBox}>
+                <Text style={styles.passwordRequirementsTitle}>Password Requirements:</Text>
+                <View style={{ gap: 4 }}>
+                  <Text style={[styles.reqItem, newPassword.length >= 8 && styles.reqItemPassed]}>
+                    {newPassword.length >= 8 ? '✓' : '○'} At least 8 characters
+                  </Text>
+                  <Text style={[styles.reqItem, /[A-Z]/.test(newPassword) && styles.reqItemPassed]}>
+                    {/[A-Z]/.test(newPassword) ? '✓' : '○'} At least one uppercase letter (A-Z)
+                  </Text>
+                  <Text style={[styles.reqItem, /[a-z]/.test(newPassword) && styles.reqItemPassed]}>
+                    {/[a-z]/.test(newPassword) ? '✓' : '○'} At least one lowercase letter (a-z)
+                  </Text>
+                  <Text style={[styles.reqItem, /[0-9]/.test(newPassword) && styles.reqItemPassed]}>
+                    {/[0-9]/.test(newPassword) ? '✓' : '○'} At least one number (0-9)
+                  </Text>
+                  <Text style={[styles.reqItem, /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(newPassword) && styles.reqItemPassed]}>
+                    {/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(newPassword) ? '✓' : '○'} At least one special character (!@#$...)
+                  </Text>
+                </View>
               </View>
 
               <Text style={styles.label}>Confirm New Password *</Text>
@@ -2223,9 +2246,14 @@ function ProfileModal({
                   placeholder="Re-type new password"
                 />
               </View>
+              {confirmPassword.length > 0 && confirmPassword !== newPassword && (
+                <Text style={{ color: '#DC2626', fontSize: 12, marginTop: 4, fontWeight: '600' }}>
+                  ✕ Passwords do not match
+                </Text>
+              )}
 
               <TouchableOpacity
-                style={[styles.primaryBtn, { backgroundColor: '#16A34A' }]}
+                style={[styles.primaryBtn, { backgroundColor: '#16A34A', marginTop: 22, marginBottom: 16 }]}
                 onPress={handleChangePassword}
                 disabled={loading}
               >
@@ -2963,6 +2991,63 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 14,
     color: '#0F172A',
+  },
+  modalErrorBadge: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1.5,
+    borderColor: '#EF4444',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 14,
+    width: '100%',
+  },
+  modalErrorBadgeText: {
+    color: '#991B1B',
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  modalSuccessBadge: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1.5,
+    borderColor: '#22C55E',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 14,
+    width: '100%',
+  },
+  modalSuccessBadgeText: {
+    color: '#166534',
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  passwordRequirementsBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 12,
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  passwordRequirementsTitle: {
+    color: '#334155',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  reqItem: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  reqItemPassed: {
+    color: '#16A34A',
+    fontWeight: '700',
   },
   filterChip: {
     paddingHorizontal: 14,
