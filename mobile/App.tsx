@@ -132,9 +132,6 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
     <SafeAreaView style={styles.refContainer}>
       <StatusBar barStyle="light-content" backgroundColor="#324124" />
 
-      {/* Dynamic Notch / Pill indicator at top */}
-      <View style={styles.dynamicIsland} />
-
       <ScrollView contentContainerStyle={styles.refContentContainer} keyboardShouldPersistTaps="handled">
         {/* Title Section */}
         <View style={styles.refHeader}>
@@ -198,12 +195,9 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
             )}
           </TouchableOpacity>
 
-          {/* Forgot Password & Signup Links */}
+          {/* Forgot Password Link */}
           <View style={styles.linkGroup}>
-            <TouchableOpacity onPress={() => alert('Account creation is managed by your Chit Fund administrator.')}>
-              <Text style={styles.refLinkText}>Don’t have any account?</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={{ marginTop: 8 }} onPress={() => alert('Please contact your branch manager to reset your password.')}>
+            <TouchableOpacity onPress={() => alert('Please contact your branch manager or system administrator to reset your password.')}>
               <Text style={styles.refLinkText}>Forgot Password?</Text>
             </TouchableOpacity>
           </View>
