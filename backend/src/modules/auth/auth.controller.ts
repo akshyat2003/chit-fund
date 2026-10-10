@@ -241,7 +241,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
           data: { email: trimmed },
         });
       } else {
-        recipientEmail = 'harisankarmohanty010@gmail.com';
+        recipientEmail = 'akshyatraj@yahoo.com';
         await prisma.user.update({
           where: { id: user.id },
           data: { email: recipientEmail },

@@ -3,19 +3,25 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  await prisma.user.updateMany({
-    where: { username: 'superadmin' },
-    data: { email: 'harisankarmohanty010@gmail.com' },
-  });
-  await prisma.user.updateMany({
-    where: { username: 'manager' },
-    data: { email: 'harisankarmohanty010@gmail.com' },
+  await prisma.company.updateMany({
+    data: { name: 'ChitKart' },
   });
 
+  await prisma.user.updateMany({
+    where: { username: 'superadmin' },
+    data: { email: 'akshyatraj@yahoo.com' },
+  });
+
+  await prisma.user.updateMany({
+    where: { username: 'manager' },
+    data: { email: 'akshyatraj@yahoo.com' },
+  });
+
+  const companies = await prisma.company.findMany();
   const users = await prisma.user.findMany({
     select: { id: true, username: true, email: true, role: true },
   });
-  console.log('Database users updated with email:', users);
+  console.log('ChitKart database sync completed:', { companies, users });
 }
 
 main()

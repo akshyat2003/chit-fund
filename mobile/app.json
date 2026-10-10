@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Apex Chit Fund Management",
-    "slug": "chit-fund-mobile",
+    "name": "ChitKart",
+    "slug": "chitkart",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

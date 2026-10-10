@@ -29,7 +29,7 @@ function MainApp() {
       {/* Header Bar */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>{user.company?.name?.toUpperCase() || 'CHIT FUND PLATFORM'}</Text>
+          <Text style={styles.headerTitle}>{user.company?.name?.toUpperCase() || 'CHITKART'}</Text>
           <Text style={styles.headerSubtitle}>
             {user.role.replace('_', ' ')} • {user.fullName}
           </Text>
@@ -221,6 +221,7 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
       <ScrollView contentContainerStyle={styles.refContentContainer} keyboardShouldPersistTaps="handled">
         {/* Title Section */}
         <View style={styles.refHeader}>
+          <Text style={styles.chitKartBrand}>CHITKART</Text>
           <Text style={styles.refTitle}>Welcome Back!</Text>
           <Text style={styles.refSubtitle}>Sign in with your account</Text>
         </View>
@@ -1266,6 +1267,13 @@ const styles = StyleSheet.create({
   refHeader: {
     alignItems: 'center',
     marginBottom: 44,
+  },
+  chitKartBrand: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#C8FF00',
+    letterSpacing: 4,
+    marginBottom: 8,
   },
   refTitle: {
     fontSize: 34,
