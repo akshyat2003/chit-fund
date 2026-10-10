@@ -92,8 +92,11 @@ router.get('/super-admin/subscriptions', authenticateToken, requireRoles('SUPER_
 router.get('/super-admin/audit-logs', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getAuditLogs);
 router.get('/super-admin/system-health', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getSystemHealth);
 router.get('/super-admin/platform-settings', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getPlatformSettings);
-router.put('/super-admin/platform-settings', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updatePlatformSettings);
 router.post('/super-admin/support-access', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.requestSupportAccess);
+
+// Super Admin Credentials Management (SA-04, SA-05)
+router.get('/super-admin/admins', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listSuperAdmins);
+router.post('/super-admin/admins', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.createSuperAdmin);
 
 // SA-03: Branch Setup & Management
 router.get('/super-admin/branches', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listBranches);

@@ -1066,3 +1066,113 @@ export const getMultiBranchExceptions = async (req: AuthRequest, res: Response) 
     return res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// ==========================================
+// SA-04 & SA-05: SUPER ADMIN CREDENTIALS MANAGEMENT
+// ==========================================
+export const listSuperAdmins = async (req: AuthRequest, res: Response) => {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: 'SUPER_ADMIN' },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        phone: true,
+        email: true,
+        role: true,
+        status: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return res.json({ success: true, data: admins });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const createSuperAdmin = async (req: AuthRequest, res: Response) => {
+  try {
+    const { username, fullName, phone, email, password } = req.body;
+
+    if (!username || !fullName || !phone || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username, Full Name, Phone, and Password are required.',
+      });
+    }
+
+    const policy = validatePasswordPolicy(password);
+    if (!policy.valid) {
+      return res.status(400).json({ success: false, message: policy.message });
+    }
+
+    const trimmedUsername = username.trim();
+    const trimmedPhone = phone.trim();
+    const trimmedEmail = email ? email.trim() : null;
+
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { username: { equals: trimmedUsername, mode: 'insensitive' as const } },
+          { phone: trimmedPhone },
+          ...(trimmedEmail ? [{ email: { equals: trimmedEmail, mode: 'insensitive' as const } }] : []),
+        ],
+      },
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: 'A user account with this username, phone number, or email already exists.',
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const newAdmin = await prisma.user.create({
+      data: {
+        username: trimmedUsername,
+        fullName: fullName.trim(),
+        phone: trimmedPhone,
+        email: trimmedEmail,
+        passwordHash,
+        role: 'SUPER_ADMIN',
+        companyId: null,
+        branchId: null,
+        status: 'ACTIVE',
+      },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        phone: true,
+        email: true,
+        role: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user?.id || null,
+          action: 'SUPER_ADMIN_CREATED',
+          entity: 'User',
+          entityId: newAdmin.id,
+          details: JSON.stringify({ createdAdmin: newAdmin.username, email: newAdmin.email }),
+          ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown',
+        },
+      });
+    } catch (e) {}
+
+    return res.status(201).json({
+      success: true,
+      message: `Super Admin account '${newAdmin.username}' created successfully! They can now log in to the Super Admin dashboard.`,
+      data: newAdmin,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};

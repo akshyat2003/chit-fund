@@ -17,7 +17,7 @@ import { api } from './src/services/api';
 // --- MAIN APP CONTROLLER ---
 function MainApp() {
   const { user, login, logout, refreshUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'companies' | 'subscribers' | 'groups' | 'payments' | 'auctions' | 'reconciliation'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'companies' | 'admins' | 'subscribers' | 'groups' | 'payments' | 'auctions' | 'reconciliation'>('dashboard');
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   if (!user) {
@@ -64,12 +64,21 @@ function MainApp() {
             </TouchableOpacity>
 
             {user.role === 'SUPER_ADMIN' && (
-              <TouchableOpacity
-                style={[styles.navItem, activeTab === 'companies' && styles.navItemActive]}
-                onPress={() => setActiveTab('companies')}
-              >
-                <Text style={[styles.navText, activeTab === 'companies' && styles.navTextActive]}>🏢 Companies</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  style={[styles.navItem, activeTab === 'companies' && styles.navItemActive]}
+                  onPress={() => setActiveTab('companies')}
+                >
+                  <Text style={[styles.navText, activeTab === 'companies' && styles.navTextActive]}>🏢 Companies</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, activeTab === 'admins' && styles.navItemActive]}
+                  onPress={() => setActiveTab('admins')}
+                >
+                  <Text style={[styles.navText, activeTab === 'admins' && styles.navTextActive]}>🛡️ Super Admins</Text>
+                </TouchableOpacity>
+              </>
             )}
 
             <TouchableOpacity
@@ -116,12 +125,17 @@ function MainApp() {
       <View style={styles.contentArea}>
         <View style={styles.contentInner}>
           <View style={{ flex: 1, display: activeTab === 'dashboard' ? 'flex' : 'none' }}>
-            <DashboardTab user={user} />
+            <DashboardTab user={user} onNavigateTab={setActiveTab} />
           </View>
           {user.role === 'SUPER_ADMIN' && (
-            <View style={{ flex: 1, display: activeTab === 'companies' ? 'flex' : 'none' }}>
-              <CompaniesTab user={user} />
-            </View>
+            <>
+              <View style={{ flex: 1, display: activeTab === 'companies' ? 'flex' : 'none' }}>
+                <CompaniesTab user={user} />
+              </View>
+              <View style={{ flex: 1, display: activeTab === 'admins' ? 'flex' : 'none' }}>
+                <SuperAdminsTab user={user} />
+              </View>
+            </>
           )}
           <View style={{ flex: 1, display: activeTab === 'subscribers' ? 'flex' : 'none' }}>
             <SubscribersTab user={user} />
@@ -588,7 +602,7 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
 }
 
 // --- 2. DASHBOARD TAB ---
-function DashboardTab({ user }: { user: any }) {
+function DashboardTab({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab: any) => void }) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -652,6 +666,27 @@ function DashboardTab({ user }: { user: any }) {
                 <Text style={styles.saControlItemDesc}>Continuous Write-Ahead Log (WAL) with 30-day Point-In-Time Recovery in Tokyo AWS region.</Text>
               </View>
             </View>
+
+            {onNavigateTab && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
+                <TouchableOpacity
+                  style={{ backgroundColor: '#38BDF8', paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8 }}
+                  onPress={() => onNavigateTab('admins')}
+                >
+                  <Text style={{ color: '#0F172A', fontWeight: '800', fontSize: 12 }}>
+                    👥 CREATE & MANAGE SUPER ADMINS
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ backgroundColor: 'rgba(255, 255, 255, 0.12)', paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8 }}
+                  onPress={() => onNavigateTab('companies')}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>
+                    🏢 ONBOARD COMPANIES
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       )}
@@ -1066,6 +1101,278 @@ function CompaniesTab({ user }: { user: any }) {
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
                     <Text style={styles.primaryBtnText}>CREATE COMPANY & ADMIN</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+// --- 2.8 SUPER ADMINS TAB (MANAGE CO-SUPER ADMIN CREDENTIALS) ---
+function SuperAdminsTab({ user }: { user: any }) {
+  const [admins, setAdmins] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  // Form State
+  const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    loadAdmins();
+  }, []);
+
+  const loadAdmins = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get('/super-admin/admins');
+      setAdmins(res.data.data || []);
+    } catch (e: any) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateAdmin = async () => {
+    setFormError('');
+    if (!fullName.trim() || !username.trim() || !phone.trim() || !password) {
+      setFormError('Please fill Full Name, Username, Mobile Phone, and Password.');
+      return;
+    }
+    if (password.length < 8) {
+      setFormError('Password must be at least 8 characters long.');
+      return;
+    }
+    if (!/[A-Z]/.test(password)) {
+      setFormError('Password must contain at least one uppercase letter (A-Z).');
+      return;
+    }
+    if (!/[a-z]/.test(password)) {
+      setFormError('Password must contain at least one lowercase letter (a-z).');
+      return;
+    }
+    if (!/[0-9]/.test(password)) {
+      setFormError('Password must contain at least one number (0-9).');
+      return;
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) {
+      setFormError('Password must contain at least one special character (!@#$%^&*...).');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setFormError('Passwords do not match.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const res = await api.post('/super-admin/admins', {
+        fullName: fullName.trim(),
+        username: username.trim(),
+        phone: phone.trim(),
+        email: email.trim() || undefined,
+        password,
+      });
+
+      alert(res.data.message || 'Super Admin account created successfully!');
+      setShowAddModal(false);
+      setFullName('');
+      setUsername('');
+      setPhone('');
+      setEmail('');
+      setPassword('');
+      setConfirmPassword('');
+      loadAdmins();
+    } catch (e: any) {
+      setFormError(e.response?.data?.message || e.message || 'Failed to create Super Admin account');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, padding: 16 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <View style={{ flex: 1, marginRight: 12 }}>
+          <Text style={styles.sectionTitle}>🛡️ Super Admin Credentials</Text>
+          <Text style={{ color: '#64748B', fontSize: 13, marginTop: 2 }}>
+            Provision and manage Super Administrator accounts with full platform dashboard access
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddModal(true)}>
+          <Text style={styles.addBtnText}>+ CREATE SUPER ADMIN</Text>
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <ActivityIndicator size="small" color="#0A2540" />
+      ) : admins.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>No additional Super Admins found.</Text>
+          <Text style={styles.emptySubText}>Tap "+ CREATE SUPER ADMIN" to provision a new Super Admin credential.</Text>
+        </View>
+      ) : (
+        <ScrollView style={{ flex: 1 }}>
+          <View style={styles.cardsGrid}>
+            {admins.map((adm) => (
+              <View key={adm.id} style={[styles.companyCard, { borderTopColor: '#0F2F52' }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={[styles.companyCodeBadge, { color: '#0F2F52' }]}>SUPER ADMIN</Text>
+                  <View style={adm.status === 'ACTIVE' ? styles.statusBadgeActive : styles.statusBadgeSuspended}>
+                    <Text style={adm.status === 'ACTIVE' ? styles.statusTextActive : styles.statusTextSuspended}>
+                      {adm.status}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.companyNameText}>{adm.fullName}</Text>
+                <Text style={styles.companyMetaText}>Username: @{adm.username}</Text>
+                <Text style={styles.companyMetaText}>Email: {adm.email || 'Not specified'}</Text>
+                <Text style={styles.companyMetaText}>Phone: {adm.phone}</Text>
+
+                <View style={{ marginTop: 12, padding: 10, backgroundColor: '#F8FAFC', borderRadius: 8 }}>
+                  <Text style={{ fontSize: 11, color: '#16A34A', fontWeight: '700' }}>
+                    ✓ Full Platform Dashboard & SaaS Administration Access
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>
+                    Created: {new Date(adm.createdAt).toLocaleDateString()}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      )}
+
+      {/* Create Super Admin Modal */}
+      <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => setShowAddModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: 580 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <Text style={styles.modalTitle}>Create Super Admin Credential</Text>
+              <TouchableOpacity onPress={() => setShowAddModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ fontSize: 22, color: '#64748B', fontWeight: '700' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={{ color: '#64748B', fontSize: 13, marginBottom: 14 }}>
+                This user will have identical full administrative permissions across all companies, branches, and platform audit records.
+              </Text>
+
+              {formError ? (
+                <View style={[styles.errorBadge, { width: '100%', marginBottom: 12 }]}>
+                  <Text style={styles.errorBadgeText}>{formError}</Text>
+                </View>
+              ) : null}
+
+              <Text style={styles.label}>Full Name *</Text>
+              <TextInput
+                style={styles.input}
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="e.g. Priyanshu Sharma"
+              />
+
+              <Text style={styles.label}>Username *</Text>
+              <TextInput
+                style={styles.input}
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                placeholder="e.g. priyanshu_admin"
+              />
+
+              <Text style={styles.label}>Mobile Phone Number *</Text>
+              <TextInput
+                style={styles.input}
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                placeholder="e.g. 9876543210"
+              />
+
+              <Text style={styles.label}>Email Address (Recommended for OTP recovery)</Text>
+              <TextInput
+                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="e.g. priyanshu@chitkart.com"
+              />
+
+              <Text style={styles.label}>Password *</Text>
+              <View style={styles.passwordInputWrapper}>
+                <TextInput
+                  style={styles.passwordInput}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  placeholder="Min 8 chars, uppercase, lowercase, number, special"
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
+                  <Text>{showPassword ? '👁' : '👁‍🗨'}</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Real-time Checklist */}
+              <View style={{ marginVertical: 8, padding: 10, backgroundColor: '#F8FAFC', borderRadius: 8, gap: 4 }}>
+                <Text style={{ fontSize: 11, color: password.length >= 8 ? '#16A34A' : '#94A3B8', fontWeight: '600' }}>
+                  {password.length >= 8 ? '✓' : '○'} At least 8 characters
+                </Text>
+                <Text style={{ fontSize: 11, color: /[A-Z]/.test(password) ? '#16A34A' : '#94A3B8', fontWeight: '600' }}>
+                  {/[A-Z]/.test(password) ? '✓' : '○'} Uppercase letter (A-Z)
+                </Text>
+                <Text style={{ fontSize: 11, color: /[a-z]/.test(password) ? '#16A34A' : '#94A3B8', fontWeight: '600' }}>
+                  {/[a-z]/.test(password) ? '✓' : '○'} Lowercase letter (a-z)
+                </Text>
+                <Text style={{ fontSize: 11, color: /[0-9]/.test(password) ? '#16A34A' : '#94A3B8', fontWeight: '600' }}>
+                  {/[0-9]/.test(password) ? '✓' : '○'} Number (0-9)
+                </Text>
+                <Text style={{ fontSize: 11, color: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password) ? '#16A34A' : '#94A3B8', fontWeight: '600' }}>
+                  {/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password) ? '✓' : '○'} Special character (!@#$%^&*...)
+                </Text>
+              </View>
+
+              <Text style={styles.label}>Confirm Password *</Text>
+              <View style={styles.passwordInputWrapper}>
+                <TextInput
+                  style={styles.passwordInput}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  placeholder="Re-type password"
+                />
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 24, marginBottom: 10 }}>
+                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowAddModal(false)}>
+                  <Text style={styles.cancelBtnText}>CANCEL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { flex: 2, marginTop: 0, backgroundColor: '#0F2F52' }]}
+                  onPress={handleCreateAdmin}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>CREATE SUPER ADMIN</Text>
                   )}
                 </TouchableOpacity>
               </View>
