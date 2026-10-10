@@ -12,7 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
-import { api, API_BASE_URL, setCustomBaseUrl } from './src/services/api';
+import { api } from './src/services/api';
 
 // --- MAIN APP CONTROLLER ---
 function MainApp() {
@@ -120,38 +120,6 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
   const [maskedEmail, setMaskedEmail] = useState('');
-
-  // Server Settings Modal State
-  const [showServerModal, setShowServerModal] = useState(false);
-  const [serverUrlInput, setServerUrlInput] = useState(API_BASE_URL);
-  const [serverTestStatus, setServerTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-  const [serverTestMsg, setServerTestMsg] = useState('');
-
-  const handleTestConnection = async () => {
-    const targetUrl = serverUrlInput.trim().replace(/\/+$/, '');
-    setServerTestStatus('testing');
-    setServerTestMsg('Connecting to server...');
-    try {
-      const res = await fetch(`${targetUrl}/health`);
-      if (res.ok) {
-        setServerTestStatus('success');
-        setServerTestMsg('Connected successfully! Server is online.');
-      } else {
-        setServerTestStatus('error');
-        setServerTestMsg(`Server replied with error status: ${res.status}`);
-      }
-    } catch (e: any) {
-      setServerTestStatus('error');
-      setServerTestMsg(`Cannot reach ${targetUrl}. Service may be waking up or offline.`);
-    }
-  };
-
-  const handleSaveServerUrl = () => {
-    const targetUrl = serverUrlInput.trim().replace(/\/+$/, '');
-    setCustomBaseUrl(targetUrl);
-    setShowServerModal(false);
-    setError('');
-  };
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
@@ -325,20 +293,6 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
             <TouchableOpacity onPress={openForgotModal}>
               <Text style={styles.refLinkText}>Forgot Password?</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={{ marginTop: 22, padding: 6 }}
-              onPress={() => {
-                setServerUrlInput(API_BASE_URL);
-                setServerTestStatus('idle');
-                setServerTestMsg('');
-                setShowServerModal(true);
-              }}
-            >
-              <Text style={{ color: '#A5B798', fontSize: 13, textDecorationLine: 'underline' }}>
-                ⚙ Server Settings ({API_BASE_URL.replace('https://', '').replace('/api/v1', '')})
-              </Text>
-            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
@@ -490,86 +444,6 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
                 </View>
               </View>
             )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Server Settings Modal */}
-      <Modal
-        visible={showServerModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowServerModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.forgotCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.forgotModalTitle}>Server Settings</Text>
-              <TouchableOpacity onPress={() => setShowServerModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Text style={styles.modalCloseText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.modalSubtext}>
-              Configure the backend API URL. If your backend is deployed on Render or running locally, enter the endpoint below:
-            </Text>
-
-            {serverTestMsg ? (
-              <View style={[
-                serverTestStatus === 'success' ? styles.successBadge : styles.errorBadge,
-                { width: '100%', marginBottom: 14 }
-              ]}>
-                <Text style={serverTestStatus === 'success' ? styles.successBadgeText : styles.errorBadgeText}>
-                  {serverTestMsg}
-                </Text>
-              </View>
-            ) : null}
-
-            <View style={styles.pillInputWrapper}>
-              <TextInput
-                style={styles.pillInput}
-                value={serverUrlInput}
-                onChangeText={setServerUrlInput}
-                placeholder="https://your-backend.onrender.com/api/v1"
-                placeholderTextColor="#9AA0A6"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-              <TouchableOpacity
-                style={{ flex: 1, padding: 10, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, alignItems: 'center' }}
-                onPress={() => setServerUrlInput('https://chit-fund-backend.onrender.com/api/v1')}
-              >
-                <Text style={{ color: '#E4ECD8', fontSize: 12, fontWeight: '600' }}>Render Default</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1, padding: 10, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, alignItems: 'center' }}
-                onPress={() => setServerUrlInput('http://localhost:5000/api/v1')}
-              >
-                <Text style={{ color: '#E4ECD8', fontSize: 12, fontWeight: '600' }}>Localhost:5000</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.limeBtn, { backgroundColor: '#FFFFFF', marginBottom: 10 }]}
-              onPress={handleTestConnection}
-              disabled={serverTestStatus === 'testing'}
-            >
-              {serverTestStatus === 'testing' ? (
-                <ActivityIndicator color="#111" size="small" />
-              ) : (
-                <Text style={[styles.limeBtnText, { color: '#1A202C' }]}>Test Connection</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.limeBtn}
-              onPress={handleSaveServerUrl}
-            >
-              <Text style={styles.limeBtnText}>Save & Apply</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
