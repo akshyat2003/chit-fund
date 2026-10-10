@@ -255,7 +255,7 @@ model Payout {
   createdAt          DateTime @default(now())
 
   auction            Auction    @relation(fields: [auctionId], references: [id])
-  subscriber         Subscriber @relation("SubscriberPayouts", fields: [subscriberId], references: [id])
+  subscriber         Subscriber @relation(fields: [subscriberId], references: [id])
   approvedBy         User?      @relation("ApprovedBy", fields: [approvedByUserId], references: [id])
 }
 
