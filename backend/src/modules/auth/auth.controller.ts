@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { prisma } from '../../config/prisma.js';
 import { AuthRequest } from '../../middleware/auth.js';
-import { sendOtpEmail } from '../../services/email.service.js';
+import { sendOtpEmail, sendAdminCredentialsEmail } from '../../services/email.service.js';
 
 // In-memory OTP storage with TTL (FR-AUTH-006)
 interface OtpEntry {
@@ -932,6 +932,43 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       },
     });
 
+    // Automatically email credentials to desired Gmail / Email
+    let credentialsEmailSent = false;
+    const recipientEmail = (email || '').trim();
+    if (recipientEmail && recipientEmail.includes('@')) {
+      try {
+        let companyName = newUser.company?.name || undefined;
+        let companyCode = newUser.company?.code || undefined;
+        if (!companyName && newUser.companyId) {
+          const comp = await prisma.company.findUnique({ where: { id: newUser.companyId } });
+          if (comp) {
+            companyName = comp.name;
+            companyCode = comp.code;
+          }
+        }
+
+        const roleTitle = newUser.role === 'MANAGER'
+          ? 'Company Administrator (Manager)'
+          : newUser.role === 'SUPER_ADMIN'
+          ? 'Super Administrator'
+          : newUser.role.replace('_', ' ');
+
+        const emailResult = await sendAdminCredentialsEmail({
+          to: recipientEmail,
+          fullName: newUser.fullName,
+          username: newUser.username,
+          password: password,
+          role: roleTitle,
+          companyName: companyName || 'ChitKart Platform',
+          companyCode: companyCode,
+          loginUrl: process.env.PORTAL_URL || 'http://localhost:8081',
+        });
+        credentialsEmailSent = !!emailResult.success;
+      } catch (emailErr: any) {
+        console.error('[createUser] Failed to send credentials email:', emailErr.message);
+      }
+    }
+
     // Audit Log (FR-AUTH-012)
     try {
       await prisma.auditLog.create({
@@ -941,7 +978,12 @@ export const createUser = async (req: AuthRequest, res: Response) => {
           action: 'USER_CREATED',
           entity: 'User',
           entityId: newUser.id,
-          details: JSON.stringify({ createdUser: newUser.username, role: newUser.role }),
+          details: JSON.stringify({
+            createdUser: newUser.username,
+            role: newUser.role,
+            email: recipientEmail || null,
+            credentialsEmailSent,
+          }),
           ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown',
         },
       });
@@ -949,7 +991,9 @@ export const createUser = async (req: AuthRequest, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: 'User created successfully',
+      message: credentialsEmailSent
+        ? `User created successfully! Login credentials have been automatically dispatched to ${recipientEmail}.`
+        : 'User created successfully',
       data: {
         id: newUser.id,
         username: newUser.username,
@@ -958,6 +1002,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         email: newUser.email,
         role: newUser.role,
         status: newUser.status,
+        credentialsEmailSent,
       },
     });
   } catch (err: any) {
@@ -1167,10 +1212,36 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       });
     } catch (e) {}
 
+    // If password was reset, automatically email new credentials to user's email
+    let credentialsEmailSent = false;
+    if (password && password.trim() && updatedUser.email && updatedUser.email.includes('@')) {
+      try {
+        const roleTitle = updatedUser.role === 'MANAGER'
+          ? 'Company Administrator (Manager)'
+          : updatedUser.role === 'SUPER_ADMIN'
+          ? 'Super Administrator'
+          : updatedUser.role.replace('_', ' ');
+
+        await sendAdminCredentialsEmail({
+          to: updatedUser.email.trim(),
+          fullName: updatedUser.fullName,
+          username: updatedUser.username,
+          password: password.trim(),
+          role: roleTitle,
+          companyName: updatedUser.company?.name || 'ChitKart Platform',
+          companyCode: updatedUser.company?.code || undefined,
+          loginUrl: process.env.PORTAL_URL || 'http://localhost:8081',
+        });
+        credentialsEmailSent = true;
+      } catch (e: any) {
+        console.error('[updateUser] Failed to send updated credentials email:', e.message);
+      }
+    }
+
     return res.json({
       success: true,
-      message: `User credentials for @${updatedUser.username} updated successfully.${password ? ' Password reset complete.' : ''}`,
-      data: updatedUser,
+      message: `User credentials for @${updatedUser.username} updated successfully.${password ? ' Password reset complete.' : ''}${credentialsEmailSent ? ` New credentials dispatched to ${updatedUser.email}.` : ''}`,
+      data: { ...updatedUser, credentialsEmailSent },
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });

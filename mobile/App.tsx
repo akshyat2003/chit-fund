@@ -754,7 +754,7 @@ function CompaniesTab({ user }: { user: any }) {
       };
 
       const res = await api.post('/super-admin/companies', payload);
-      alert(`Company "${res.data.data.company.name}" (${res.data.data.company.code}) and Initial Admin "${adminUsername.trim()}" created successfully!`);
+      alert(res.data.message || `Company "${res.data.data.company.name}" (${res.data.data.company.code}) and Initial Admin "${adminUsername.trim()}" created successfully!`);
       setShowAddModal(false);
       // Reset form
       setCode('');
@@ -1019,6 +1019,21 @@ function CompaniesTab({ user }: { user: any }) {
                 keyboardType="phone-pad"
                 placeholder="e.g. 9876543210"
               />
+
+              <Text style={styles.label}>Admin Gmail / Email Address (Credentials auto-sent here)</Text>
+              <TextInput
+                style={styles.input}
+                value={adminEmail}
+                onChangeText={setAdminEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                placeholder="e.g. rajesh@gmail.com"
+              />
+              <View style={{ backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', borderWidth: 1, padding: 8, borderRadius: 6, marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, color: '#166534', fontWeight: '600' }}>
+                  ✉️ Administrator credentials (Username & Password) will be automatically emailed to this Gmail address immediately upon creation.
+                </Text>
+              </View>
 
               <Text style={styles.label}>Initial Password * (min. 8 chars, letters & numbers)</Text>
               <View style={styles.passwordInputWrapper}>
@@ -1508,15 +1523,20 @@ function SuperAdminsTab({ user }: { user: any }) {
               />
 
               {/* Email */}
-              <Text style={styles.label}>Email Address (For OTP Recovery)</Text>
+              <Text style={styles.label}>Admin Gmail / Email Address (Credentials auto-sent here)</Text>
               <TextInput
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
-                placeholder="e.g. user@company.com"
+                placeholder="e.g. admin@gmail.com"
               />
+              <View style={{ backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', borderWidth: 1, padding: 8, borderRadius: 6, marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, color: '#166534', fontWeight: '600' }}>
+                  ✉️ Administrator credentials (Username & Password) will be automatically dispatched to this Gmail/Email upon creation.
+                </Text>
+              </View>
 
               {/* Role Selection */}
               <Text style={styles.label}>System Role *</Text>

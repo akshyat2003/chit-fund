@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/prisma.js';
 import { AuthRequest } from '../../middleware/auth.js';
 import { validatePasswordPolicy } from '../auth/auth.controller.js';
+import { sendAdminCredentialsEmail } from '../../services/email.service.js';
 
 // Global In-Memory Platform Configuration & Template Store (FR-SA-011, FR-SA-015)
 let platformSettings = {
@@ -299,6 +300,27 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    // Automatically email credentials to desired Gmail / Email
+    let credentialsEmailSent = false;
+    const recipientEmail = (initialAdmin?.email || email || '').trim();
+    if (createdAdmin && recipientEmail && recipientEmail.includes('@')) {
+      try {
+        const emailResult = await sendAdminCredentialsEmail({
+          to: recipientEmail,
+          fullName: createdAdmin.fullName,
+          username: createdAdmin.username,
+          password: initialAdmin.password,
+          role: 'Company Administrator (Manager)',
+          companyName: newCompany.name,
+          companyCode: newCompany.code,
+          loginUrl: process.env.PORTAL_URL || 'http://localhost:8081',
+        });
+        credentialsEmailSent = !!emailResult.success;
+      } catch (emailErr: any) {
+        console.error('[createCompany] Failed to send credentials email:', emailErr.message);
+      }
+    }
+
     // FR-SA-017: Record Audit Log
     try {
       await prisma.auditLog.create({
@@ -312,6 +334,8 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
             code: newCompany.code,
             name: newCompany.name,
             initialAdmin: createdAdmin ? createdAdmin.username : null,
+            adminEmail: recipientEmail || null,
+            credentialsEmailSent,
           }),
           ipAddress: req.ip || 'unknown',
         },
@@ -320,7 +344,9 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Company created successfully',
+      message: credentialsEmailSent
+        ? `Company created successfully! Login credentials have been automatically dispatched to ${recipientEmail}.`
+        : 'Company created successfully',
       data: {
         company: newCompany,
         defaultBranch,
@@ -329,6 +355,8 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
               id: createdAdmin.id,
               username: createdAdmin.username,
               role: createdAdmin.role,
+              email: createdAdmin.email,
+              credentialsEmailSent,
             }
           : null,
       },
@@ -1375,6 +1403,24 @@ export const createSuperAdmin = async (req: AuthRequest, res: Response) => {
       },
     });
 
+    let credentialsEmailSent = false;
+    if (trimmedEmail && trimmedEmail.includes('@')) {
+      try {
+        const emailResult = await sendAdminCredentialsEmail({
+          to: trimmedEmail,
+          fullName: newAdmin.fullName,
+          username: newAdmin.username,
+          password: password,
+          role: 'Super Administrator',
+          companyName: 'ChitKart Platform (Central Admin)',
+          loginUrl: process.env.PORTAL_URL || 'http://localhost:8081',
+        });
+        credentialsEmailSent = !!emailResult.success;
+      } catch (e: any) {
+        console.error('[createSuperAdmin] Failed to send credentials email:', e.message);
+      }
+    }
+
     try {
       await prisma.auditLog.create({
         data: {
@@ -1382,7 +1428,11 @@ export const createSuperAdmin = async (req: AuthRequest, res: Response) => {
           action: 'SUPER_ADMIN_CREATED',
           entity: 'User',
           entityId: newAdmin.id,
-          details: JSON.stringify({ createdAdmin: newAdmin.username, email: newAdmin.email }),
+          details: JSON.stringify({
+            createdAdmin: newAdmin.username,
+            email: newAdmin.email,
+            credentialsEmailSent,
+          }),
           ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown',
         },
       });
@@ -1390,8 +1440,10 @@ export const createSuperAdmin = async (req: AuthRequest, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: `Super Admin account '${newAdmin.username}' created successfully! They can now log in to the Super Admin dashboard.`,
-      data: newAdmin,
+      message: credentialsEmailSent
+        ? `Super Admin account '${newAdmin.username}' created successfully! Credentials emailed to ${trimmedEmail}.`
+        : `Super Admin account '${newAdmin.username}' created successfully!`,
+      data: { ...newAdmin, credentialsEmailSent },
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
