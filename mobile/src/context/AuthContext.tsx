@@ -83,34 +83,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // 5-Minute Inactivity Auto-Logout Tracker (FR-AUTH-010 / SA-01 Session Management)
-  // Automatically logs out when the administrator does not move the mouse cursor or interact for 5 minutes
+  // Automatically logs out when there is no mouse cursor movement or interaction for 5 minutes
   useEffect(() => {
     if (!user) return;
 
     const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes (300,000ms)
+    let lastActivityTime = Date.now();
     let timeoutId: any = null;
+    let intervalId: any = null;
 
     const performAutoLogout = () => {
-      console.warn(`[Session] Admin ${user.username} inactive for 5 minutes without mouse movement. Automatically logging out.`);
-      logout('You have been automatically logged out due to 5 minutes of inactivity.');
+      console.warn(`[Session] User ${user.username} inactive for 5 minutes without cursor movement. Auto-logging out.`);
+      logout('You have been automatically logged out due to 5 minutes of inactivity (no cursor movement).');
     };
 
     const resetTimer = () => {
+      lastActivityTime = Date.now();
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = setTimeout(performAutoLogout, INACTIVITY_TIMEOUT_MS);
     };
 
-    // Initialize the 5-minute timer
+    // Initialize 5-minute timer
     resetTimer();
 
-    // Listen to mouse cursor movements and user interactions on web
-    if (typeof window !== 'undefined' && window.addEventListener) {
-      let lastActivityTime = Date.now();
+    // Periodic 5-second check (handles laptop sleep, background tabs, and throttled timers)
+    intervalId = setInterval(() => {
+      if (Date.now() - lastActivityTime >= INACTIVITY_TIMEOUT_MS) {
+        performAutoLogout();
+      }
+    }, 5000);
+
+    // Listen to mouse cursor movements and user interactions on both window and document
+    if (typeof window !== 'undefined') {
+      let lastThrottleTime = 0;
       const onUserActivity = () => {
         const now = Date.now();
-        // Throttle resetting the timer to at most once per second for zero performance overhead
-        if (now - lastActivityTime > 1000) {
-          lastActivityTime = now;
+        // Throttle resetting the timer to at most once per second for zero overhead
+        if (now - lastThrottleTime >= 1000) {
+          lastThrottleTime = now;
           resetTimer();
         }
       };
@@ -119,26 +129,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'mousemove',
         'pointermove',
         'mousedown',
+        'mouseup',
         'keydown',
+        'keyup',
         'scroll',
         'wheel',
         'touchstart',
+        'touchmove',
+        'click',
       ];
 
       interactionEvents.forEach((evt) => {
-        window.addEventListener(evt, onUserActivity, { passive: true });
+        window.addEventListener(evt, onUserActivity, { passive: true, capture: true });
+        if (typeof document !== 'undefined' && document.addEventListener) {
+          document.addEventListener(evt, onUserActivity, { passive: true, capture: true });
+        }
       });
+
+      // Immediate check when browser tab becomes visible again
+      const onVisibilityChange = () => {
+        if (typeof document !== 'undefined' && !document.hidden) {
+          if (Date.now() - lastActivityTime >= INACTIVITY_TIMEOUT_MS) {
+            performAutoLogout();
+          }
+        }
+      };
+      if (typeof document !== 'undefined' && document.addEventListener) {
+        document.addEventListener('visibilitychange', onVisibilityChange);
+      }
 
       return () => {
         if (timeoutId) clearTimeout(timeoutId);
+        if (intervalId) clearInterval(intervalId);
         interactionEvents.forEach((evt) => {
-          window.removeEventListener(evt, onUserActivity);
+          window.removeEventListener(evt, onUserActivity, { capture: true } as any);
+          if (typeof document !== 'undefined' && document.removeEventListener) {
+            document.removeEventListener(evt, onUserActivity, { capture: true } as any);
+          }
         });
+        if (typeof document !== 'undefined' && document.removeEventListener) {
+          document.removeEventListener('visibilitychange', onVisibilityChange);
+        }
       };
     }
 
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
+      if (intervalId) clearInterval(intervalId);
     };
   }, [user]);
 
