@@ -1,85 +1,66 @@
-# Enterprise Chit Fund Platform — Deployment & Operational Guide
+# Enterprise Chit Fund Platform — Supabase, Render & Vercel Deployment Guide
 
-## 1. Best 100% Free Production Deployment Options
+## Supabase Credentials Summary
 
-Since app store / play store publishing is **not required**, the system can be deployed and distributed completely free of cost.
-
----
-
-### A. Backend & Database Free Hosting Options
-
-#### **Option 1: Render.com (Recommended for instant setup)**
-- **API Server**: Host `backend` as a **Web Service** on Render.com (Free Tier).
-- **Database**: Connect a free MySQL database host (such as **Aiven for MySQL**, **PlanetScale**, **TiDB Cloud**, or **Clever Cloud Free MySQL**).
-- **Deployment**: Connect your GitHub repository to Render. It auto-deploys every time code is updated.
-
-#### **Option 2: Oracle Cloud Infrastructure (OCI) Always Free VM (Best 24/7 Production Choice)**
-- **Specs**: 4 Ampere ARM CPUs, 24 GB RAM, 200 GB Storage — **100% FREE FOREVER**.
-- **Setup**: Run `docker-compose up -d` on the free instance.
-- **Why it's superior**: It never goes to sleep, handles thousands of daily transactions easily, and costs ₹0 forever.
+- **Supabase Project Reference ID**: `jwtjawjznyqqfywrsfcv`
+- **Anon Public Key**: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
+- **Direct Database Host**: `db.jwtjawjznyqqfywrsfcv.supabase.co`
 
 ---
 
-### B. Mobile & Web App Free Distribution (No App Store / Play Store Required)
+## 1. Push Database Schema to Supabase
 
-#### **1. Direct Android APK Generation (For Android Smartphones)**
-You can build a standalone `.apk` file using Expo EAS Build (Free Tier):
-```bash
-cd mobile
-npx eas build -p android --profile preview
-```
-- **Distribution**: This command outputs a direct `.apk` download link (e.g., `https://expo.dev/artifacts/eas/...apk`).
-- **Field Staff Installation**: Share this download link via WhatsApp or Email to field officers & managers. They simply tap to install the APK directly on their Android phones!
+Run the following command in your terminal, replacing `[YOUR-DB-PASSWORD]` with the database password you created when creating your Supabase project:
 
-#### **2. Web Application / iOS Access (Progressive Web App - PWA)**
-Export the React Native web build:
-```bash
-cd mobile
-npx expo export:web
-```
-- **Free Web Hosting**: Deploy the generated `web-build/` directory for 100% free on **Vercel**, **Netlify**, or **Cloudflare Pages**.
-- **iOS & Desktop Installation**: Open the website link on an iPhone/Safari or Chrome and tap **"Add to Home Screen"**. It installs as a full-screen mobile web app!
+```powershell
+# Set your Supabase connection strings
+$env:DATABASE_URL="postgresql://postgres.jwtjawjznyqqfywrsfcv:[YOUR-DB-PASSWORD]@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
+$env:DIRECT_URL="postgresql://postgres:[YOUR-DB-PASSWORD]@db.jwtjawjznyqqfywrsfcv.supabase.co:5432/postgres"
 
----
-
-## 2. Default System Logins & Credentials
-
-The system has been seeded with initial active operational accounts:
-
-| Role | Username / Phone | Password | Access Privileges |
-| :--- | :--- | :--- | :--- |
-| **Super Admin** | `superadmin` / `9999999999` | `admin123` | System-wide platform metrics, multi-company overview, audit logs |
-| **Branch Manager** | `manager1` / `9888888888` | `manager123` | Branch operations, subscriber KYC, group creation, auctions, payouts |
-| **Field Officer** | `staff1` / `9777777777` | `staff123` | Assigned subscriber collections, digital receipts, daily cash handover |
-
----
-
-## 3. Local Development & Running Instructions
-
-### Backend API Server
-```bash
 cd backend
-npm run dev
-```
-- **Server Address**: `http://localhost:5000`
-- **Health Check**: `http://localhost:5000/api/v1/health`
-
-### Database Seeding
-To reset or re-seed sample subscribers and chit groups:
-```bash
-cd backend
+npx prisma db push
 npm run prisma:seed
 ```
 
+This will automatically create all 16 relational database tables inside your Supabase project and seed the default Super Admin, Manager, Field Officer, and 5 Lakh Chit Group!
+
 ---
 
-## 4. Key Financial Formulas Implemented
+## 2. Deploy Backend API on Render.com (100% Free)
 
-1. **Foreman Commission**:
-   $$\text{Foreman Commission} = \left(\frac{\text{Foreman Commission \%}}{100}\right) \times \text{Chit Value}$$
-2. **Total Distributable Dividend**:
-   $$\text{Total Dividend} = \text{Winning Bid Discount} - \text{Foreman Commission}$$
-3. **Member Dividend Credit**:
-   $$\text{Dividend Per Member} = \frac{\text{Total Dividend}}{\text{Max Members}}$$
-4. **Net Monthly Due**:
-   $$\text{Net Due Amount} = \text{Scheduled Installment} - \text{Dividend Per Member}$$
+1. Go to [render.com](https://render.com) and log in with your GitHub account `akshyat2003`.
+2. Click **New +** -> **Web Service**.
+3. Select your repository: `akshyat2003/chit-fund`.
+4. Configure the Web Service:
+   - **Name**: `chit-fund-backend`
+   - **Root Directory**: `backend`
+   - **Runtime**: `Node`
+   - **Build Command**: `npm install && npx prisma generate && npm run build`
+   - **Start Command**: `npm start`
+5. Click **Advanced** -> **Add Environment Variable**:
+   - `DATABASE_URL`: `postgresql://postgres.jwtjawjznyqqfywrsfcv:[YOUR-DB-PASSWORD]@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true`
+   - `DIRECT_URL`: `postgresql://postgres:[YOUR-DB-PASSWORD]@db.jwtjawjznyqqfywrsfcv.supabase.co:5432/postgres`
+   - `JWT_SECRET`: `chitfund_super_secure_jwt_secret_key_2026!@#`
+   - `NODE_ENV`: `production`
+   - `PORT`: `5000`
+6. Click **Create Web Service**. Render will deploy your API to a free HTTPS URL like:
+   `https://chit-fund-backend.onrender.com`
+
+---
+
+## 3. Deploy Mobile / Web App on Vercel & Generate APK
+
+### A. Web App / iOS PWA (Vercel — Free)
+1. Go to [vercel.com](https://vercel.com) and sign in with GitHub.
+2. Click **Add New** -> **Project** and select `akshyat2003/chit-fund`.
+3. Set **Root Directory** to `mobile`.
+4. Build command: `npx expo export:web`
+5. Deploy! Vercel will provide your web app URL (e.g., `https://chit-fund.vercel.app`).
+
+### B. Standalone Android APK (No Play Store)
+Run:
+```powershell
+cd mobile
+npx eas build -p android --profile preview
+```
+Download the resulting `.apk` file link and send it directly to your field officers via WhatsApp!
