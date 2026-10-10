@@ -40,7 +40,7 @@ function MainApp() {
             <TouchableOpacity style={styles.profileBtn} onPress={() => setShowProfileModal(true)}>
               <Text style={styles.profileBtnText}>👤 Profile</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
+            <TouchableOpacity style={styles.logoutBtn} onPress={() => logout()}>
               <Text style={styles.logoutText}>Logout</Text>
             </TouchableOpacity>
           </View>
@@ -609,9 +609,6 @@ function DashboardTab({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab
       {stats?.role === 'SUPER_ADMIN' && (
         <View style={styles.gridRow}>
           <MetricCard title="Active Companies" value={stats.activeCompanies || 0} color="#0070BA" />
-          <MetricCard title="Active Branches" value={stats.activeBranches || 0} color="#27AE60" />
-          <MetricCard title="Total Subscribers" value={stats.totalSubscribers || 0} color="#8E44AD" />
-          <MetricCard title="Active Chit Groups" value={stats.activeGroups || 0} color="#D35400" />
           <MetricCard title="Active Users" value={stats.activeUsers ?? stats.totalUsers ?? 0} color="#10B981" />
           <MetricCard title="Total Platform Users" value={stats.totalUsers || 0} color="#2563EB" />
           <MetricCard title="System Engine Status" value={stats.systemStatus || 'ONLINE'} color="#16A34A" />
@@ -952,7 +949,7 @@ function CompaniesTab({ user }: { user: any }) {
               />
 
               <Text style={styles.label}>Subscription Plan Tier</Text>
-              <View style={styles.quickRow}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {[
                   { id: 'plan_starter', name: 'Starter (100 Subs)' },
                   { id: 'plan_pro', name: 'Pro (1,000 Subs)' },
@@ -1769,48 +1766,181 @@ function AuditsTab({ user }: { user: any }) {
     return matchesAction && matchesSearch;
   });
 
+  // Action badge metadata helper
+  const getActionMeta = (action: string) => {
+    const act = (action || '').toUpperCase();
+    if (act.includes('LOGIN') || act.includes('AUTH')) return { icon: '🔐', bg: '#DCFCE7', text: '#166534', border: '#10B981' };
+    if (act.includes('SESSION')) return { icon: '🔑', bg: '#E0F2FE', text: '#0369A1', border: '#0284C7' };
+    if (act.includes('PASSWORD') || act.includes('SECURITY')) return { icon: '🛡️', bg: '#FEF3C7', text: '#B45309', border: '#F59E0B' };
+    if (act.includes('EXPORT') || act.includes('DOWNLOAD')) return { icon: '📤', bg: '#F3E8FF', text: '#6B21A8', border: '#8B5CF6' };
+    if (act.includes('COMPANY') || act.includes('BRANCH')) return { icon: '🏢', bg: '#EEF2FF', text: '#3730A3', border: '#6366F1' };
+    if (act.includes('USER') || act.includes('CREDENTIAL')) return { icon: '👤', bg: '#ECFDF5', text: '#047857', border: '#059669' };
+    if (act.includes('DELETE') || act.includes('REVOKE') || act.includes('KILL')) return { icon: '⚠️', bg: '#FEE2E2', text: '#991B1B', border: '#EF4444' };
+    return { icon: '📝', bg: '#F1F5F9', text: '#334155', border: '#94A3B8' };
+  };
+
+  // Helper to render parsed key-values from details
+  const renderAuditDetails = (rawDetails: string) => {
+    if (!rawDetails) return null;
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(rawDetails);
+    } catch {
+      parsed = null;
+    }
+
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const entries = Object.entries(parsed);
+      if (entries.length === 0) return null;
+      return (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+          {entries.map(([key, val]) => (
+            <View
+              key={key}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#F8FAFC',
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>
+                {key}:{' '}
+              </Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: '#0F172A', fontFamily: 'monospace' }}>
+                {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      );
+    }
+
+    return (
+      <View style={{ backgroundColor: '#F8FAFC', padding: 8, borderRadius: 6, marginTop: 10, borderWidth: 1, borderColor: '#F1F5F9' }}>
+        <Text style={{ fontSize: 11, fontFamily: 'monospace', color: '#334155' }}>
+          {rawDetails}
+        </Text>
+      </View>
+    );
+  };
+
   return (
     <View style={{ flex: 1 }}>
-      {/* Sub-tab Navigation */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
+      {/* Sub-tab Navigation Header */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
           <TouchableOpacity
-            style={[styles.filterChip, subTab === 'db_audits' && styles.filterChipActive, { paddingVertical: 8, paddingHorizontal: 14 }]}
+            style={[
+              {
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: 9,
+                paddingHorizontal: 16,
+                borderRadius: 10,
+                backgroundColor: subTab === 'db_audits' ? '#0F172A' : '#FFF',
+                borderWidth: 1,
+                borderColor: subTab === 'db_audits' ? '#0F172A' : '#E2E8F0',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 2,
+              },
+            ]}
             onPress={() => setSubTab('db_audits')}
           >
-            <Text style={subTab === 'db_audits' ? styles.filterChipTextActive : styles.filterChipText}>
-              📋 Database Audit Trail ({auditLogs.length})
+            <Text style={{ color: subTab === 'db_audits' ? '#FFF' : '#334155', fontWeight: '800', fontSize: 13 }}>
+              📋 Database Audit Trail
             </Text>
+            <View
+              style={{
+                marginLeft: 8,
+                backgroundColor: subTab === 'db_audits' ? '#334155' : '#F1F5F9',
+                paddingHorizontal: 7,
+                paddingVertical: 2,
+                borderRadius: 12,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '800', color: subTab === 'db_audits' ? '#93C5FD' : '#64748B' }}>
+                {auditLogs.length}
+              </Text>
+            </View>
           </TouchableOpacity>
+
           <TouchableOpacity
-            style={[styles.filterChip, subTab === 'api_traffic' && styles.filterChipActive, { paddingVertical: 8, paddingHorizontal: 14 }]}
+            style={[
+              {
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: 9,
+                paddingHorizontal: 16,
+                borderRadius: 10,
+                backgroundColor: subTab === 'api_traffic' ? '#0F172A' : '#FFF',
+                borderWidth: 1,
+                borderColor: subTab === 'api_traffic' ? '#0F172A' : '#E2E8F0',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 2,
+              },
+            ]}
             onPress={() => setSubTab('api_traffic')}
           >
-            <Text style={subTab === 'api_traffic' ? styles.filterChipTextActive : styles.filterChipText}>
-              ⚡ Live API & Backend Logs ({apiLogs.length})
+            <Text style={{ color: subTab === 'api_traffic' ? '#FFF' : '#334155', fontWeight: '800', fontSize: 13 }}>
+              ⚡ Live API Traffic
             </Text>
+            <View
+              style={{
+                marginLeft: 8,
+                backgroundColor: subTab === 'api_traffic' ? '#334155' : '#F1F5F9',
+                paddingHorizontal: 7,
+                paddingVertical: 2,
+                borderRadius: 12,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '800', color: subTab === 'api_traffic' ? '#34D399' : '#64748B' }}>
+                {apiLogs.length}
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
 
         {subTab === 'db_audits' ? (
-          <TouchableOpacity style={styles.addBtn} onPress={loadAuditLogs}>
+          <TouchableOpacity
+            style={[styles.addBtn, { backgroundColor: '#0284C7', paddingVertical: 9, paddingHorizontal: 14 }]}
+            onPress={loadAuditLogs}
+          >
             <Text style={styles.addBtnText}>🔄 REFRESH AUDITS</Text>
           </TouchableOpacity>
         ) : (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <TouchableOpacity
-              style={[styles.filterChip, autoRefresh && styles.filterChipActive, { paddingVertical: 6, paddingHorizontal: 10 }]}
+              style={[
+                styles.filterChip,
+                autoRefresh && { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' },
+                { paddingVertical: 7, paddingHorizontal: 12 },
+              ]}
               onPress={() => setAutoRefresh(!autoRefresh)}
             >
-              <Text style={autoRefresh ? styles.filterChipTextActive : styles.filterChipText}>
-                {autoRefresh ? '● LIVE STREAM ON' : '○ PAUSED'}
+              <Text style={{ color: autoRefresh ? '#166534' : '#64748B', fontWeight: '800', fontSize: 12 }}>
+                {autoRefresh ? '● LIVE STREAM ON' : '○ STREAM PAUSED'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.filterChip, { borderColor: '#EF4444', paddingVertical: 6, paddingHorizontal: 10 }]} onPress={clearApiLogs}>
+            <TouchableOpacity
+              style={[styles.filterChip, { borderColor: '#FCA5A5', paddingVertical: 7, paddingHorizontal: 12 }]}
+              onPress={clearApiLogs}
+            >
               <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 12 }}>🗑️ Clear Buffer</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.addBtn} onPress={() => loadApiLogs()}>
-              <Text style={styles.addBtnText}>🔄 REFRESH</Text>
+            <TouchableOpacity
+              style={[styles.addBtn, { backgroundColor: '#0F172A', paddingVertical: 7, paddingHorizontal: 12 }]}
+              onPress={() => loadApiLogs()}
+            >
+              <Text style={styles.addBtnText}>🔄 Refresh</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -1819,45 +1949,102 @@ function AuditsTab({ user }: { user: any }) {
       {/* --- SUBTAB 1: DATABASE AUDIT TRAIL --- */}
       {subTab === 'db_audits' && (
         <ScrollView style={{ flex: 1 }}>
-          {/* Search & Action Filters */}
-          <View style={{ backgroundColor: '#FFF', padding: 14, borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', gap: 10 }}>
-            <TextInput
-              style={styles.searchBar}
-              placeholder="🔍 Search audit logs by action, user, entity, IP, or details..."
-              value={auditSearch}
-              onChangeText={setAuditSearch}
-            />
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B', marginRight: 4 }}>Action Filter:</Text>
-              {['ALL', 'SESSION', 'LOGIN', 'PASSWORD', 'COMPANY', 'EXPORT'].map((act) => (
+          {/* Search & Action Filters Box */}
+          <View
+            style={{
+              backgroundColor: '#FFF',
+              padding: 16,
+              borderRadius: 12,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor: '#E2E8F0',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.04,
+              shadowRadius: 3,
+              gap: 12,
+            }}
+          >
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+              <View style={{ flex: 1 }}>
+                <TextInput
+                  style={[styles.searchBar, { marginBottom: 0 }]}
+                  placeholder="🔍 Search audit logs by action, user, entity, IP, session ID, or details..."
+                  value={auditSearch}
+                  onChangeText={setAuditSearch}
+                />
+              </View>
+              {auditSearch ? (
                 <TouchableOpacity
-                  key={act}
-                  style={[styles.filterChip, actionFilter === act && styles.filterChipActive]}
-                  onPress={() => setActionFilter(act)}
+                  style={[styles.filterChip, { paddingVertical: 10, paddingHorizontal: 12 }]}
+                  onPress={() => setAuditSearch('')}
                 >
-                  <Text style={actionFilter === act ? styles.filterChipTextActive : styles.filterChipText}>
-                    {act === 'ALL' ? 'All Actions' : act === 'SESSION' ? '🔑 Session Activity' : act}
+                  <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '700' }}>Clear</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B', marginRight: 4 }}>Filter by Action:</Text>
+              {[
+                { id: 'ALL', label: 'All Records' },
+                { id: 'SESSION', label: '🔑 Session Activity' },
+                { id: 'LOGIN', label: '🔐 Login & Auth' },
+                { id: 'PASSWORD', label: '🛡️ Credentials' },
+                { id: 'COMPANY', label: '🏢 Company Mgmt' },
+                { id: 'EXPORT', label: '📤 Data Exports' },
+              ].map((act) => (
+                <TouchableOpacity
+                  key={act.id}
+                  style={[
+                    styles.filterChip,
+                    actionFilter === act.id && styles.filterChipActive,
+                    { paddingVertical: 5, paddingHorizontal: 10 },
+                  ]}
+                  onPress={() => setActionFilter(act.id)}
+                >
+                  <Text style={actionFilter === act.id ? styles.filterChipTextActive : styles.filterChipText}>
+                    {act.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+              <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '600' }}>
+                Showing <Text style={{ fontWeight: '800', color: '#0F172A' }}>{filteredAudits.length}</Text> of <Text style={{ fontWeight: '800', color: '#0F172A' }}>{auditLogs.length}</Text> audit trail events
+              </Text>
+              {actionFilter !== 'ALL' || auditSearch ? (
+                <TouchableOpacity onPress={() => { setActionFilter('ALL'); setAuditSearch(''); }}>
+                  <Text style={{ fontSize: 12, color: '#0284C7', fontWeight: '700' }}>Reset Filters</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
 
           {loadingAudits ? (
-            <ActivityIndicator size="large" color="#0A2540" style={{ marginTop: 30 }} />
+            <ActivityIndicator size="large" color="#0A2540" style={{ marginTop: 40 }} />
           ) : filteredAudits.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>No audit trail records found.</Text>
-              <Text style={styles.emptySubText}>Audit records are automatically recorded upon every sensitive database action.</Text>
+            <View style={[styles.emptyBox, { padding: 36, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' }]}>
+              <Text style={{ fontSize: 32, marginBottom: 8 }}>📋</Text>
+              <Text style={[styles.emptyText, { fontSize: 16, fontWeight: '800', color: '#0F172A' }]}>
+                No audit trail records matched your filter.
+              </Text>
+              <Text style={[styles.emptySubText, { maxWidth: 420, textAlign: 'center', marginTop: 4 }]}>
+                Every sensitive platform mutation, session change, and database action is immutably logged with forensic IP and operator context.
+              </Text>
+              <TouchableOpacity
+                style={[styles.addBtn, { backgroundColor: '#0284C7', marginTop: 14 }]}
+                onPress={() => { setActionFilter('ALL'); setAuditSearch(''); }}
+              >
+                <Text style={styles.addBtnText}>Clear Search & Show All</Text>
+              </TouchableOpacity>
             </View>
           ) : (
-            <View style={{ gap: 10, paddingBottom: 30 }}>
+            <View style={{ gap: 12, paddingBottom: 36 }}>
               {filteredAudits.map((log) => {
-                const isAuth = log.action?.includes('LOGIN') || log.action?.includes('AUTH') || log.action?.includes('SESSION');
-                const isSecurity = log.action?.includes('PASSWORD') || log.action?.includes('ROLE');
-                const isData = log.action?.includes('EXPORT') || log.action?.includes('IMPORT');
-                const badgeBg = isAuth ? '#DCFCE7' : isSecurity ? '#FEF3C7' : isData ? '#EDE9FE' : '#E0F2FE';
-                const badgeColor = isAuth ? '#166534' : isSecurity ? '#B45309' : isData ? '#6D28D9' : '#0369A1';
+                const meta = getActionMeta(log.action);
+                const sessionId = log.sessionId || log.user?.activeSessionId || `sess_${(log.id || 'active').replace(/-/g, '').slice(0, 12)}`;
 
                 return (
                   <View
@@ -1865,53 +2052,68 @@ function AuditsTab({ user }: { user: any }) {
                     style={{
                       backgroundColor: '#FFF',
                       borderRadius: 12,
-                      padding: 14,
+                      padding: 16,
                       borderWidth: 1,
                       borderColor: '#E2E8F0',
-                      borderLeftWidth: 4,
-                      borderLeftColor: badgeColor,
+                      borderLeftWidth: 5,
+                      borderLeftColor: meta.border,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: 0.03,
+                      shadowRadius: 3,
                     }}
                   >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <View style={{ backgroundColor: badgeBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '800', color: badgeColor }}>{log.action}</Text>
+                    {/* Header Row: Action Badge + Entity Target + Timestamp */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                        <View style={{ backgroundColor: meta.bg, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Text style={{ fontSize: 12 }}>{meta.icon}</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: meta.text }}>{log.action}</Text>
                         </View>
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
-                          Target: {log.entity || 'System'} {log.entityId ? `(#${log.entityId.slice(0, 8)})` : ''}
-                        </Text>
+                        <View style={{ backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155' }}>
+                            Target: <Text style={{ color: '#0F172A' }}>{log.entity || 'System'}</Text>
+                            {log.entityId ? ` (#${log.entityId.slice(0, 8)})` : ''}
+                          </Text>
+                        </View>
                       </View>
-                      <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '600' }}>
-                        {new Date(log.createdAt).toLocaleString()}
+
+                      <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '600' }}>
+                        🕒 {new Date(log.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'medium' })}
                       </Text>
                     </View>
 
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginTop: 4 }}>
-                      <Text style={{ fontSize: 12, color: '#475569' }}>
-                        👤 Operator: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{log.user ? `${log.user.fullName} (@${log.user.username})` : 'System / Automated'}</Text>
-                      </Text>
-                      {log.user?.role && (
-                        <Text style={{ fontSize: 12, color: '#475569' }}>
-                          Role: <Text style={{ fontWeight: '700' }}>{log.user.role}</Text>
+                    {/* Metadata Badges: Operator, Role, IP, Monospace Session */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                        <Text style={{ fontSize: 12, color: '#475569' }}>👤 </Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>
+                          {log.user ? `${log.user.fullName} (@${log.user.username})` : 'System / Automated'}
                         </Text>
-                      )}
-                      <Text style={{ fontSize: 12, color: '#475569' }}>
-                        🌐 Client IP: <Text style={{ fontWeight: '700' }}>{log.ipAddress || 'Internal'}</Text>
-                      </Text>
-                      <Text style={{ fontSize: 12, color: '#475569' }}>
-                        🔑 Session: <Text style={{ fontWeight: '700', fontFamily: 'monospace', color: '#0284C7' }}>
-                          {log.sessionId || log.user?.activeSessionId || `sess_${(log.id || 'active').replace(/-/g, '').slice(0, 10)}`}
-                        </Text>
-                      </Text>
-                    </View>
+                        {log.user?.role && (
+                          <View style={{ backgroundColor: '#0284C7', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, marginLeft: 6 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFF' }}>{log.user.role}</Text>
+                          </View>
+                        )}
+                      </View>
 
-                    {log.details && (
-                      <View style={{ backgroundColor: '#F8FAFC', padding: 8, borderRadius: 6, marginTop: 8, borderWidth: 1, borderColor: '#F1F5F9' }}>
-                        <Text style={{ fontSize: 11, fontFamily: 'monospace', color: '#334155' }}>
-                          {log.details}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                        <Text style={{ fontSize: 11, color: '#64748B' }}>🌐 IP: </Text>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155', fontFamily: 'monospace' }}>
+                          {log.ipAddress || 'Internal'}
                         </Text>
                       </View>
-                    )}
+
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#BFDBFE' }}>
+                        <Text style={{ fontSize: 11, color: '#1D4ED8', fontWeight: '700' }}>🔑 Session: </Text>
+                        <Text style={{ fontSize: 11, fontWeight: '800', fontFamily: 'monospace', color: '#1E40AF' }}>
+                          {sessionId}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Formatted Key-Value Details */}
+                    {renderAuditDetails(log.details)}
                   </View>
                 );
               })}
@@ -1923,29 +2125,50 @@ function AuditsTab({ user }: { user: any }) {
       {/* --- SUBTAB 2: LIVE API & BACKEND TRAFFIC LOGS --- */}
       {subTab === 'api_traffic' && (
         <ScrollView style={{ flex: 1 }}>
-          <View style={{ backgroundColor: '#0F172A', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+          <View
+            style={{
+              backgroundColor: '#0F172A',
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 14,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.1,
+              shadowRadius: 4,
+            }}
+          >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ color: '#C8FF00', fontWeight: '800', fontSize: 14 }}>
-                ⚡ REAL-TIME API INGRESS & ROUTE MONITOR
-              </Text>
-              <Text style={{ color: '#94A3B8', fontSize: 12 }}>
-                Buffer Depth: {apiLogs.length} / 250 requests
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ color: '#22C55E', fontSize: 14, fontWeight: '900' }}>⚡</Text>
+                <Text style={{ color: '#F8FAFC', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 }}>
+                  REAL-TIME API INGRESS & ROUTE MONITOR
+                </Text>
+              </View>
+              <View style={{ backgroundColor: '#1E293B', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 6 }}>
+                <Text style={{ color: '#94A3B8', fontSize: 11, fontWeight: '700' }}>
+                  Buffer: {apiLogs.length} / 250
+                </Text>
+              </View>
             </View>
             <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 4 }}>
-              Captures all live HTTP transactions, status codes, query latency, and client origins.
+              Captures all live HTTP transactions, status codes, query latency, and client origins in real time.
             </Text>
           </View>
 
           {loadingApiLogs ? (
-            <ActivityIndicator size="large" color="#0A2540" style={{ marginTop: 30 }} />
+            <ActivityIndicator size="large" color="#0A2540" style={{ marginTop: 40 }} />
           ) : apiLogs.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>No recent API transactions recorded yet.</Text>
-              <Text style={styles.emptySubText}>Incoming requests will stream here live as users and services interact with the API.</Text>
+            <View style={[styles.emptyBox, { padding: 36, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' }]}>
+              <Text style={{ fontSize: 32, marginBottom: 8 }}>⚡</Text>
+              <Text style={[styles.emptyText, { fontSize: 16, fontWeight: '800', color: '#0F172A' }]}>
+                No recent API transactions recorded yet.
+              </Text>
+              <Text style={[styles.emptySubText, { maxWidth: 420, textAlign: 'center', marginTop: 4 }]}>
+                Incoming HTTP requests from users and background processes will stream here live.
+              </Text>
             </View>
           ) : (
-            <View style={{ gap: 6, paddingBottom: 30 }}>
+            <View style={{ gap: 8, paddingBottom: 36 }}>
               {apiLogs.map((req) => {
                 const methodBg =
                   req.method === 'GET' ? '#0284C7' : req.method === 'POST' ? '#16A34A' : req.method === 'PUT' ? '#D97706' : req.method === 'DELETE' ? '#DC2626' : '#9333EA';
@@ -1957,35 +2180,41 @@ function AuditsTab({ user }: { user: any }) {
                     key={req.id}
                     style={{
                       backgroundColor: '#FFF',
-                      borderRadius: 8,
-                      padding: 10,
+                      borderRadius: 10,
+                      padding: 12,
                       borderWidth: 1,
                       borderColor: '#E2E8F0',
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       flexWrap: 'wrap',
-                      gap: 8,
+                      gap: 10,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: 0.02,
+                      shadowRadius: 2,
                     }}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 280 }}>
-                      <View style={{ backgroundColor: methodBg, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4, minWidth: 50, alignItems: 'center' }}>
-                        <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>{req.method}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 280 }}>
+                      <View style={{ backgroundColor: methodBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, minWidth: 55, alignItems: 'center' }}>
+                        <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 }}>{req.method}</Text>
                       </View>
                       <Text style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: '700', color: '#0F172A' }} numberOfLines={1}>
                         {req.path}
                       </Text>
                     </View>
 
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      <View style={{ backgroundColor: statusColor + '18', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4 }}>
-                        <Text style={{ color: statusColor, fontSize: 12, fontWeight: '800' }}>{req.status}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <View style={{ backgroundColor: statusColor + '15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: statusColor + '30' }}>
+                        <Text style={{ color: statusColor, fontSize: 11, fontWeight: '800' }}>{req.status}</Text>
                       </View>
-                      <Text style={{ fontSize: 12, color: req.durationMs > 200 ? '#D97706' : '#64748B', fontWeight: '700' }}>
-                        ⚡ {req.durationMs}ms
-                      </Text>
-                      <Text style={{ fontSize: 11, color: '#94A3B8' }}>{req.ip}</Text>
-                      <Text style={{ fontSize: 11, color: '#94A3B8' }}>
+                      <View style={{ backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                        <Text style={{ fontSize: 11, color: req.durationMs > 250 ? '#DC2626' : req.durationMs > 100 ? '#D97706' : '#16A34A', fontWeight: '800' }}>
+                          ⚡ {req.durationMs}ms
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: '#64748B', fontFamily: 'monospace' }}>{req.ip}</Text>
+                      <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '600' }}>
                         {new Date(req.timestamp).toLocaleTimeString()}
                       </Text>
                     </View>
@@ -2204,10 +2433,13 @@ function BackupsTab({ user }: { user: any }) {
   const [snapshotResult, setSnapshotResult] = useState<any | null>(null);
 
   // Data Export State
-  const [exportEntity, setExportEntity] = useState<'companies' | 'users' | 'subscribers' | 'chit-groups' | 'audit-logs'>('companies');
-  const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('json');
+  const [exportEntity, setExportEntity] = useState<string>('all');
+  const [exportFormat, setExportFormat] = useState<string>('json');
+  const [customExtension, setCustomExtension] = useState<string>('');
   const [exporting, setExporting] = useState(false);
   const [exportedData, setExportedData] = useState<any | null>(null);
+  const [downloadBlobUrl, setDownloadBlobUrl] = useState<string | null>(null);
+  const [downloadFileName, setDownloadFileName] = useState<string>('');
 
   useEffect(() => {
     loadBackups();
@@ -2238,41 +2470,154 @@ function BackupsTab({ user }: { user: any }) {
     }
   };
 
+  // Helper to generate SQL insert statements
+  const generateSqlDump = (data: any, isFull: boolean) => {
+    const lines: string[] = [
+      `-- =====================================================================`,
+      `-- ChitKart Platform Complete Database Export`,
+      `-- Generated: ${new Date().toISOString()}`,
+      `-- Export Type: ${isFull ? 'ALL SYSTEM TABLES (FULL DUMP)' : 'ENTITY: ' + exportEntity}`,
+      `-- =====================================================================\n`,
+    ];
+
+    const escapeVal = (v: any): string => {
+      if (v === null || v === undefined) return 'NULL';
+      if (typeof v === 'number') return String(v);
+      if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+      if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, "''")}'`;
+      return `'${String(v).replace(/'/g, "''")}'`;
+    };
+
+    const dumpTable = (tableName: string, rows: any[]) => {
+      if (!Array.isArray(rows) || rows.length === 0) {
+        lines.push(`-- Table "${tableName}": 0 records\n`);
+        return;
+      }
+      lines.push(`-- -------------------------------------------------------------`);
+      lines.push(`-- Table "${tableName}": ${rows.length} records`);
+      lines.push(`-- -------------------------------------------------------------`);
+      for (const row of rows) {
+        const keys = Object.keys(row).filter(
+          (k) => typeof row[k] !== 'object' || row[k] === null || Array.isArray(row[k])
+        );
+        if (keys.length === 0) continue;
+        const cols = keys.map((k) => `"${k}"`).join(', ');
+        const vals = keys.map((k) => escapeVal(row[k])).join(', ');
+        lines.push(`INSERT INTO "${tableName}" (${cols}) VALUES (${vals});`);
+      }
+      lines.push('');
+    };
+
+    if (isFull && data?.tables) {
+      for (const [tbl, rows] of Object.entries(data.tables)) {
+        dumpTable(tbl, rows as any[]);
+      }
+    } else if (Array.isArray(data)) {
+      dumpTable(exportEntity, data);
+    }
+    return lines.join('\n');
+  };
+
+  // Helper to generate CSV dump
+  const generateCsvDump = (data: any, isFull: boolean) => {
+    const escapeCsv = (v: any): string => {
+      if (v === null || v === undefined) return '""';
+      if (typeof v === 'object') return `"${JSON.stringify(v).replace(/"/g, '""')}"`;
+      return `"${String(v).replace(/"/g, '""')}"`;
+    };
+
+    const dumpTableCsv = (tableName: string, rows: any[]) => {
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return `# TABLE: ${tableName} (0 records)\n`;
+      }
+      const keys = Object.keys(rows[0]).filter((k) => typeof rows[0][k] !== 'object' || rows[0][k] === null);
+      const header = keys.join(',');
+      const rowLines = rows.map((r) => keys.map((k) => escapeCsv(r[k])).join(','));
+      return [
+        `# ==============================================================`,
+        `# TABLE: ${tableName} (${rows.length} records)`,
+        `# ==============================================================`,
+        header,
+        ...rowLines,
+        '',
+      ].join('\n');
+    };
+
+    if (isFull && data?.tables) {
+      const parts: string[] = [];
+      for (const [tbl, rows] of Object.entries(data.tables)) {
+        parts.push(dumpTableCsv(tbl, rows as any[]));
+      }
+      return parts.join('\n\n');
+    } else if (Array.isArray(data) && data.length > 0) {
+      const keys = Object.keys(data[0]).filter((k) => typeof data[0][k] !== 'object' || data[0][k] === null);
+      const header = keys.join(',');
+      const rowLines = data.map((r) => keys.map((k) => escapeCsv(r[k])).join(','));
+      return [header, ...rowLines].join('\n');
+    }
+    return '';
+  };
+
   const handleExportData = async () => {
     try {
       setExporting(true);
       setExportedData(null);
+      setDownloadBlobUrl(null);
+
+      // Determine active extension from user input or chosen format
+      const chosenExt = customExtension.trim()
+        ? customExtension.trim().replace(/^\./, '').toLowerCase()
+        : exportFormat;
+
       const res = await api.get(`/super-admin/export/${exportEntity}`);
-      const data = res.data.data || [];
-      setExportedData({ entity: exportEntity, count: res.data.count, data });
+      const isFull = res.data.isFullDatabase || exportEntity === 'all';
+      const rawData = res.data.data;
+      const count = res.data.count || 0;
 
-      // Trigger automatic file download on web browser
+      let content = '';
+      let mime = 'text/plain;charset=utf-8;';
+
+      if (chosenExt === 'json') {
+        mime = 'application/json;charset=utf-8;';
+        content = JSON.stringify(rawData, null, 2);
+      } else if (chosenExt === 'sql') {
+        mime = 'application/sql;charset=utf-8;';
+        content = generateSqlDump(rawData, isFull);
+      } else if (chosenExt === 'csv') {
+        mime = 'text/csv;charset=utf-8;';
+        content = generateCsvDump(rawData, isFull);
+      } else {
+        // Fallback for custom extension (e.g. .txt, .bak, .tsv)
+        mime = 'text/plain;charset=utf-8;';
+        content = typeof rawData === 'object' ? JSON.stringify(rawData, null, 2) : String(rawData);
+      }
+
+      const filename = `chitkart_${exportEntity === 'all' ? 'complete_database' : exportEntity}_${new Date().toISOString().slice(0, 10)}.${chosenExt}`;
+
+      setExportedData({
+        entity: exportEntity,
+        format: chosenExt,
+        count,
+        isFullDatabase: isFull,
+        metadata: isFull ? rawData?.metadata : null,
+        data: rawData,
+        contentSize: `${(new Blob([content]).size / 1024).toFixed(1)} KB`,
+        contentPreview: content.slice(0, 1500),
+      });
+
+      // Trigger automatic download in browser
       if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-        let content = '';
-        let mime = 'application/json';
-        const filename = `${exportEntity}_export_${new Date().toISOString().slice(0, 10)}.${exportFormat}`;
-
-        if (exportFormat === 'csv' && Array.isArray(data) && data.length > 0) {
-          mime = 'text/csv';
-          const keys = Object.keys(data[0]);
-          const header = keys.join(',');
-          const rows = data.map((row) =>
-            keys.map((k) => `"${String(row[k] ?? '').replace(/"/g, '""')}"`).join(',')
-          );
-          content = [header, ...rows].join('\n');
-        } else {
-          content = JSON.stringify(data, null, 2);
-        }
-
         const blob = new Blob([content], { type: mime });
         const url = URL.createObjectURL(blob);
+        setDownloadBlobUrl(url);
+        setDownloadFileName(filename);
+
         const link = document.createElement('a');
         link.href = url;
         link.download = filename;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(url);
       }
     } catch (e: any) {
       alert(e.response?.data?.message || 'Data export failed');
@@ -2356,81 +2701,201 @@ function BackupsTab({ user }: { user: any }) {
       </View>
 
       {/* SECTION 2: DATA EXPORT */}
-      <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 18, marginBottom: 20, borderWidth: 1, borderColor: '#E2E8F0' }}>
-        <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 4 }}>
-          📤 Database Data Export
-        </Text>
-        <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 14 }}>
-          Export sanitized database tables directly to JSON or CSV for external analysis or statutory audits.
-        </Text>
-
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, alignItems: 'center', marginBottom: 14 }}>
-          <View>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6 }}>Select Table / Entity:</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {[
-                { id: 'companies', name: 'Companies' },
-                { id: 'users', name: 'Users & Admins' },
-                { id: 'subscribers', name: 'Subscribers' },
-                { id: 'chit-groups', name: 'Chit Groups' },
-                { id: 'audit-logs', name: 'Audit Logs' },
-              ].map((ent) => (
-                <TouchableOpacity
-                  key={ent.id}
-                  style={[styles.filterChip, exportEntity === ent.id && styles.filterChipActive]}
-                  onPress={() => setExportEntity(ent.id as any)}
-                >
-                  <Text style={exportEntity === ent.id ? styles.filterChipTextActive : styles.filterChipText}>
-                    {ent.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          <View>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6 }}>Format:</Text>
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              {['json', 'csv'].map((fmt) => (
-                <TouchableOpacity
-                  key={fmt}
-                  style={[styles.filterChip, exportFormat === fmt && styles.filterChipActive]}
-                  onPress={() => setExportFormat(fmt as any)}
-                >
-                  <Text style={exportFormat === fmt ? styles.filterChipTextActive : styles.filterChipText}>
-                    {fmt.toUpperCase()}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.addBtn, { backgroundColor: '#16A34A', alignSelf: 'flex-end' }]}
-            onPress={handleExportData}
-            disabled={exporting}
-          >
-            {exporting ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <Text style={styles.addBtnText}>⬇️ EXPORT & DOWNLOAD</Text>
-            )}
-          </TouchableOpacity>
+      <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 18, marginBottom: 20, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3 }}>
+        <View style={{ marginBottom: 14 }}>
+          <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A' }}>
+            📤 Complete Database Data Export & Download
+          </Text>
+          <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+            Download all data from the database or select specific tables with your chosen file extension (.json, .csv, .sql, etc.).
+          </Text>
         </View>
 
-        {exportedData && (
-          <View style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
-            <Text style={{ fontWeight: '800', color: '#16A34A', fontSize: 13 }}>
-              ✓ Export Complete: {exportedData.count} records retrieved ({exportedData.entity}).
-            </Text>
-            <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
-              File downloaded automatically. Sample record preview:
-            </Text>
-            <ScrollView horizontal style={{ marginTop: 8 }}>
-              <Text style={{ fontFamily: 'monospace', fontSize: 11, color: '#334155' }}>
-                {JSON.stringify(exportedData.data?.slice(0, 2), null, 2)}
+        {/* 1. Entity Selection */}
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155', marginBottom: 8 }}>
+            1. Select Export Scope / Table:
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {[
+              { id: 'all', name: '🌐 Entire Database (Full Dump)', isPrimary: true },
+              { id: 'companies', name: '🏢 Companies' },
+              { id: 'users', name: '👥 Users & Admins' },
+              { id: 'branches', name: '🏛️ Branches' },
+              { id: 'subscribers', name: '👤 Subscribers' },
+              { id: 'chit-groups', name: '📊 Chit Groups' },
+              { id: 'transactions', name: '💳 Payment Transactions' },
+              { id: 'audit-logs', name: '📋 Audit Logs' },
+            ].map((ent) => (
+              <TouchableOpacity
+                key={ent.id}
+                style={[
+                  styles.filterChip,
+                  exportEntity === ent.id && styles.filterChipActive,
+                  ent.isPrimary && exportEntity === ent.id && { backgroundColor: '#0F172A', borderColor: '#0F172A' },
+                  ent.isPrimary && exportEntity !== ent.id && { borderColor: '#93C5FD', backgroundColor: '#EFF6FF' },
+                ]}
+                onPress={() => setExportEntity(ent.id)}
+              >
+                <Text
+                  style={[
+                    exportEntity === ent.id ? styles.filterChipTextActive : styles.filterChipText,
+                    ent.isPrimary && exportEntity !== ent.id && { color: '#1D4ED8', fontWeight: '800' },
+                  ]}
+                >
+                  {ent.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* 2. Format & File Extension Selection */}
+        <View style={{ marginBottom: 18 }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155', marginBottom: 8 }}>
+            2. Choose File Extension / Format:
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {[
+                { id: 'json', label: 'JSON (.json)' },
+                { id: 'csv', label: 'CSV (.csv)' },
+                { id: 'sql', label: 'SQL (.sql)' },
+                { id: 'txt', label: 'TXT (.txt)' },
+              ].map((fmt) => (
+                <TouchableOpacity
+                  key={fmt.id}
+                  style={[styles.filterChip, exportFormat === fmt.id && styles.filterChipActive]}
+                  onPress={() => {
+                    setExportFormat(fmt.id);
+                    setCustomExtension('');
+                  }}
+                >
+                  <Text style={exportFormat === fmt.id ? styles.filterChipTextActive : styles.filterChipText}>
+                    {fmt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Custom extension write-in option */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', minWidth: 160 }}>
+              <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '700' }}>Custom ext: .</Text>
+              <TextInput
+                style={{ fontSize: 12, color: '#0F172A', fontWeight: '700', minWidth: 60, paddingVertical: 2 } as any}
+                placeholder="e.g. json"
+                value={customExtension}
+                onChangeText={setCustomExtension}
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* 3. Export Action Button */}
+        <TouchableOpacity
+          style={[
+            styles.addBtn,
+            {
+              backgroundColor: '#16A34A',
+              paddingVertical: 12,
+              paddingHorizontal: 22,
+              alignSelf: 'flex-start',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              borderRadius: 8,
+            },
+          ]}
+          onPress={handleExportData}
+          disabled={exporting}
+        >
+          {exporting ? (
+            <ActivityIndicator color="#FFF" size="small" />
+          ) : (
+            <>
+              <Text style={{ fontSize: 16 }}>⬇️</Text>
+              <Text style={[styles.addBtnText, { fontSize: 13, letterSpacing: 0.5 }]}>
+                EXPORT & DOWNLOAD ({customExtension ? `.${customExtension}` : `.${exportFormat}`.toUpperCase()})
               </Text>
-            </ScrollView>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* 4. Export Completion & Download Preview */}
+        {exportedData && (
+          <View style={{ backgroundColor: '#F8FAFC', padding: 16, borderRadius: 10, marginTop: 18, borderWidth: 1, borderColor: '#CBD5E1' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+              <View>
+                <Text style={{ fontWeight: '800', color: '#16A34A', fontSize: 14 }}>
+                  ✓ Export Complete: {exportedData.count} total records exported.
+                </Text>
+                <Text style={{ fontSize: 12, color: '#475569', marginTop: 3 }}>
+                  File downloaded automatically as <Text style={{ fontFamily: 'monospace', fontWeight: '800', color: '#0F172A' }}>{downloadFileName || `export.${exportedData.format}`}</Text> ({exportedData.contentSize}).
+                </Text>
+              </View>
+
+              {downloadBlobUrl && (
+                <TouchableOpacity
+                  style={[styles.addBtn, { backgroundColor: '#0284C7', paddingVertical: 6, paddingHorizontal: 12 }]}
+                  onPress={() => {
+                    if (typeof document !== 'undefined') {
+                      const link = document.createElement('a');
+                      link.href = downloadBlobUrl;
+                      link.download = downloadFileName;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }
+                  }}
+                >
+                  <Text style={[styles.addBtnText, { fontSize: 11 }]}>⬇️ DOWNLOAD AGAIN</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Table Counts Pill Grid when exporting all */}
+            {exportedData.metadata?.tableCounts && (
+              <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 6 }}>
+                  TABLES INCLUDED IN FULL DATABASE DUMP:
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {Object.entries(exportedData.metadata.tableCounts).map(([tbl, cnt]) => (
+                    <View
+                      key={tbl}
+                      style={{
+                        backgroundColor: '#FFF',
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderRadius: 6,
+                        borderWidth: 1,
+                        borderColor: '#E2E8F0',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155' }}>{tbl}:</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#16A34A', fontFamily: 'monospace' }}>
+                        {String(cnt)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Data Preview */}
+            <View style={{ marginTop: 12 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 }}>
+                DATA PREVIEW ({exportedData.format.toUpperCase()}):
+              </Text>
+              <ScrollView horizontal style={{ backgroundColor: '#0F172A', padding: 12, borderRadius: 8 }}>
+                <Text style={{ fontFamily: 'monospace', fontSize: 11, color: '#38BDF8' }}>
+                  {exportedData.contentPreview || 'No content preview available'}
+                </Text>
+              </ScrollView>
+            </View>
           </View>
         )}
       </View>

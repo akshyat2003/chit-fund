@@ -984,15 +984,131 @@ export const triggerManualBackup = async (req: AuthRequest, res: Response) => {
 
 export const exportData = async (req: AuthRequest, res: Response) => {
   try {
-    const { entity } = req.params;
+    const entity = req.params.entity || (req.query.entity as string) || 'all';
+
+    if (entity === 'all' || entity === 'database' || entity === 'full') {
+      const [
+        companies,
+        branches,
+        users,
+        subscribers,
+        chitGroups,
+        chitGroupMembers,
+        paymentTransactions,
+        auditLogs,
+        payouts,
+        expenses,
+        auctions,
+      ] = await Promise.all([
+        prisma.company.findMany().catch(() => []),
+        prisma.branch.findMany().catch(() => []),
+        prisma.user.findMany({
+          select: {
+            id: true,
+            username: true,
+            fullName: true,
+            role: true,
+            phone: true,
+            email: true,
+            status: true,
+            companyId: true,
+            branchId: true,
+            createdAt: true,
+            company: { select: { code: true, name: true } },
+          },
+        }).catch(() => []),
+        prisma.subscriber.findMany().catch(() => []),
+        prisma.chitGroup.findMany().catch(() => []),
+        prisma.chitGroupMember.findMany().catch(() => []),
+        prisma.paymentTransaction.findMany().catch(() => []),
+        prisma.auditLog.findMany({
+          orderBy: { createdAt: 'desc' },
+          include: {
+            user: { select: { username: true, fullName: true, role: true } },
+            company: { select: { code: true, name: true } },
+          },
+        }).catch(() => []),
+        prisma.payout.findMany().catch(() => []),
+        prisma.expense.findMany().catch(() => []),
+        prisma.auction.findMany().catch(() => []),
+      ]);
+
+      const totalCount =
+        companies.length +
+        branches.length +
+        users.length +
+        subscribers.length +
+        chitGroups.length +
+        chitGroupMembers.length +
+        paymentTransactions.length +
+        auditLogs.length +
+        payouts.length +
+        expenses.length +
+        auctions.length;
+
+      const fullDatabaseDump = {
+        metadata: {
+          exportType: 'FULL_DATABASE_EXPORT',
+          system: 'ChitKart Management Platform',
+          exportedAt: new Date().toISOString(),
+          totalRecords: totalCount,
+          tableCounts: {
+            companies: companies.length,
+            branches: branches.length,
+            users: users.length,
+            subscribers: subscribers.length,
+            chitGroups: chitGroups.length,
+            chitGroupMembers: chitGroupMembers.length,
+            paymentTransactions: paymentTransactions.length,
+            auditLogs: auditLogs.length,
+            payouts: payouts.length,
+            expenses: expenses.length,
+            auctions: auctions.length,
+          },
+        },
+        tables: {
+          companies,
+          branches,
+          users,
+          subscribers,
+          chitGroups,
+          chitGroupMembers,
+          paymentTransactions,
+          auditLogs,
+          payouts,
+          expenses,
+          auctions,
+        },
+      };
+
+      try {
+        await prisma.auditLog.create({
+          data: {
+            userId: req.user?.id || null,
+            companyId: req.user?.companyId || null,
+            action: 'DATA_EXPORT_DOWNLOAD',
+            entity: 'FULL_DATABASE',
+            details: JSON.stringify({ count: totalCount, scope: 'ALL_TABLES' }),
+            ipAddress: req.ip || 'unknown',
+          },
+        });
+      } catch (e) {}
+
+      return res.json({
+        success: true,
+        isFullDatabase: true,
+        count: totalCount,
+        data: fullDatabaseDump,
+      });
+    }
+
     let data: any[] = [];
     if (entity === 'subscribers') {
-      data = await prisma.subscriber.findMany({ take: 500 });
+      data = await prisma.subscriber.findMany();
     } else if (entity === 'chit-groups') {
-      data = await prisma.chitGroup.findMany({ take: 500 });
+      data = await prisma.chitGroup.findMany();
     } else if (entity === 'audit-logs') {
       data = await prisma.auditLog.findMany({
-        take: 500,
         orderBy: { createdAt: 'desc' },
         include: {
           user: { select: { username: true, fullName: true, role: true } },
@@ -1000,10 +1116,9 @@ export const exportData = async (req: AuthRequest, res: Response) => {
         },
       });
     } else if (entity === 'companies') {
-      data = await prisma.company.findMany({ take: 500 });
+      data = await prisma.company.findMany();
     } else if (entity === 'users') {
       data = await prisma.user.findMany({
-        take: 500,
         select: {
           id: true,
           username: true,
@@ -1016,6 +1131,10 @@ export const exportData = async (req: AuthRequest, res: Response) => {
           company: { select: { code: true, name: true } },
         },
       });
+    } else if (entity === 'branches') {
+      data = await prisma.branch.findMany();
+    } else if (entity === 'transactions' || entity === 'payments') {
+      data = await prisma.paymentTransaction.findMany();
     }
 
     try {
@@ -1025,13 +1144,13 @@ export const exportData = async (req: AuthRequest, res: Response) => {
           companyId: req.user?.companyId || null,
           action: 'DATA_EXPORT_DOWNLOAD',
           entity,
-          details: JSON.stringify({ count: data.length, format: 'JSON' }),
+          details: JSON.stringify({ count: data.length, entity }),
           ipAddress: req.ip || 'unknown',
         },
       });
     } catch (e) {}
 
-    return res.json({ success: true, count: data.length, data });
+    return res.json({ success: true, count: data.length, isFullDatabase: false, data });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }

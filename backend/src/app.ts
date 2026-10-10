@@ -180,6 +180,7 @@ router.get('/super-admin/backups', authenticateToken, requireRoles('SUPER_ADMIN'
 router.post('/super-admin/backups/trigger', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.triggerManualBackup);
 
 // SA-17: Database Data Export
+router.get('/super-admin/export', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.exportData);
 router.get('/super-admin/export/:entity', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.exportData);
 
 // SA-19, SA-20: Financial Periods & Archival Policy
