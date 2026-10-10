@@ -28,3 +28,23 @@ export const setAuthToken = (token: string | null) => {
     delete api.defaults.headers.common['Authorization'];
   }
 };
+
+let onSessionTerminatedCallback: ((msg: string) => void) | null = null;
+
+export const setOnSessionTerminated = (cb: (msg: string) => void) => {
+  onSessionTerminatedCallback = cb;
+};
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && error.response?.data?.code === 'SESSION_TERMINATED') {
+      if (onSessionTerminatedCallback) {
+        onSessionTerminatedCallback(
+          error.response?.data?.message || 'You have been logged out because this account was signed in from another window or device.'
+        );
+      }
+    }
+    return Promise.reject(error);
+  }
+);

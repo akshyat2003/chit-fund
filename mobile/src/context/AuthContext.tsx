@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { api, setAuthToken } from '../services/api';
+import { api, setAuthToken, setOnSessionTerminated } from '../services/api';
 
 export interface User {
   id: string;
@@ -43,6 +43,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(accessToken);
         setUser(loggedUser);
         setAuthToken(accessToken);
+
+        // Broadcast to other open windows/tabs on the same browser to log them out immediately
+        if (typeof window !== 'undefined') {
+          try {
+            if (typeof BroadcastChannel !== 'undefined') {
+              const channel = new BroadcastChannel('chitkart_auth_session');
+              channel.postMessage({ type: 'CONCURRENT_LOGIN', userId: loggedUser.id, timestamp: Date.now() });
+              channel.close();
+            }
+          } catch (e) {}
+
+          try {
+            localStorage.setItem(
+              'chitkart_session_stamp',
+              JSON.stringify({ userId: loggedUser.id, timestamp: Date.now() })
+            );
+          } catch (e) {}
+        }
+
         setLoading(false);
         return { success: true };
       }
@@ -81,6 +100,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setInactivityMessage(reason);
     }
   };
+
+  // Single Active Window / Concurrent Session Invalidation Listener
+  useEffect(() => {
+    if (!user) return;
+
+    // 1. Handle API 401 SESSION_TERMINATED response
+    setOnSessionTerminated((msg) => {
+      logout(msg);
+    });
+
+    // 2. Real-time BroadcastChannel listener across windows/tabs on the same browser
+    let channel: any = null;
+    if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+      try {
+        channel = new BroadcastChannel('chitkart_auth_session');
+        channel.onmessage = (event: MessageEvent) => {
+          if (event.data?.type === 'CONCURRENT_LOGIN' && event.data?.userId === user.id) {
+            console.warn('[Session] Concurrent login detected on another window. Logging out this window.');
+            logout('You have been automatically logged out because this account was signed in from another window.');
+          }
+        };
+      } catch (e) {}
+    }
+
+    // 3. Storage event listener (fallback for browsers syncing tabs via localStorage)
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === 'chitkart_session_stamp' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed.userId === user.id) {
+            console.warn('[Session] Storage sync concurrent login detected. Logging out this window.');
+            logout('You have been automatically logged out because this account was signed in from another window.');
+          }
+        } catch (err) {}
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleStorageEvent);
+    }
+
+    // 4. Periodic heartbeat (every 10s) verifying active session with backend (handles cross-device/cross-browser)
+    const sessionHeartbeat = setInterval(async () => {
+      try {
+        const res = await api.get('/auth/me');
+        if (!res.data.success) {
+          logout('You have been automatically logged out because this account was signed in from another window or device.');
+        }
+      } catch (err: any) {
+        if (err.response?.status === 401) {
+          logout(
+            err.response?.data?.message ||
+              'You have been automatically logged out because this account was signed in from another window or device.'
+          );
+        }
+      }
+    }, 10000);
+
+    return () => {
+      if (channel) channel.close();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', handleStorageEvent);
+      }
+      clearInterval(sessionHeartbeat);
+    };
+  }, [user]);
 
   // 5-Minute Inactivity Auto-Logout Tracker (FR-AUTH-010 / SA-01 Session Management)
   // Automatically logs out when there is no mouse cursor movement or interaction for 5 minutes

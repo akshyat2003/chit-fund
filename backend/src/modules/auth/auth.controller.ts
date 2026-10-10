@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { prisma } from '../../config/prisma.js';
 import { AuthRequest } from '../../middleware/auth.js';
 import { sendOtpEmail } from '../../services/email.service.js';
@@ -157,20 +158,28 @@ export const login = async (req: AuthRequest, res: Response) => {
     // Reset failed login counter on success
     failedLogins.delete(key);
 
+    // Enforce Single Active Window/Session: Invalidate any previous sessions for this user
+    await prisma.refreshToken.deleteMany({
+      where: { userId: user.id },
+    });
+
+    const sessionId = crypto.randomUUID();
+
     const secret = process.env.JWT_SECRET || 'chitfund_super_secure_jwt_secret_key_2026!@#';
     const refreshSecret = process.env.REFRESH_TOKEN_SECRET || 'chitfund_refresh_token_secret_key_2026!$%';
 
     const accessToken = jwt.sign(
-      { userId: user.id, role: user.role, companyId: user.companyId, branchId: user.branchId },
+      { userId: user.id, sessionId, role: user.role, companyId: user.companyId, branchId: user.branchId },
       secret,
       { expiresIn: '1d' }
     );
 
-    const refreshToken = jwt.sign({ userId: user.id }, refreshSecret, { expiresIn: '7d' });
+    const refreshToken = jwt.sign({ userId: user.id, sessionId }, refreshSecret, { expiresIn: '7d' });
 
-    // Store Refresh Token in DB for session tracking (FR-AUTH-005, FR-AUTH-009)
+    // Store active session token in DB with sessionId
     await prisma.refreshToken.create({
       data: {
+        id: sessionId,
         userId: user.id,
         token: refreshToken,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -326,6 +335,7 @@ export const refreshToken = async (req: Request, res: Response) => {
     const newAccessToken = jwt.sign(
       {
         userId: storedToken.user.id,
+        sessionId: storedToken.id,
         role: storedToken.user.role,
         companyId: storedToken.user.companyId,
         branchId: storedToken.user.branchId,
