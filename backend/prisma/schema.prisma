@@ -2,7 +2,7 @@
 
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -255,7 +255,7 @@ model Payout {
   createdAt          DateTime @default(now())
 
   auction            Auction    @relation(fields: [auctionId], references: [id])
-  subscriber         Subscriber @relation(fields: [subscriberId], references: [id])
+  subscriber         Subscriber @relation("SubscriberPayouts", fields: [subscriberId], references: [id])
   approvedBy         User?      @relation("ApprovedBy", fields: [approvedByUserId], references: [id])
 }
 
