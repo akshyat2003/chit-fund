@@ -4,9 +4,9 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function clean() {
-  console.log('Cleaning all dummy records from database...');
+  console.log('Cleaning all existing data from database...');
 
-  // Delete dependent transactional data first
+  // Delete all dependent transactional and operational records
   await prisma.receipt.deleteMany();
   await prisma.paymentTransaction.deleteMany();
   await prisma.payout.deleteMany();
@@ -24,64 +24,63 @@ async function clean() {
   await prisma.branch.deleteMany();
   await prisma.company.deleteMany();
 
-  console.log('All dummy data cleared successfully!');
+  console.log('All previous records wiped clean successfully.');
 
-  // Create clean initial Master Company, Branch & Admin User
+  // Create ChitKart Company
   const company = await prisma.company.create({
     data: {
-      code: 'CHIT-CORP-01',
-      name: 'Chit Fund Management Co.',
+      code: 'CHITKART-01',
+      name: 'ChitKart',
       status: 'ACTIVE',
     },
   });
 
+  // Create Head Office Branch
   const branch = await prisma.branch.create({
     data: {
       companyId: company.id,
-      code: 'BR-001',
-      name: 'Main Head Branch',
+      code: 'HQ-01',
+      name: 'ChitKart Head Office',
       status: 'ACTIVE',
     },
   });
 
-  const adminPassword = await bcrypt.hash('admin123', 10);
-  const managerPassword = await bcrypt.hash('manager123', 10);
+  // Password: admin123
+  const passwordHash = await bcrypt.hash('admin123', 10);
 
-  // Super Admin
-  await prisma.user.create({
-    data: {
-      companyId: company.id,
-      role: 'SUPER_ADMIN',
-      username: 'superadmin',
-      fullName: 'System Administrator',
-      phone: '9999999999',
-      passwordHash: adminPassword,
-      status: 'ACTIVE',
-    },
-  });
-
-  // Admin / Branch Manager
-  await prisma.user.create({
+  // Create Sole Super Admin
+  const superAdmin = await prisma.user.create({
     data: {
       companyId: company.id,
       branchId: branch.id,
-      role: 'MANAGER',
-      username: 'manager',
-      fullName: 'Branch Manager',
-      phone: '9888888888',
-      passwordHash: managerPassword,
+      role: 'SUPER_ADMIN',
+      username: 'akshyatraj',
+      fullName: 'Akshyatraj Pati',
+      phone: '8260521302',
+      email: 'akshatrajpati@gmail.com',
+      passwordHash,
       status: 'ACTIVE',
     },
   });
 
-  console.log('Clean setup complete! Ready for manual data entry.');
-  console.log('Admin login: username="superadmin", password="admin123"');
-  console.log('Manager login: username="manager", password="manager123"');
+  console.log('Database cleanly reset with Super Admin:');
+  console.log({
+    id: superAdmin.id,
+    fullName: superAdmin.fullName,
+    phone: superAdmin.phone,
+    email: superAdmin.email,
+    username: superAdmin.username,
+    role: superAdmin.role,
+    company: company.name,
+  });
+  console.log('Login credentials:');
+  console.log('  Username/Email/Phone: "akshyatraj" OR "8260521302" OR "akshatrajpati@gmail.com"');
+  console.log('  Password: "admin123"');
 }
 
 clean()
   .catch((e) => {
-    console.error(e);
+    console.error('Error during database cleanup:', e);
     process.exit(1);
   })
   .finally(async () => {
