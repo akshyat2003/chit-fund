@@ -105,9 +105,21 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showServerConfig, setShowServerConfig] = useState(false);
-  const [customServerUrl, setCustomServerUrl] = useState(API_BASE_URL);
+
+  // Forgot Password Modal State
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotStep, setForgotStep] = useState<1 | 2>(1);
+  const [forgotInput, setForgotInput] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState('');
+  const [maskedEmail, setMaskedEmail] = useState('');
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
@@ -115,6 +127,7 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
       return;
     }
     setError('');
+    setSuccessMsg('');
     setLoading(true);
     const res = await onLogin(username.trim(), password.trim());
     setLoading(false);
@@ -123,9 +136,82 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
     }
   };
 
-  const handleSaveServerUrl = () => {
-    setCustomBaseUrl(customServerUrl.trim());
-    setShowServerConfig(false);
+  const openForgotModal = () => {
+    setForgotInput(username.trim());
+    setForgotStep(1);
+    setForgotOtp('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setForgotError('');
+    setForgotSuccess('');
+    setShowForgotModal(true);
+  };
+
+  const handleSendOtp = async () => {
+    if (!forgotInput.trim()) {
+      setForgotError('Please enter your registered email or username');
+      return;
+    }
+    setForgotError('');
+    setForgotLoading(true);
+    try {
+      const res = await api.post('/auth/forgot-password', {
+        emailOrUsername: forgotInput.trim(),
+      });
+      if (res.data.success) {
+        setMaskedEmail(res.data.maskedEmail || forgotInput.trim());
+        if (res.data.otp) {
+          setForgotOtp(res.data.otp);
+        }
+        setForgotStep(2);
+        setForgotSuccess(res.data.message || 'Verification OTP code sent to your email!');
+      } else {
+        setForgotError(res.data.message || 'Failed to send OTP');
+      }
+    } catch (err: any) {
+      setForgotError(err.response?.data?.message || err.message || 'Network error sending OTP');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!forgotOtp.trim()) {
+      setForgotError('Please enter the 6-digit OTP code');
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      setForgotError('Password must be at least 6 characters long');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setForgotError('Passwords do not match');
+      return;
+    }
+
+    setForgotError('');
+    setForgotLoading(true);
+    try {
+      const res = await api.post('/auth/reset-password', {
+        emailOrUsername: forgotInput.trim(),
+        otp: forgotOtp.trim(),
+        newPassword,
+      });
+
+      if (res.data.success) {
+        setShowForgotModal(false);
+        setUsername(forgotInput.trim());
+        setPassword('');
+        setError('');
+        setSuccessMsg('Password reset successfully! Please login with your new password.');
+      } else {
+        setForgotError(res.data.message || 'Failed to reset password');
+      }
+    } catch (err: any) {
+      setForgotError(err.response?.data?.message || err.message || 'Failed to reset password');
+    } finally {
+      setForgotLoading(false);
+    }
   };
 
   return (
@@ -138,6 +224,12 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
           <Text style={styles.refTitle}>Welcome Back!</Text>
           <Text style={styles.refSubtitle}>Sign in with your account</Text>
         </View>
+
+        {successMsg ? (
+          <View style={styles.successBadge}>
+            <Text style={styles.successBadgeText}>{successMsg}</Text>
+          </View>
+        ) : null}
 
         {error ? (
           <View style={styles.errorBadge}>
@@ -197,12 +289,163 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
 
           {/* Forgot Password Link */}
           <View style={styles.linkGroup}>
-            <TouchableOpacity onPress={() => alert('Please contact your branch manager or system administrator to reset your password.')}>
+            <TouchableOpacity onPress={openForgotModal}>
               <Text style={styles.refLinkText}>Forgot Password?</Text>
             </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
+
+      {/* Forgot Password Modal */}
+      <Modal
+        visible={showForgotModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowForgotModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.forgotCard}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {forgotStep === 1 ? 'Reset Password' : 'Enter Verification Code'}
+              </Text>
+              <TouchableOpacity onPress={() => setShowForgotModal(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {forgotError ? (
+              <View style={[styles.errorBadge, { width: '100%', marginBottom: 14 }]}>
+                <Text style={styles.errorBadgeText}>{forgotError}</Text>
+              </View>
+            ) : null}
+
+            {forgotSuccess ? (
+              <View style={[styles.successBadge, { width: '100%', marginBottom: 14 }]}>
+                <Text style={styles.successBadgeText}>{forgotSuccess}</Text>
+              </View>
+            ) : null}
+
+            {forgotStep === 1 ? (
+              /* STEP 1: Enter Email / Username */
+              <View>
+                <Text style={styles.modalSubtext}>
+                  Enter your registered email address or username. We will send a 6-digit OTP code to verify your identity.
+                </Text>
+
+                <View style={styles.pillInputWrapper}>
+                  <TextInput
+                    style={styles.pillInput}
+                    value={forgotInput}
+                    onChangeText={setForgotInput}
+                    placeholder="Email or Username"
+                    placeholderTextColor="#9AA0A6"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={styles.limeBtn}
+                  onPress={handleSendOtp}
+                  disabled={forgotLoading}
+                  activeOpacity={0.85}
+                >
+                  {forgotLoading ? (
+                    <ActivityIndicator color="#111" size="small" />
+                  ) : (
+                    <Text style={styles.limeBtnText}>Send Verification OTP</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ marginTop: 18, alignSelf: 'center' }}
+                  onPress={() => setShowForgotModal(false)}
+                >
+                  <Text style={{ color: '#E4ECD8', fontSize: 14 }}>Back to Login</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              /* STEP 2: Enter OTP & New Password */
+              <View>
+                <Text style={styles.modalSubtext}>
+                  A 6-digit OTP was sent to <Text style={{ color: '#C8FF00', fontWeight: '700' }}>{maskedEmail}</Text>. Enter it below with your new password.
+                </Text>
+
+                {/* OTP Input */}
+                <View style={styles.pillInputWrapper}>
+                  <TextInput
+                    style={[styles.pillInput, { letterSpacing: 6, fontWeight: '700', fontSize: 18, textAlign: 'center' }]}
+                    value={forgotOtp}
+                    onChangeText={setForgotOtp}
+                    placeholder="6-Digit OTP"
+                    placeholderTextColor="#9AA0A6"
+                    keyboardType="number-pad"
+                    maxLength={6}
+                  />
+                </View>
+
+                {/* New Password */}
+                <View style={styles.pillInputWrapper}>
+                  <TextInput
+                    style={[styles.pillInput, { paddingRight: 50 }]}
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    placeholder="New Password (min. 6 chars)"
+                    placeholderTextColor="#9AA0A6"
+                    secureTextEntry={!showNewPassword}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeBtn}
+                    onPress={() => setShowNewPassword(!showNewPassword)}
+                  >
+                    <Text style={{ fontSize: 18, color: '#757575' }}>
+                      {showNewPassword ? '👁' : '👁‍🗨'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Confirm New Password */}
+                <View style={styles.pillInputWrapper}>
+                  <TextInput
+                    style={[styles.pillInput, { paddingRight: 50 }]}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    placeholder="Confirm New Password"
+                    placeholderTextColor="#9AA0A6"
+                    secureTextEntry={!showNewPassword}
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={styles.limeBtn}
+                  onPress={handleResetPassword}
+                  disabled={forgotLoading}
+                  activeOpacity={0.85}
+                >
+                  {forgotLoading ? (
+                    <ActivityIndicator color="#111" size="small" />
+                  ) : (
+                    <Text style={styles.limeBtnText}>Reset Password</Text>
+                  )}
+                </TouchableOpacity>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 }}>
+                  <TouchableOpacity onPress={() => setForgotStep(1)}>
+                    <Text style={{ color: '#E4ECD8', fontSize: 13 }}>← Change Email</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleSendOtp} disabled={forgotLoading}>
+                    <Text style={{ color: '#C8FF00', fontSize: 13, fontWeight: '700' }}>Resend Code</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1128,6 +1371,55 @@ const styles = StyleSheet.create({
   },
   errorBadgeText: {
     color: '#FEE2E2',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  forgotCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: '#2A3A21',
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(200, 255, 0, 0.25)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalCloseText: {
+    fontSize: 22,
+    color: '#C8FF00',
+    fontWeight: '700',
+    padding: 4,
+  },
+  modalSubtext: {
+    fontSize: 14,
+    color: '#D1DFC3',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  successBadge: {
+    backgroundColor: 'rgba(34, 197, 94, 0.2)',
+    borderWidth: 1,
+    borderColor: '#22C55E',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginBottom: 16,
+    alignSelf: 'center',
+    maxWidth: 360,
+  },
+  successBadgeText: {
+    color: '#86EFAC',
     fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',

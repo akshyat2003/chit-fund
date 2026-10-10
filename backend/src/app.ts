@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
 import { authenticateToken, requireRoles } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -15,7 +16,11 @@ import * as reportController from './modules/reports/report.controller.js';
 
 const app = express();
 
-app.use(cors({ origin: '*' }));
+app.use(cors({
+  origin: (origin, callback) => callback(null, true),
+  credentials: true,
+}));
+app.use(cookieParser());
 app.use(express.json());
 app.use(morgan('dev'));
 
@@ -24,8 +29,12 @@ app.get('/api/v1/health', (req, res) => {
   res.json({ status: 'OK', service: 'Enterprise Chit Fund Platform API', timestamp: new Date() });
 });
 
-// Authentication Routes
+// Authentication Routes (JWT + Cookies + Sessions + OTP)
 app.post('/api/v1/auth/login', authController.login);
+app.post('/api/v1/auth/logout', authenticateToken, authController.logout);
+app.post('/api/v1/auth/forgot-password', authController.forgotPassword);
+app.post('/api/v1/auth/verify-otp', authController.verifyOtp);
+app.post('/api/v1/auth/reset-password', authController.resetPassword);
 app.get('/api/v1/auth/me', authenticateToken, authController.me);
 
 // Dashboard Statistics Route
