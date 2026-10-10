@@ -1,15 +1,25 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 
-// For physical device testing over LAN or Android Emulator vs Web
-const getBaseUrl = () => {
+const getDefaultBaseUrl = () => {
+  if (typeof window !== 'undefined' && window.location) {
+    // If running on Vercel or any non-localhost web domain, connect to production Render backend
+    if (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
+      return 'https://chit-fund-backend.onrender.com/api/v1';
+    }
+  }
   if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:5000/api/v1'; // Android Emulator default host
+    return 'http://10.0.2.2:5000/api/v1';
   }
   return 'http://localhost:5000/api/v1';
 };
 
-export const API_BASE_URL = getBaseUrl();
+export let API_BASE_URL = getDefaultBaseUrl();
+
+export const setCustomBaseUrl = (newUrl: string) => {
+  API_BASE_URL = newUrl;
+  api.defaults.baseURL = newUrl;
+};
 
 export const api = axios.create({
   baseURL: API_BASE_URL,

@@ -9,15 +9,14 @@ import {
   ActivityIndicator,
   SafeAreaView,
   StatusBar,
-  Alert,
   Modal,
 } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
-import { api } from './src/services/api';
+import { api, API_BASE_URL, setCustomBaseUrl } from './src/services/api';
 
 // --- MAIN APP CONTROLLER ---
 function MainApp() {
-  const { user, token, login, logout } = useAuth();
+  const { user, login, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'subscribers' | 'groups' | 'payments' | 'auctions' | 'reconciliation'>('dashboard');
 
   if (!user) {
@@ -30,9 +29,9 @@ function MainApp() {
       {/* Header Bar */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>APEX CHIT FUNDS</Text>
+          <Text style={styles.headerTitle}>{user.company?.name?.toUpperCase() || 'CHIT FUND PLATFORM'}</Text>
           <Text style={styles.headerSubtitle}>
-            {user.role.replace('_', ' ')} | {user.fullName}
+            {user.role.replace('_', ' ')} • {user.fullName}
           </Text>
         </View>
         <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
@@ -83,7 +82,7 @@ function MainApp() {
           style={[styles.navItem, activeTab === 'reconciliation' && styles.navItemActive]}
           onPress={() => setActiveTab('reconciliation')}
         >
-          <Text style={[styles.navText, activeTab === 'reconciliation' && styles.navTextActive]}>Cash</Text>
+          <Text style={[styles.navText, activeTab === 'reconciliation' && styles.navTextActive]}>Cash Handover</Text>
         </TouchableOpacity>
       </View>
 
@@ -102,38 +101,49 @@ function MainApp() {
 
 // --- 1. LOGIN SCREEN ---
 function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any> }) {
-  const [username, setUsername] = useState('manager1');
-  const [password, setPassword] = useState('manager123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showServerConfig, setShowServerConfig] = useState(false);
+  const [customServerUrl, setCustomServerUrl] = useState(API_BASE_URL);
 
-  const handleLogin = async (usr: string, pwd: string) => {
+  const handleLogin = async () => {
+    if (!username.trim() || !password.trim()) {
+      setError('Please enter your username and password');
+      return;
+    }
     setError('');
     setLoading(true);
-    const res = await onLogin(usr, pwd);
+    const res = await onLogin(username.trim(), password.trim());
     setLoading(false);
     if (!res.success) {
       setError(res.message || 'Login failed');
     }
   };
 
+  const handleSaveServerUrl = () => {
+    setCustomBaseUrl(customServerUrl.trim());
+    setShowServerConfig(false);
+  };
+
   return (
     <SafeAreaView style={styles.loginContainer}>
       <View style={styles.loginCard}>
         <View style={styles.logoBadge}>
-          <Text style={styles.logoBadgeText}>₹ APEX</Text>
+          <Text style={styles.logoBadgeText}>CHIT FUND PLATFORM</Text>
         </View>
-        <Text style={styles.loginTitle}>Chit Fund Platform</Text>
-        <Text style={styles.loginSub}>Enterprise Chit Management System</Text>
+        <Text style={styles.loginTitle}>Sign In</Text>
+        <Text style={styles.loginSub}>Enter your credentials to access the system</Text>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-        <Text style={styles.label}>Username or Phone</Text>
+        <Text style={styles.label}>Username or Mobile Number</Text>
         <TextInput
           style={styles.input}
           value={username}
           onChangeText={setUsername}
-          placeholder="e.g. manager1 or staff1"
+          placeholder="Enter username or mobile"
           placeholderTextColor="#999"
           autoCapitalize="none"
         />
@@ -143,49 +153,50 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
           style={styles.input}
           value={password}
           onChangeText={setPassword}
-          placeholder="Password"
+          placeholder="Enter password"
           placeholderTextColor="#999"
           secureTextEntry
         />
 
         <TouchableOpacity
           style={styles.primaryBtn}
-          onPress={() => handleLogin(username, password)}
+          onPress={handleLogin}
           disabled={loading}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.primaryBtnText}>SIGN IN TO DASHBOARD</Text>
+            <Text style={styles.primaryBtnText}>SIGN IN</Text>
           )}
         </TouchableOpacity>
 
-        {/* Demo Quick Logins */}
-        <View style={styles.quickLoginBox}>
-          <Text style={styles.quickTitle}>Quick Demo Switcher:</Text>
-          <View style={styles.quickRow}>
-            <TouchableOpacity
-              style={styles.quickBadge}
-              onPress={() => { setUsername('superadmin'); setPassword('admin123'); handleLogin('superadmin', 'admin123'); }}
-            >
-              <Text style={styles.quickText}>Super Admin</Text>
-            </TouchableOpacity>
+        {/* Server Endpoint Configuration */}
+        <TouchableOpacity
+          style={{ marginTop: 16, alignSelf: 'center' }}
+          onPress={() => setShowServerConfig(!showServerConfig)}
+        >
+          <Text style={{ fontSize: 11, color: '#718096' }}>
+            ⚙️ Server URL: {API_BASE_URL}
+          </Text>
+        </TouchableOpacity>
 
+        {showServerConfig && (
+          <View style={{ marginTop: 10, padding: 10, backgroundColor: '#EDF2F7', borderRadius: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#2D3748', marginBottom: 4 }}>Backend API Endpoint:</Text>
+            <TextInput
+              style={[styles.input, { fontSize: 12, paddingVertical: 6 }]}
+              value={customServerUrl}
+              onChangeText={setCustomServerUrl}
+              autoCapitalize="none"
+            />
             <TouchableOpacity
-              style={styles.quickBadge}
-              onPress={() => { setUsername('manager1'); setPassword('manager123'); handleLogin('manager1', 'manager123'); }}
+              style={[styles.primaryBtn, { paddingVertical: 8, marginTop: 8 }]}
+              onPress={handleSaveServerUrl}
             >
-              <Text style={styles.quickText}>Manager</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickBadge}
-              onPress={() => { setUsername('staff1'); setPassword('staff123'); handleLogin('staff1', 'staff123'); }}
-            >
-              <Text style={styles.quickText}>Field Staff</Text>
+              <Text style={{ color: '#fff', fontSize: 11, fontWeight: 'bold' }}>UPDATE ENDPOINT</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -218,34 +229,34 @@ function DashboardTab({ user }: { user: any }) {
 
   return (
     <ScrollView style={styles.tabScroll}>
-      <Text style={styles.sectionTitle}>System Overview ({stats?.role})</Text>
+      <Text style={styles.sectionTitle}>Dashboard ({stats?.role || user.role})</Text>
 
       {stats?.role === 'SUPER_ADMIN' && (
         <View style={styles.gridRow}>
-          <MetricCard title="Active Companies" value={stats.activeCompanies} color="#0070BA" />
-          <MetricCard title="Active Branches" value={stats.activeBranches} color="#27AE60" />
-          <MetricCard title="Total Subscribers" value={stats.totalSubscribers} color="#8E44AD" />
-          <MetricCard title="System Health" value={stats.systemStatus} color="#2D3748" />
+          <MetricCard title="Active Companies" value={stats.activeCompanies || 0} color="#0070BA" />
+          <MetricCard title="Active Branches" value={stats.activeBranches || 0} color="#27AE60" />
+          <MetricCard title="Total Subscribers" value={stats.totalSubscribers || 0} color="#8E44AD" />
+          <MetricCard title="Active Chit Groups" value={stats.activeGroups || 0} color="#D35400" />
         </View>
       )}
 
       {stats?.role === 'MANAGER' && (
         <View style={styles.gridRow}>
-          <MetricCard title="Today's Total" value={`₹${stats.todayTotalCollected.toLocaleString()}`} color="#27AE60" />
-          <MetricCard title="Cash Collected" value={`₹${stats.todayCashCollected.toLocaleString()}`} color="#0070BA" />
-          <MetricCard title="Bank/UPI Payments" value={`₹${stats.todayBankUpiCollected.toLocaleString()}`} color="#D35400" />
-          <MetricCard title="Active Chit Groups" value={stats.activeGroups} color="#8E44AD" />
-          <MetricCard title="Active Subscribers" value={stats.activeSubscribers} color="#2D3748" />
-          <MetricCard title="Pending Payouts" value={stats.pendingPayouts} color="#C0392B" />
+          <MetricCard title="Today's Collections" value={`₹${(stats.todayTotalCollected || 0).toLocaleString()}`} color="#27AE60" />
+          <MetricCard title="Cash Collected" value={`₹${(stats.todayCashCollected || 0).toLocaleString()}`} color="#0070BA" />
+          <MetricCard title="Bank/UPI Collections" value={`₹${(stats.todayBankUpiCollected || 0).toLocaleString()}`} color="#D35400" />
+          <MetricCard title="Active Chit Groups" value={stats.activeGroups || 0} color="#8E44AD" />
+          <MetricCard title="Active Subscribers" value={stats.activeSubscribers || 0} color="#2D3748" />
+          <MetricCard title="Pending Payouts" value={stats.pendingPayouts || 0} color="#C0392B" />
         </View>
       )}
 
       {stats?.role === 'COLLECTION_STAFF' && (
         <View style={styles.gridRow}>
-          <MetricCard title="Assigned Subscribers" value={stats.assignedSubscribers} color="#0070BA" />
-          <MetricCard title="Today's Collections" value={stats.todayCollectionsCount} color="#8E44AD" />
-          <MetricCard title="Total Amount" value={`₹${stats.todayAmountCollected.toLocaleString()}`} color="#27AE60" />
-          <MetricCard title="Cash in Hand" value={`₹${stats.cashInHand.toLocaleString()}`} color="#D35400" />
+          <MetricCard title="Assigned Subscribers" value={stats.assignedSubscribers || 0} color="#0070BA" />
+          <MetricCard title="Today's Collections Count" value={stats.todayCollectionsCount || 0} color="#8E44AD" />
+          <MetricCard title="Amount Collected" value={`₹${(stats.todayAmountCollected || 0).toLocaleString()}`} color="#27AE60" />
+          <MetricCard title="Cash in Hand" value={`₹${(stats.cashInHand || 0).toLocaleString()}`} color="#D35400" />
         </View>
       )}
     </ScrollView>
@@ -266,6 +277,17 @@ function SubscribersTab({ user }: { user: any }) {
   const [subscribers, setSubscribers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  // New Subscriber Form State
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [address, setAddress] = useState('');
+  const [idProofType, setIdProofType] = useState('AADHAAR');
+  const [idProofNumber, setIdProofNumber] = useState('');
+  const [nomineeName, setNomineeName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadSubscribers();
@@ -274,8 +296,8 @@ function SubscribersTab({ user }: { user: any }) {
   const loadSubscribers = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/subscribers?search=${search}`);
-      setSubscribers(res.data.data);
+      const res = await api.get(`/subscribers?search=${encodeURIComponent(search)}`);
+      setSubscribers(res.data.data || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -283,16 +305,65 @@ function SubscribersTab({ user }: { user: any }) {
     }
   };
 
+  const handleCreateSubscriber = async () => {
+    if (!fullName.trim() || !phone.trim()) {
+      alert('Full name and mobile number are required');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const branchId = user.branch?.id || (await api.get('/chit-groups')).data.data[0]?.branchId;
+      await api.post('/subscribers', {
+        branchId,
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        email: email.trim() || undefined,
+        address: address.trim() || undefined,
+        idProofType,
+        idProofNumber: idProofNumber.trim() || undefined,
+        nomineeName: nomineeName.trim() || undefined,
+      });
+
+      alert('Subscriber registered successfully!');
+      setShowAddModal(false);
+      setFullName('');
+      setPhone('');
+      setEmail('');
+      setAddress('');
+      setIdProofNumber('');
+      setNomineeName('');
+      loadSubscribers();
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'Failed to register subscriber');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <View style={styles.tabContainer}>
-      <TextInput
-        style={styles.searchBar}
-        placeholder="Search subscriber by name, code or phone..."
-        value={search}
-        onChangeText={setSearch}
-      />
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        <TextInput
+          style={[styles.searchBar, { flex: 1, marginBottom: 0 }]}
+          placeholder="Search by name, code or phone..."
+          value={search}
+          onChangeText={setSearch}
+        />
+        {user.role !== 'COLLECTION_STAFF' && (
+          <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddModal(true)}>
+            <Text style={styles.addBtnText}>+ ADD</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       {loading ? (
         <ActivityIndicator size="small" color="#0A2540" />
+      ) : subscribers.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>No subscribers found.</Text>
+          <Text style={styles.emptySubText}>Tap "+ ADD" to register a new subscriber.</Text>
+        </View>
       ) : (
         <ScrollView style={{ flex: 1 }}>
           {subscribers.map((s) => (
@@ -300,7 +371,7 @@ function SubscribersTab({ user }: { user: any }) {
               <View style={{ flex: 1 }}>
                 <Text style={styles.itemHeader}>{s.fullName} ({s.subscriberCode})</Text>
                 <Text style={styles.itemSub}>Phone: {s.phone} | KYC: {s.kycStatus}</Text>
-                <Text style={styles.itemSub}>Branch: {s.branch.name}</Text>
+                <Text style={styles.itemSub}>Branch: {s.branch?.name || 'Main'}</Text>
               </View>
               <View style={styles.statusBadge}>
                 <Text style={styles.statusText}>{s.status}</Text>
@@ -309,6 +380,56 @@ function SubscribersTab({ user }: { user: any }) {
           ))}
         </ScrollView>
       )}
+
+      {/* Add Subscriber Modal */}
+      <Modal visible={showAddModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Register New Subscriber</Text>
+            <ScrollView>
+              <Text style={styles.label}>Full Name *</Text>
+              <TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder="e.g. Rahul Sharma" />
+
+              <Text style={styles.label}>Mobile Number *</Text>
+              <TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="e.g. 9876543210" />
+
+              <Text style={styles.label}>Email Address</Text>
+              <TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" placeholder="e.g. rahul@example.com" />
+
+              <Text style={styles.label}>Address</Text>
+              <TextInput style={styles.input} value={address} onChangeText={setAddress} placeholder="Residential address" />
+
+              <Text style={styles.label}>ID Proof Type</Text>
+              <View style={styles.quickRow}>
+                {['AADHAAR', 'PAN', 'VOTER_ID'].map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[styles.modeBtn, idProofType === type && styles.modeBtnActive]}
+                    onPress={() => setIdProofType(type)}
+                  >
+                    <Text style={idProofType === type ? styles.modeTextActive : styles.modeText}>{type}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.label}>ID Proof Number</Text>
+              <TextInput style={styles.input} value={idProofNumber} onChangeText={setIdProofNumber} placeholder="Identification number" />
+
+              <Text style={styles.label}>Nominee Name</Text>
+              <TextInput style={styles.input} value={nomineeName} onChangeText={setNomineeName} placeholder="Nominee full name" />
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowAddModal(false)}>
+                  <Text style={styles.cancelBtnText}>CANCEL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.primaryBtn, { flex: 1, marginTop: 0 }]} onPress={handleCreateSubscriber} disabled={submitting}>
+                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>SAVE</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -317,6 +438,15 @@ function SubscribersTab({ user }: { user: any }) {
 function ChitGroupsTab({ user }: { user: any }) {
   const [groups, setGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  // New Chit Group Form State
+  const [groupName, setGroupName] = useState('');
+  const [chitValue, setChitValue] = useState('');
+  const [maxMembers, setMaxMembers] = useState('');
+  const [totalMonths, setTotalMonths] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadGroups();
@@ -326,7 +456,7 @@ function ChitGroupsTab({ user }: { user: any }) {
     try {
       setLoading(true);
       const res = await api.get('/chit-groups');
-      setGroups(res.data.data);
+      setGroups(res.data.data || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -334,21 +464,106 @@ function ChitGroupsTab({ user }: { user: any }) {
     }
   };
 
+  const handleCreateGroup = async () => {
+    if (!groupName.trim() || !chitValue || !maxMembers || !totalMonths || !startDate) {
+      alert('Please fill all group configuration fields');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const branchId = user.branch?.id || (await api.get('/branches')).data?.data?.[0]?.id || user.company?.id;
+      await api.post('/chit-groups', {
+        branchId,
+        name: groupName.trim(),
+        chitValue: Number(chitValue),
+        maxMembers: Number(maxMembers),
+        totalMonths: Number(totalMonths),
+        startDate: startDate.trim(),
+      });
+
+      alert('Chit Group created with installment schedules!');
+      setShowAddModal(false);
+      setGroupName('');
+      setChitValue('');
+      setMaxMembers('');
+      setTotalMonths('');
+      setStartDate('');
+      loadGroups();
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'Failed to create chit group');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.tabScroll}>
-      <Text style={styles.sectionTitle}>Active Chit Groups</Text>
-      {groups.map((g) => (
-        <View key={g.id} style={styles.groupCard}>
-          <Text style={styles.groupCode}>{g.groupCode}</Text>
-          <Text style={styles.groupName}>{g.name}</Text>
-          <View style={styles.groupGrid}>
-            <Text style={styles.groupStat}>Chit Value: ₹{g.chitValue.toLocaleString()}</Text>
-            <Text style={styles.groupStat}>Monthly Dues: ₹{g.monthlyInstallment.toLocaleString()}</Text>
-            <Text style={styles.groupStat}>Members: {g.members.length} / {g.maxMembers}</Text>
-            <Text style={styles.groupStat}>Duration: {g.totalMonths} Months</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Text style={styles.sectionTitle}>Chit Groups</Text>
+        {user.role !== 'COLLECTION_STAFF' && (
+          <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddModal(true)}>
+            <Text style={styles.addBtnText}>+ NEW GROUP</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {loading ? (
+        <ActivityIndicator size="small" color="#0A2540" />
+      ) : groups.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>No chit groups created yet.</Text>
+          <Text style={styles.emptySubText}>Tap "+ NEW GROUP" to configure a chit group.</Text>
+        </View>
+      ) : (
+        groups.map((g) => (
+          <View key={g.id} style={styles.groupCard}>
+            <Text style={styles.groupCode}>{g.groupCode}</Text>
+            <Text style={styles.groupName}>{g.name}</Text>
+            <View style={styles.groupGrid}>
+              <Text style={styles.groupStat}>Chit Value: ₹{(g.chitValue || 0).toLocaleString()}</Text>
+              <Text style={styles.groupStat}>Monthly Dues: ₹{(g.monthlyInstallment || 0).toLocaleString()}</Text>
+              <Text style={styles.groupStat}>Members: {g.members?.length || 0} / {g.maxMembers}</Text>
+              <Text style={styles.groupStat}>Duration: {g.totalMonths} Months</Text>
+              <Text style={styles.groupStat}>Start Date: {g.startDate}</Text>
+            </View>
+          </View>
+        ))
+      )}
+
+      {/* Add Chit Group Modal */}
+      <Modal visible={showAddModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Configure New Chit Group</Text>
+            <ScrollView>
+              <Text style={styles.label}>Chit Group Name *</Text>
+              <TextInput style={styles.input} value={groupName} onChangeText={setGroupName} placeholder="e.g. 1 Lakh 20 Months Group" />
+
+              <Text style={styles.label}>Total Chit Value (₹) *</Text>
+              <TextInput style={styles.input} value={chitValue} onChangeText={setChitValue} keyboardType="numeric" placeholder="e.g. 100000" />
+
+              <Text style={styles.label}>Total Members *</Text>
+              <TextInput style={styles.input} value={maxMembers} onChangeText={setMaxMembers} keyboardType="numeric" placeholder="e.g. 20" />
+
+              <Text style={styles.label}>Duration (Months) *</Text>
+              <TextInput style={styles.input} value={totalMonths} onChangeText={setTotalMonths} keyboardType="numeric" placeholder="e.g. 20" />
+
+              <Text style={styles.label}>Start Date (YYYY-MM-DD) *</Text>
+              <TextInput style={styles.input} value={startDate} onChangeText={setStartDate} placeholder="e.g. 2026-05-01" />
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowAddModal(false)}>
+                  <Text style={styles.cancelBtnText}>CANCEL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.primaryBtn, { flex: 1, marginTop: 0 }]} onPress={handleCreateGroup} disabled={submitting}>
+                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>CREATE</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </View>
-      ))}
+      </Modal>
     </ScrollView>
   );
 }
@@ -359,8 +574,8 @@ function CollectPaymentTab({ user }: { user: any }) {
   const [groups, setGroups] = useState<any[]>([]);
   const [selectedSub, setSelectedSub] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('');
-  const [installmentNo, setInstallmentNo] = useState('1');
-  const [amount, setAmount] = useState('25000');
+  const [installmentNo, setInstallmentNo] = useState('');
+  const [amount, setAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState('CASH');
   const [externalRef, setExternalRef] = useState('');
   const [loading, setLoading] = useState(false);
@@ -371,17 +586,19 @@ function CollectPaymentTab({ user }: { user: any }) {
   }, []);
 
   const initData = async () => {
-    const sRes = await api.get('/subscribers');
-    const gRes = await api.get('/chit-groups');
-    setSubscribers(sRes.data.data);
-    setGroups(gRes.data.data);
-    if (sRes.data.data.length > 0) setSelectedSub(sRes.data.data[0].id);
-    if (gRes.data.data.length > 0) setSelectedGroup(gRes.data.data[0].id);
+    try {
+      const sRes = await api.get('/subscribers');
+      const gRes = await api.get('/chit-groups');
+      setSubscribers(sRes.data.data || []);
+      setGroups(gRes.data.data || []);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleRecordPayment = async () => {
-    if (!selectedSub || !selectedGroup || !amount) {
-      alert('Please fill all payment fields');
+    if (!selectedSub || !selectedGroup || !installmentNo.trim() || !amount.trim()) {
+      alert('Please fill all payment details');
       return;
     }
 
@@ -393,12 +610,15 @@ function CollectPaymentTab({ user }: { user: any }) {
         installmentNo: Number(installmentNo),
         amount: Number(amount),
         paymentMode,
-        externalRef,
+        externalRef: externalRef.trim() || undefined,
         idempotencyKey: `TXN-${Date.now()}`,
       });
 
       setReceipt(res.data.data);
       alert(`Receipt ${res.data.data.receiptNo} generated successfully!`);
+      setInstallmentNo('');
+      setAmount('');
+      setExternalRef('');
     } catch (e: any) {
       alert(e.response?.data?.message || 'Failed to record payment');
     } finally {
@@ -406,11 +626,22 @@ function CollectPaymentTab({ user }: { user: any }) {
     }
   };
 
+  if (subscribers.length === 0 || groups.length === 0) {
+    return (
+      <View style={styles.emptyBox}>
+        <Text style={styles.emptyText}>Cannot record payments yet.</Text>
+        <Text style={styles.emptySubText}>
+          {subscribers.length === 0 ? 'Please add subscribers first.' : 'Please create a chit group first.'}
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.tabScroll}>
-      <Text style={styles.sectionTitle}>Record Field Payment & Issue Receipt</Text>
+      <Text style={styles.sectionTitle}>Record Payment & Issue Receipt</Text>
 
-      <Text style={styles.label}>Select Subscriber</Text>
+      <Text style={styles.label}>Select Subscriber *</Text>
       <View style={styles.pickerBox}>
         {subscribers.map((s) => (
           <TouchableOpacity
@@ -425,20 +656,40 @@ function CollectPaymentTab({ user }: { user: any }) {
         ))}
       </View>
 
-      <Text style={styles.label}>Installment Month Number</Text>
+      <Text style={styles.label}>Select Chit Group *</Text>
+      <View style={styles.pickerBox}>
+        {groups.map((g) => (
+          <TouchableOpacity
+            key={g.id}
+            style={[styles.pickerItem, selectedGroup === g.id && styles.pickerItemActive]}
+            onPress={() => {
+              setSelectedGroup(g.id);
+              if (g.monthlyInstallment) setAmount(String(g.monthlyInstallment));
+            }}
+          >
+            <Text style={selectedGroup === g.id ? styles.pickerTextActive : styles.pickerText}>
+              {g.name} ({g.groupCode})
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={styles.label}>Installment Month Number *</Text>
       <TextInput
         style={styles.input}
         value={installmentNo}
         onChangeText={setInstallmentNo}
         keyboardType="numeric"
+        placeholder="e.g. 1"
       />
 
-      <Text style={styles.label}>Amount Received (₹)</Text>
+      <Text style={styles.label}>Amount Received (₹) *</Text>
       <TextInput
         style={styles.input}
         value={amount}
         onChangeText={setAmount}
         keyboardType="numeric"
+        placeholder="Amount received"
       />
 
       <Text style={styles.label}>Payment Method</Text>
@@ -461,7 +712,7 @@ function CollectPaymentTab({ user }: { user: any }) {
             style={styles.input}
             value={externalRef}
             onChangeText={setExternalRef}
-            placeholder="e.g. UPI/123456789/ICICI"
+            placeholder="e.g. UPI/123456789/HDFC"
           />
         </>
       )}
@@ -475,8 +726,8 @@ function CollectPaymentTab({ user }: { user: any }) {
           <Text style={styles.receiptTitle}>OFFICIAL RECEIPT: {receipt.receiptNo}</Text>
           <Text style={styles.receiptSub}>Subscriber: {receipt.subscriberName}</Text>
           <Text style={styles.receiptSub}>Amount Paid: ₹{receipt.amount}</Text>
-          <Text style={styles.receiptSub}>Mode: {receipt.paymentMode}</Text>
-          <Text style={styles.receiptSub}>Status: {receipt.verificationStatus}</Text>
+          <Text style={styles.receiptSub}>Payment Mode: {receipt.paymentMode}</Text>
+          <Text style={styles.receiptSub}>Verification Status: {receipt.verificationStatus}</Text>
         </View>
       )}
     </ScrollView>
@@ -489,8 +740,8 @@ function AuctionsTab({ user }: { user: any }) {
   const [selectedGroup, setSelectedGroup] = useState('');
   const [subscribers, setSubscribers] = useState<any[]>([]);
   const [winnerSub, setWinnerSub] = useState('');
-  const [installmentNo, setInstallmentNo] = useState('1');
-  const [winningDiscount, setWinningDiscount] = useState('50000');
+  const [installmentNo, setInstallmentNo] = useState('');
+  const [winningDiscount, setWinningDiscount] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -498,15 +749,24 @@ function AuctionsTab({ user }: { user: any }) {
   }, []);
 
   const loadData = async () => {
-    const gRes = await api.get('/chit-groups');
-    const sRes = await api.get('/subscribers');
-    setGroups(gRes.data.data);
-    setSubscribers(sRes.data.data);
-    if (gRes.data.data.length > 0) setSelectedGroup(gRes.data.data[0].id);
-    if (sRes.data.data.length > 0) setWinnerSub(sRes.data.data[0].id);
+    try {
+      const gRes = await api.get('/chit-groups');
+      const sRes = await api.get('/subscribers');
+      setGroups(gRes.data.data || []);
+      setSubscribers(sRes.data.data || []);
+      if (gRes.data.data?.length > 0) setSelectedGroup(gRes.data.data[0].id);
+      if (sRes.data.data?.length > 0) setWinnerSub(sRes.data.data[0].id);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleConfirmAuction = async () => {
+    if (!selectedGroup || !winnerSub || !installmentNo.trim() || !winningDiscount.trim()) {
+      alert('Please fill all auction details');
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await api.post('/auctions/confirm', {
@@ -520,6 +780,8 @@ function AuctionsTab({ user }: { user: any }) {
       alert(
         `Auction Confirmed!\nForeman Commission: ₹${res.data.data.foremanCommission}\nDividend Per Member: ₹${res.data.data.dividendPerMember}`
       );
+      setWinningDiscount('');
+      setInstallmentNo('');
     } catch (e: any) {
       alert(e.response?.data?.message || 'Failed to confirm auction');
     } finally {
@@ -527,20 +789,68 @@ function AuctionsTab({ user }: { user: any }) {
     }
   };
 
+  if (groups.length === 0 || subscribers.length === 0) {
+    return (
+      <View style={styles.emptyBox}>
+        <Text style={styles.emptyText}>No chit groups or subscribers available for auction.</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.tabScroll}>
       <Text style={styles.sectionTitle}>Record Monthly Auction & Dividend</Text>
 
-      <Text style={styles.label}>Winning Bid Discount Offered (₹)</Text>
+      <Text style={styles.label}>Select Chit Group *</Text>
+      <View style={styles.pickerBox}>
+        {groups.map((g) => (
+          <TouchableOpacity
+            key={g.id}
+            style={[styles.pickerItem, selectedGroup === g.id && styles.pickerItemActive]}
+            onPress={() => setSelectedGroup(g.id)}
+          >
+            <Text style={selectedGroup === g.id ? styles.pickerTextActive : styles.pickerText}>
+              {g.name} ({g.groupCode})
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={styles.label}>Auction Installment Month Number *</Text>
+      <TextInput
+        style={styles.input}
+        value={installmentNo}
+        onChangeText={setInstallmentNo}
+        keyboardType="numeric"
+        placeholder="e.g. 1"
+      />
+
+      <Text style={styles.label}>Winning Subscriber *</Text>
+      <View style={styles.pickerBox}>
+        {subscribers.map((s) => (
+          <TouchableOpacity
+            key={s.id}
+            style={[styles.pickerItem, winnerSub === s.id && styles.pickerItemActive]}
+            onPress={() => setWinnerSub(s.id)}
+          >
+            <Text style={winnerSub === s.id ? styles.pickerTextActive : styles.pickerText}>
+              {s.fullName} ({s.subscriberCode})
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={styles.label}>Winning Bid Discount Offered (₹) *</Text>
       <TextInput
         style={styles.input}
         value={winningDiscount}
         onChangeText={setWinningDiscount}
         keyboardType="numeric"
+        placeholder="Discount amount surrendered"
       />
 
       <TouchableOpacity style={styles.primaryBtn} onPress={handleConfirmAuction} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>CONFIRM WINNING BID & AUTO-CALCULATE DIVIDENDS</Text>}
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>CONFIRM AUCTION & AUTO-CALCULATE DIVIDENDS</Text>}
       </TouchableOpacity>
     </ScrollView>
   );
@@ -553,15 +863,20 @@ function ReconciliationTab({ user }: { user: any }) {
   const [loading, setLoading] = useState(false);
 
   const handleSubmitHandover = async () => {
-    if (!actualCash) return alert('Enter cash amount');
+    if (!actualCash.trim()) {
+      alert('Please enter actual cash amount');
+      return;
+    }
     setLoading(true);
     try {
       const res = await api.post('/reconciliation/handover', {
         handoverDate: new Date().toISOString().split('T')[0],
         actualCash: Number(actualCash),
-        notes,
+        notes: notes.trim() || undefined,
       });
       alert(`Handover Submitted! Status: ${res.data.data.status}`);
+      setActualCash('');
+      setNotes('');
     } catch (e: any) {
       alert(e.response?.data?.message || 'Handover submission failed');
     } finally {
@@ -571,15 +886,24 @@ function ReconciliationTab({ user }: { user: any }) {
 
   return (
     <ScrollView style={styles.tabScroll}>
-      <Text style={styles.sectionTitle}>End-Of-Day Cash Handover Submission</Text>
-      <Text style={styles.label}>Actual Cash Count Handed Over (₹)</Text>
+      <Text style={styles.sectionTitle}>End-Of-Day Cash Handover</Text>
+      <Text style={styles.label}>Actual Cash Count Handed Over (₹) *</Text>
       <TextInput
         style={styles.input}
         value={actualCash}
         onChangeText={setActualCash}
         keyboardType="numeric"
-        placeholder="e.g. 25000"
+        placeholder="Counted cash amount"
       />
+
+      <Text style={styles.label}>Notes</Text>
+      <TextInput
+        style={styles.input}
+        value={notes}
+        onChangeText={setNotes}
+        placeholder="Handover remarks or denomination breakdown"
+      />
+
       <TouchableOpacity style={styles.primaryBtn} onPress={handleSubmitHandover} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>SUBMIT CASH HANDOVER REPORT</Text>}
       </TouchableOpacity>
@@ -606,7 +930,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  headerTitle: { color: '#FFF', fontSize: 18, fontWeight: '700', letterSpacing: 1 },
+  headerTitle: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
   headerSubtitle: { color: '#A0AEC0', fontSize: 12, marginTop: 2 },
   logoutBtn: { backgroundColor: '#E53E3E', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
   logoutText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
@@ -621,20 +945,15 @@ const styles = StyleSheet.create({
   navText: { color: '#CBD5E0', fontSize: 12, fontWeight: '500' },
   navTextActive: { color: '#FFF', fontWeight: '700' },
   loginContainer: { flex: 1, backgroundColor: '#0A2540', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  loginCard: { backgroundColor: '#FFF', width: '100%', maxWidth: 400, borderRadius: 12, padding: 24, elevation: 5 },
+  loginCard: { backgroundColor: '#FFF', width: '100%', maxWidth: 420, borderRadius: 12, padding: 24, elevation: 5 },
   logoBadge: { backgroundColor: '#0070BA', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, alignSelf: 'flex-start', marginBottom: 12 },
-  logoBadgeText: { color: '#FFF', fontWeight: 'bold' },
+  logoBadgeText: { color: '#FFF', fontWeight: 'bold', fontSize: 11 },
   loginTitle: { fontSize: 22, fontWeight: 'bold', color: '#1A202C' },
   loginSub: { fontSize: 13, color: '#718096', marginBottom: 20 },
   label: { fontSize: 13, fontWeight: '600', color: '#2D3748', marginTop: 12, marginBottom: 6 },
   input: { backgroundColor: '#EDF2F7', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#1A202C' },
   primaryBtn: { backgroundColor: '#0070BA', borderRadius: 8, paddingVertical: 14, marginTop: 20, alignItems: 'center' },
   primaryBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 13, letterSpacing: 0.5 },
-  quickLoginBox: { marginTop: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#E2E8F0' },
-  quickTitle: { fontSize: 12, color: '#718096', marginBottom: 8 },
-  quickRow: { flexDirection: 'row', gap: 8 },
-  quickBadge: { backgroundColor: '#EDF2F7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
-  quickText: { fontSize: 11, color: '#2B6CB0', fontWeight: '600' },
   errorText: { color: '#E53E3E', fontSize: 12, marginBottom: 10 },
   tabScroll: { flex: 1, padding: 16 },
   tabContainer: { flex: 1, padding: 16 },
@@ -644,11 +963,16 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 12, color: '#718096', fontWeight: '600' },
   cardValue: { fontSize: 22, fontWeight: 'bold', marginTop: 4 },
   searchBar: { backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 12, elevation: 1 },
+  addBtn: { backgroundColor: '#27AE60', paddingHorizontal: 16, justifyContent: 'center', borderRadius: 8 },
+  addBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
   listItem: { backgroundColor: '#FFF', borderRadius: 8, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center' },
   itemHeader: { fontSize: 14, fontWeight: 'bold', color: '#2D3748' },
   itemSub: { fontSize: 12, color: '#718096', marginTop: 2 },
   statusBadge: { backgroundColor: '#C6F6D5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
   statusText: { color: '#22543D', fontSize: 10, fontWeight: 'bold' },
+  emptyBox: { padding: 40, alignItems: 'center', justifyContent: 'center' },
+  emptyText: { fontSize: 16, fontWeight: 'bold', color: '#718096' },
+  emptySubText: { fontSize: 12, color: '#A0AEC0', marginTop: 4 },
   groupCard: { backgroundColor: '#FFF', padding: 16, borderRadius: 8, marginBottom: 12, elevation: 2 },
   groupCode: { fontSize: 12, color: '#0070BA', fontWeight: 'bold' },
   groupName: { fontSize: 16, fontWeight: 'bold', color: '#1A202C', marginVertical: 4 },
@@ -666,4 +990,9 @@ const styles = StyleSheet.create({
   receiptBox: { marginTop: 20, backgroundColor: '#EBF8FF', borderColor: '#3182CE', borderWidth: 1, padding: 16, borderRadius: 8 },
   receiptTitle: { color: '#2B6CB0', fontWeight: 'bold', fontSize: 14, marginBottom: 6 },
   receiptSub: { color: '#2D3748', fontSize: 12, marginTop: 2 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#FFF', width: '100%', maxWidth: 450, maxHeight: '90%', borderRadius: 12, padding: 20 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1A202C', marginBottom: 14 },
+  cancelBtn: { backgroundColor: '#CBD5E0', borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
+  cancelBtnText: { color: '#2D3748', fontWeight: 'bold', fontSize: 13 },
 });
