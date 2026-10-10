@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "cd backend && npm run dev",
     "build": "cd backend && npm install && npx prisma generate && npm run build && cd ../mobile && npm install && npm run build"
   },
   "dependencies": {
