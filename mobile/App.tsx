@@ -43,55 +43,58 @@ function MainApp() {
 
       {/* Role Navigation Bar with Responsive Horizontal Scroll for Mobiles/Tablets/Desktops */}
       <View style={styles.navBarWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.navBar}
-        >
-          <TouchableOpacity
-            style={[styles.navItem, activeTab === 'dashboard' && styles.navItemActive]}
-            onPress={() => setActiveTab('dashboard')}
+        <View style={styles.navBarInner}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.navScroll}
+            contentContainerStyle={styles.navContentContainer}
           >
-            <Text style={[styles.navText, activeTab === 'dashboard' && styles.navTextActive]}>📊 Dashboard</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.navItem, activeTab === 'subscribers' && styles.navItemActive]}
-            onPress={() => setActiveTab('subscribers')}
-          >
-            <Text style={[styles.navText, activeTab === 'subscribers' && styles.navTextActive]}>👥 Subscribers</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.navItem, activeTab === 'groups' && styles.navItemActive]}
-            onPress={() => setActiveTab('groups')}
-          >
-            <Text style={[styles.navText, activeTab === 'groups' && styles.navTextActive]}>💰 Chit Groups</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.navItem, activeTab === 'payments' && styles.navItemActive]}
-            onPress={() => setActiveTab('payments')}
-          >
-            <Text style={[styles.navText, activeTab === 'payments' && styles.navTextActive]}>💳 Collect</Text>
-          </TouchableOpacity>
-
-          {user.role !== 'COLLECTION_STAFF' && (
             <TouchableOpacity
-              style={[styles.navItem, activeTab === 'auctions' && styles.navItemActive]}
-              onPress={() => setActiveTab('auctions')}
+              style={[styles.navItem, activeTab === 'dashboard' && styles.navItemActive]}
+              onPress={() => setActiveTab('dashboard')}
             >
-              <Text style={[styles.navText, activeTab === 'auctions' && styles.navTextActive]}>🏷 Auctions</Text>
+              <Text style={[styles.navText, activeTab === 'dashboard' && styles.navTextActive]}>📊 Dashboard</Text>
             </TouchableOpacity>
-          )}
 
-          <TouchableOpacity
-            style={[styles.navItem, activeTab === 'reconciliation' && styles.navItemActive]}
-            onPress={() => setActiveTab('reconciliation')}
-          >
-            <Text style={[styles.navText, activeTab === 'reconciliation' && styles.navTextActive]}>💼 Cash Handover</Text>
-          </TouchableOpacity>
-        </ScrollView>
+            <TouchableOpacity
+              style={[styles.navItem, activeTab === 'subscribers' && styles.navItemActive]}
+              onPress={() => setActiveTab('subscribers')}
+            >
+              <Text style={[styles.navText, activeTab === 'subscribers' && styles.navTextActive]}>👥 Subscribers</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.navItem, activeTab === 'groups' && styles.navItemActive]}
+              onPress={() => setActiveTab('groups')}
+            >
+              <Text style={[styles.navText, activeTab === 'groups' && styles.navTextActive]}>💰 Chit Groups</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.navItem, activeTab === 'payments' && styles.navItemActive]}
+              onPress={() => setActiveTab('payments')}
+            >
+              <Text style={[styles.navText, activeTab === 'payments' && styles.navTextActive]}>💳 Collect</Text>
+            </TouchableOpacity>
+
+            {user.role !== 'COLLECTION_STAFF' && (
+              <TouchableOpacity
+                style={[styles.navItem, activeTab === 'auctions' && styles.navItemActive]}
+                onPress={() => setActiveTab('auctions')}
+              >
+                <Text style={[styles.navText, activeTab === 'auctions' && styles.navTextActive]}>🏷 Auctions</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.navItem, activeTab === 'reconciliation' && styles.navItemActive]}
+              onPress={() => setActiveTab('reconciliation')}
+            >
+              <Text style={[styles.navText, activeTab === 'reconciliation' && styles.navTextActive]}>💼 Cash Handover</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
       </View>
 
       {/* Responsive Content Area Centered up to 1280px */}
@@ -1193,17 +1196,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F1F5F9',
+    width: '100%',
+    overflow: 'hidden',
   },
   header: {
     backgroundColor: '#0A2540',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    width: '100%',
   },
   headerInner: {
     maxWidth: 1280,
     width: '100%',
     alignSelf: 'center',
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1238,14 +1244,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F2F52',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    width: '100%',
+    overflow: 'hidden',
   },
-  navBar: {
+  navBarInner: {
     maxWidth: 1280,
     width: '100%',
     alignSelf: 'center',
+  },
+  navScroll: {
+    width: '100%',
+  },
+  navContentContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 8,
   },
@@ -1253,6 +1266,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
+    flexShrink: 0,
   },
   navItemActive: {
     backgroundColor: '#2563EB',
@@ -1268,6 +1282,7 @@ const styles = StyleSheet.create({
   },
   contentArea: {
     flex: 1,
+    width: '100%',
   },
   contentInner: {
     flex: 1,
@@ -1277,11 +1292,13 @@ const styles = StyleSheet.create({
   },
   tabScroll: {
     flex: 1,
+    width: '100%',
     paddingHorizontal: 16,
     paddingVertical: 18,
   },
   tabContainer: {
     flex: 1,
+    width: '100%',
     paddingHorizontal: 16,
     paddingVertical: 18,
   },
@@ -1297,6 +1314,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 14,
     marginBottom: 16,
+    width: '100%',
   },
   card: {
     backgroundColor: '#FFF',
@@ -1307,8 +1325,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 6,
+    width: '100%',
+    flexBasis: 260,
     flexGrow: 1,
-    minWidth: 260,
     borderLeftWidth: 5,
   },
   cardTitle: {
