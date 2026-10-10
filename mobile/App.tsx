@@ -2440,10 +2440,27 @@ function BackupsTab({ user }: { user: any }) {
   const [exportedData, setExportedData] = useState<any | null>(null);
   const [downloadBlobUrl, setDownloadBlobUrl] = useState<string | null>(null);
   const [downloadFileName, setDownloadFileName] = useState<string>('');
+  const [availableTables, setAvailableTables] = useState<any[]>([]);
+  const [loadingTables, setLoadingTables] = useState(false);
 
   useEffect(() => {
     loadBackups();
+    loadDatabaseTables();
   }, []);
+
+  const loadDatabaseTables = async () => {
+    try {
+      setLoadingTables(true);
+      const res = await api.get('/super-admin/export/tables');
+      if (res.data?.success && Array.isArray(res.data?.tables)) {
+        setAvailableTables(res.data.tables);
+      }
+    } catch (e) {
+      console.error('Failed to discover database tables:', e);
+    } finally {
+      setLoadingTables(false);
+    }
+  };
 
   const loadBackups = async () => {
     try {
@@ -2713,40 +2730,61 @@ function BackupsTab({ user }: { user: any }) {
 
         {/* 1. Entity Selection */}
         <View style={{ marginBottom: 16 }}>
-          <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155', marginBottom: 8 }}>
-            1. Select Export Scope / Table:
-          </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155' }}>
+              1. Select Export Scope / Table ({availableTables.length > 0 ? `${availableTables.length - 1} tables discovered in PostgreSQL` : 'Database Tables'}):
+            </Text>
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F0F9FF', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#BAE6FD' }}
+              onPress={loadDatabaseTables}
+              disabled={loadingTables}
+            >
+              {loadingTables ? (
+                <ActivityIndicator size="small" color="#0284C7" />
+              ) : (
+                <Text style={{ fontSize: 11, color: '#0284C7', fontWeight: '800' }}>🔄 Sync DB Schema</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {[
-              { id: 'all', name: '🌐 Entire Database (Full Dump)', isPrimary: true },
-              { id: 'companies', name: '🏢 Companies' },
-              { id: 'users', name: '👥 Users & Admins' },
-              { id: 'branches', name: '🏛️ Branches' },
-              { id: 'subscribers', name: '👤 Subscribers' },
-              { id: 'chit-groups', name: '📊 Chit Groups' },
-              { id: 'transactions', name: '💳 Payment Transactions' },
-              { id: 'audit-logs', name: '📋 Audit Logs' },
-            ].map((ent) => (
-              <TouchableOpacity
-                key={ent.id}
-                style={[
-                  styles.filterChip,
-                  exportEntity === ent.id && styles.filterChipActive,
-                  ent.isPrimary && exportEntity === ent.id && { backgroundColor: '#0F172A', borderColor: '#0F172A' },
-                  ent.isPrimary && exportEntity !== ent.id && { borderColor: '#93C5FD', backgroundColor: '#EFF6FF' },
-                ]}
-                onPress={() => setExportEntity(ent.id)}
-              >
-                <Text
+            {(availableTables.length > 0
+              ? availableTables
+              : [
+                  { id: 'all', tableName: 'all', name: '🌐 Entire Database (Full Dump)', isPrimary: true },
+                  { id: 'Company', tableName: 'Company', name: '🏢 Companies' },
+                  { id: 'User', tableName: 'User', name: '👥 Users & Admins' },
+                  { id: 'Branch', tableName: 'Branch', name: '🏛️ Branches' },
+                  { id: 'Subscriber', tableName: 'Subscriber', name: '👤 Subscribers' },
+                  { id: 'ChitGroup', tableName: 'ChitGroup', name: '📊 Chit Groups' },
+                  { id: 'PaymentTransaction', tableName: 'PaymentTransaction', name: '💳 Payment Transactions' },
+                  { id: 'AuditLog', tableName: 'AuditLog', name: '📋 Audit Logs' },
+                ]
+            ).map((ent: any) => {
+              const isSelected = exportEntity === ent.id || exportEntity === ent.tableName;
+              return (
+                <TouchableOpacity
+                  key={ent.id}
                   style={[
-                    exportEntity === ent.id ? styles.filterChipTextActive : styles.filterChipText,
-                    ent.isPrimary && exportEntity !== ent.id && { color: '#1D4ED8', fontWeight: '800' },
+                    styles.filterChip,
+                    isSelected && styles.filterChipActive,
+                    ent.isPrimary && isSelected && { backgroundColor: '#0F172A', borderColor: '#0F172A' },
+                    ent.isPrimary && !isSelected && { borderColor: '#93C5FD', backgroundColor: '#EFF6FF' },
                   ]}
+                  onPress={() => setExportEntity(ent.id)}
                 >
-                  {ent.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      isSelected ? styles.filterChipTextActive : styles.filterChipText,
+                      ent.isPrimary && !isSelected && { color: '#1D4ED8', fontWeight: '800' },
+                    ]}
+                  >
+                    {ent.name}
+                    {typeof ent.count === 'number' && !ent.isPrimary ? ` (${ent.count})` : ''}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 

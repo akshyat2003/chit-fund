@@ -979,72 +979,137 @@ export const triggerManualBackup = async (req: AuthRequest, res: Response) => {
 };
 
 // ==========================================
-// SA-17: DATABASE DATA EXPORT
+// SA-17: DYNAMIC DATABASE TABLE DISCOVERY & EXPORT
 // ==========================================
+
+// Helper mapping for table icons & human-friendly descriptions
+const TABLE_LABEL_MAP: Record<string, { label: string; icon: string }> = {
+  Company: { label: 'Companies', icon: '🏢' },
+  Branch: { label: 'Branches', icon: '🏛️' },
+  User: { label: 'Users & Admins', icon: '👥' },
+  Subscriber: { label: 'Subscribers', icon: '👤' },
+  ChitGroup: { label: 'Chit Groups', icon: '📊' },
+  ChitGroupMember: { label: 'Group Members', icon: '🎟️' },
+  PaymentTransaction: { label: 'Payment Transactions', icon: '💳' },
+  Receipt: { label: 'Receipts', icon: '🧾' },
+  CashHandover: { label: 'Cash Handovers', icon: '🤝' },
+  Expense: { label: 'Expenses', icon: '💸' },
+  Auction: { label: 'Auctions', icon: '🏆' },
+  AuctionBid: { label: 'Auction Bids', icon: '🏷️' },
+  Payout: { label: 'Payouts', icon: '💰' },
+  InstallmentSchedule: { label: 'Installment Schedules', icon: '📅' },
+  AuditLog: { label: 'Audit Trail Logs', icon: '📋' },
+  RefreshToken: { label: 'Session Tokens', icon: '🔑' },
+};
+
+export const getDatabaseTables = async (req: AuthRequest, res: Response) => {
+  try {
+    // Dynamically discover all active PostgreSQL tables from public schema
+    const rawTables: { table_name: string }[] = await prisma.$queryRawUnsafe(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+        AND table_type = 'BASE TABLE' 
+        AND table_name NOT LIKE '_prisma_%'
+      ORDER BY table_name ASC;
+    `);
+
+    let totalRecords = 0;
+    const discoveredTables = await Promise.all(
+      rawTables.map(async (t) => {
+        const tbl = t.table_name;
+        let count = 0;
+        try {
+          const countRes: { count: bigint }[] = await prisma.$queryRawUnsafe(
+            `SELECT COUNT(*)::bigint as count FROM "${tbl}";`
+          );
+          count = Number(countRes[0]?.count || 0);
+        } catch {
+          count = 0;
+        }
+        totalRecords += count;
+
+        const meta = TABLE_LABEL_MAP[tbl] || {
+          label: tbl.replace(/([A-Z])/g, ' $1').trim(),
+          icon: '📁',
+        };
+
+        return {
+          id: tbl,
+          tableName: tbl,
+          name: `${meta.icon} ${meta.label}`,
+          icon: meta.icon,
+          count,
+        };
+      })
+    );
+
+    return res.json({
+      success: true,
+      totalTables: discoveredTables.length,
+      totalRecords,
+      tables: [
+        {
+          id: 'all',
+          tableName: 'all',
+          name: '🌐 Entire Database (All Tables)',
+          icon: '🌐',
+          count: totalRecords,
+          isPrimary: true,
+        },
+        ...discoveredTables,
+      ],
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
 
 export const exportData = async (req: AuthRequest, res: Response) => {
   try {
-    const entity = req.params.entity || (req.query.entity as string) || 'all';
+    const requestedEntity = (req.params.entity || (req.query.entity as string) || 'all').trim();
 
-    if (entity === 'all' || entity === 'database' || entity === 'full') {
-      const [
-        companies,
-        branches,
-        users,
-        subscribers,
-        chitGroups,
-        chitGroupMembers,
-        paymentTransactions,
-        auditLogs,
-        payouts,
-        expenses,
-        auctions,
-      ] = await Promise.all([
-        prisma.company.findMany().catch(() => []),
-        prisma.branch.findMany().catch(() => []),
-        prisma.user.findMany({
-          select: {
-            id: true,
-            username: true,
-            fullName: true,
-            role: true,
-            phone: true,
-            email: true,
-            status: true,
-            companyId: true,
-            branchId: true,
-            createdAt: true,
-            company: { select: { code: true, name: true } },
-          },
-        }).catch(() => []),
-        prisma.subscriber.findMany().catch(() => []),
-        prisma.chitGroup.findMany().catch(() => []),
-        prisma.chitGroupMember.findMany().catch(() => []),
-        prisma.paymentTransaction.findMany().catch(() => []),
-        prisma.auditLog.findMany({
-          orderBy: { createdAt: 'desc' },
-          include: {
-            user: { select: { username: true, fullName: true, role: true } },
-            company: { select: { code: true, name: true } },
-          },
-        }).catch(() => []),
-        prisma.payout.findMany().catch(() => []),
-        prisma.expense.findMany().catch(() => []),
-        prisma.auction.findMany().catch(() => []),
-      ]);
+    // Dynamically introspect all public database tables
+    const rawTables: { table_name: string }[] = await prisma.$queryRawUnsafe(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+        AND table_type = 'BASE TABLE' 
+        AND table_name NOT LIKE '_prisma_%'
+      ORDER BY table_name ASC;
+    `);
 
-      const totalCount =
-        companies.length +
-        branches.length +
-        users.length +
-        subscribers.length +
-        chitGroups.length +
-        chitGroupMembers.length +
-        paymentTransactions.length +
-        auditLogs.length +
-        payouts.length +
-        expenses.length +
-        auctions.length;
+    const isFullExport =
+      requestedEntity === 'all' ||
+      requestedEntity === 'database' ||
+      requestedEntity === 'full' ||
+      !requestedEntity;
+
+    if (isFullExport) {
+      const tablesData: Record<string, any[]> = {};
+      const tableCounts: Record<string, number> = {};
+      let totalCount = 0;
+
+      for (const t of rawTables) {
+        const tbl = t.table_name;
+        try {
+          const rows: any[] = await prisma.$queryRawUnsafe(`SELECT * FROM "${tbl}";`);
+          // Sanitize sensitive credentials if User table
+          const sanitizedRows = rows.map((r) => {
+            if (r && typeof r === 'object' && 'passwordHash' in r) {
+              const { passwordHash, ...safeUser } = r;
+              return safeUser;
+            }
+            return r;
+          });
+          tablesData[tbl] = sanitizedRows;
+          tableCounts[tbl] = sanitizedRows.length;
+          totalCount += sanitizedRows.length;
+        } catch (err) {
+          tablesData[tbl] = [];
+          tableCounts[tbl] = 0;
+        }
+      }
 
       const fullDatabaseDump = {
         metadata: {
@@ -1052,33 +1117,10 @@ export const exportData = async (req: AuthRequest, res: Response) => {
           system: 'ChitKart Management Platform',
           exportedAt: new Date().toISOString(),
           totalRecords: totalCount,
-          tableCounts: {
-            companies: companies.length,
-            branches: branches.length,
-            users: users.length,
-            subscribers: subscribers.length,
-            chitGroups: chitGroups.length,
-            chitGroupMembers: chitGroupMembers.length,
-            paymentTransactions: paymentTransactions.length,
-            auditLogs: auditLogs.length,
-            payouts: payouts.length,
-            expenses: expenses.length,
-            auctions: auctions.length,
-          },
+          totalTables: Object.keys(tablesData).length,
+          tableCounts,
         },
-        tables: {
-          companies,
-          branches,
-          users,
-          subscribers,
-          chitGroups,
-          chitGroupMembers,
-          paymentTransactions,
-          auditLogs,
-          payouts,
-          expenses,
-          auctions,
-        },
+        tables: tablesData,
       };
 
       try {
@@ -1088,7 +1130,7 @@ export const exportData = async (req: AuthRequest, res: Response) => {
             companyId: req.user?.companyId || null,
             action: 'DATA_EXPORT_DOWNLOAD',
             entity: 'FULL_DATABASE',
-            details: JSON.stringify({ count: totalCount, scope: 'ALL_TABLES' }),
+            details: JSON.stringify({ count: totalCount, totalTables: Object.keys(tablesData).length, scope: 'ALL_TABLES' }),
             ipAddress: req.ip || 'unknown',
           },
         });
@@ -1102,40 +1144,50 @@ export const exportData = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    let data: any[] = [];
-    if (entity === 'subscribers') {
-      data = await prisma.subscriber.findMany();
-    } else if (entity === 'chit-groups') {
-      data = await prisma.chitGroup.findMany();
-    } else if (entity === 'audit-logs') {
-      data = await prisma.auditLog.findMany({
-        orderBy: { createdAt: 'desc' },
-        include: {
-          user: { select: { username: true, fullName: true, role: true } },
-          company: { select: { code: true, name: true } },
-        },
+    // Single Table Export: Match case-insensitively or with standard aliases
+    const aliasMap: Record<string, string> = {
+      companies: 'Company',
+      company: 'Company',
+      users: 'User',
+      user: 'User',
+      branches: 'Branch',
+      branch: 'Branch',
+      subscribers: 'Subscriber',
+      subscriber: 'Subscriber',
+      'chit-groups': 'ChitGroup',
+      chitgroups: 'ChitGroup',
+      chitgroup: 'ChitGroup',
+      'audit-logs': 'AuditLog',
+      auditlogs: 'AuditLog',
+      auditlog: 'AuditLog',
+      transactions: 'PaymentTransaction',
+      payments: 'PaymentTransaction',
+      receipts: 'Receipt',
+      handovers: 'CashHandover',
+      expenses: 'Expense',
+      auctions: 'Auction',
+      payouts: 'Payout',
+    };
+
+    const targetTable =
+      aliasMap[requestedEntity.toLowerCase()] ||
+      rawTables.find((t) => t.table_name.toLowerCase() === requestedEntity.toLowerCase())?.table_name;
+
+    if (!targetTable) {
+      return res.status(404).json({
+        success: false,
+        message: `Database table '${requestedEntity}' was not found in schema. Available tables: ${rawTables.map((t) => t.table_name).join(', ')}`,
       });
-    } else if (entity === 'companies') {
-      data = await prisma.company.findMany();
-    } else if (entity === 'users') {
-      data = await prisma.user.findMany({
-        select: {
-          id: true,
-          username: true,
-          fullName: true,
-          role: true,
-          phone: true,
-          email: true,
-          status: true,
-          createdAt: true,
-          company: { select: { code: true, name: true } },
-        },
-      });
-    } else if (entity === 'branches') {
-      data = await prisma.branch.findMany();
-    } else if (entity === 'transactions' || entity === 'payments') {
-      data = await prisma.paymentTransaction.findMany();
     }
+
+    const rows: any[] = await prisma.$queryRawUnsafe(`SELECT * FROM "${targetTable}";`);
+    const sanitizedRows = rows.map((r) => {
+      if (r && typeof r === 'object' && 'passwordHash' in r) {
+        const { passwordHash, ...safeUser } = r;
+        return safeUser;
+      }
+      return r;
+    });
 
     try {
       await prisma.auditLog.create({
@@ -1143,14 +1195,20 @@ export const exportData = async (req: AuthRequest, res: Response) => {
           userId: req.user?.id || null,
           companyId: req.user?.companyId || null,
           action: 'DATA_EXPORT_DOWNLOAD',
-          entity,
-          details: JSON.stringify({ count: data.length, entity }),
+          entity: targetTable,
+          details: JSON.stringify({ count: sanitizedRows.length, table: targetTable }),
           ipAddress: req.ip || 'unknown',
         },
       });
     } catch (e) {}
 
-    return res.json({ success: true, count: data.length, isFullDatabase: false, data });
+    return res.json({
+      success: true,
+      count: sanitizedRows.length,
+      isFullDatabase: false,
+      data: sanitizedRows,
+      entity: targetTable,
+    });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }

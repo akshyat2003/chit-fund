@@ -179,7 +179,8 @@ router.put('/super-admin/integrations', authenticateToken, requireRoles('SUPER_A
 router.get('/super-admin/backups', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getBackups);
 router.post('/super-admin/backups/trigger', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.triggerManualBackup);
 
-// SA-17: Database Data Export
+// SA-17: Database Data Export & Dynamic Table Discovery
+router.get('/super-admin/export/tables', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getDatabaseTables);
 router.get('/super-admin/export', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.exportData);
 router.get('/super-admin/export/:entity', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.exportData);
 
