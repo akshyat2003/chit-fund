@@ -35,10 +35,18 @@ router.get('/health', (req, res) => {
 // Authentication Routes (JWT + Cookies + Sessions + OTP)
 router.post('/auth/login', authController.login);
 router.post('/auth/logout', authenticateToken, authController.logout);
+router.post('/auth/refresh-token', authController.refreshToken);
+router.post('/auth/change-password', authenticateToken, authController.changePassword);
 router.post('/auth/forgot-password', authController.forgotPassword);
 router.post('/auth/verify-otp', authController.verifyOtp);
 router.post('/auth/reset-password', authController.resetPassword);
 router.get('/auth/me', authenticateToken, authController.me);
+
+// User Account Administration (FR-AUTH-007, FR-AUTH-013, FR-AUTH-014)
+router.get('/auth/users', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.listUsers);
+router.post('/auth/users', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.createUser);
+router.patch('/auth/users/:id/status', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.updateUserStatus);
+router.post('/auth/users/:id/revoke-sessions', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.revokeUserSessions);
 
 // Dashboard Statistics Route
 router.get('/reports/dashboard', authenticateToken, reportController.getDashboardStats);
