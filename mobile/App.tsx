@@ -631,64 +631,14 @@ function DashboardTab({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab
       <Text style={styles.sectionTitle}>Dashboard ({stats?.role || user.role})</Text>
 
       {stats?.role === 'SUPER_ADMIN' && (
-        <View>
-          <View style={styles.gridRow}>
-            <MetricCard title="Active Companies" value={stats.activeCompanies || 0} color="#0070BA" />
-            <MetricCard title="Active Branches" value={stats.activeBranches || 0} color="#27AE60" />
-            <MetricCard title="Total Subscribers" value={stats.totalSubscribers || 0} color="#8E44AD" />
-            <MetricCard title="Active Chit Groups" value={stats.activeGroups || 0} color="#D35400" />
-            <MetricCard title="Active Users" value={stats.activeUsers ?? stats.totalUsers ?? 0} color="#10B981" />
-            <MetricCard title="Total Platform Users" value={stats.totalUsers || 0} color="#2563EB" />
-            <MetricCard title="System Engine Status" value={stats.systemStatus || 'ONLINE'} color="#16A34A" />
-          </View>
-
-          {/* Super Admin Control Center Card */}
-          <View style={styles.superAdminPanelCard}>
-            <Text style={styles.superAdminPanelTitle}>🛡️ Super Admin Management Center (SA-01 to SA-22)</Text>
-            <Text style={styles.superAdminPanelSub}>
-              Database: Supabase PostgreSQL (Tokyo ap-northeast-1) • Email: Yahoo SMTP Verified • Immutable Financial Logs (FR-SA-018)
-            </Text>
-
-            <View style={styles.saControlsGrid}>
-              <View style={styles.saControlItem}>
-                <Text style={styles.saControlItemTitle}>🏢 Company Setup & SaaS (SA-02, FR-SA-002)</Text>
-                <Text style={styles.saControlItemDesc}>Create & configure companies, branch limits, and provision Initial Admin cum Manager accounts.</Text>
-              </View>
-              <View style={styles.saControlItem}>
-                <Text style={styles.saControlItemTitle}>🔐 Audit & Immutable Ledger (SA-11, FR-SA-018)</Text>
-                <Text style={styles.saControlItemDesc}>Full audit logs on security, authentication, and guaranteed prohibition of transaction tampering.</Text>
-              </View>
-              <View style={styles.saControlItem}>
-                <Text style={styles.saControlItemTitle}>⚖️ Compliance & Statutory (SA-12)</Text>
-                <Text style={styles.saControlItemDesc}>State Chit Funds Act compliance registration, foreman security deposits, and KYC audits.</Text>
-              </View>
-              <View style={styles.saControlItem}>
-                <Text style={styles.saControlItemTitle}>💾 Backup & Disaster Recovery (SA-15)</Text>
-                <Text style={styles.saControlItemDesc}>Continuous Write-Ahead Log (WAL) with 30-day Point-In-Time Recovery in Tokyo AWS region.</Text>
-              </View>
-            </View>
-
-            {onNavigateTab && (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
-                <TouchableOpacity
-                  style={{ backgroundColor: '#38BDF8', paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8 }}
-                  onPress={() => onNavigateTab('admins')}
-                >
-                  <Text style={{ color: '#0F172A', fontWeight: '800', fontSize: 12 }}>
-                    👥 CREATE & MANAGE SUPER ADMINS
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={{ backgroundColor: 'rgba(255, 255, 255, 0.12)', paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8 }}
-                  onPress={() => onNavigateTab('companies')}
-                >
-                  <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>
-                    🏢 ONBOARD COMPANIES
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
+        <View style={styles.gridRow}>
+          <MetricCard title="Active Companies" value={stats.activeCompanies || 0} color="#0070BA" />
+          <MetricCard title="Active Branches" value={stats.activeBranches || 0} color="#27AE60" />
+          <MetricCard title="Total Subscribers" value={stats.totalSubscribers || 0} color="#8E44AD" />
+          <MetricCard title="Active Chit Groups" value={stats.activeGroups || 0} color="#D35400" />
+          <MetricCard title="Active Users" value={stats.activeUsers ?? stats.totalUsers ?? 0} color="#10B981" />
+          <MetricCard title="Total Platform Users" value={stats.totalUsers || 0} color="#2563EB" />
+          <MetricCard title="System Engine Status" value={stats.systemStatus || 'ONLINE'} color="#16A34A" />
         </View>
       )}
 
