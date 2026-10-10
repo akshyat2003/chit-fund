@@ -16,7 +16,6 @@ let platformSettings = {
   notificationTemplates: {
     otpEmail: 'Your ChitKart verification code is {{OTP}}. Valid for 10 minutes.',
     paymentReceipt: 'Dear {{SUBSCRIBER}}, payment of Rs. {{AMOUNT}} received for chit group {{GROUP}}. Receipt: {{RECEIPT}}.',
-    auctionNotice: 'Chit group {{GROUP}} auction scheduled on {{DATE}}. Minimum bid starting at {{MIN_BID}}.',
   },
 };
 

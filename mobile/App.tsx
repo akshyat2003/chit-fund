@@ -2997,7 +2997,6 @@ function NotificationsTab({ user }: { user: any }) {
 
   // Channels
   const [inApp, setInApp] = useState(true);
-  const [sms, setSms] = useState(false);
   const [email, setEmail] = useState(false);
 
   // Search queries for individual picker
@@ -3065,7 +3064,6 @@ function NotificationsTab({ user }: { user: any }) {
 
     const channels: string[] = [];
     if (inApp) channels.push('IN_APP');
-    if (sms) channels.push('SMS');
     if (email) channels.push('EMAIL');
     if (channels.length === 0) channels.push('IN_APP');
 
@@ -3340,7 +3338,6 @@ function NotificationsTab({ user }: { user: any }) {
                     { id: 'GENERAL_ANNOUNCEMENT', label: '📢 Announcement' },
                     { id: 'SYSTEM_ALERT', label: '⚠️ System Alert' },
                     { id: 'PAYMENT_REMINDER', label: '💳 Payment Reminder' },
-                    { id: 'AUCTION_NOTICE', label: '🏆 Auction Notice' },
                     { id: 'SECURITY_NOTICE', label: '🛡️ Security Advisory' },
                   ].map((t) => (
                     <TouchableOpacity
@@ -3388,7 +3385,7 @@ function NotificationsTab({ user }: { user: any }) {
               </Text>
               <TextInput
                 style={[styles.input, { marginBottom: 0 }]}
-                placeholder="e.g. Scheduled System Maintenance or Monthly Auction Notice"
+                placeholder="e.g. Scheduled System Maintenance or Security Advisory"
                 value={title}
                 onChangeText={setTitle}
               />
@@ -3426,15 +3423,6 @@ function NotificationsTab({ user }: { user: any }) {
               >
                 <Text style={inApp ? styles.filterChipTextActive : styles.filterChipText}>
                   {inApp ? '✓ 📱 In-App Dashboard Alert' : '○ 📱 In-App Dashboard Alert'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.filterChip, sms && styles.filterChipActive]}
-                onPress={() => setSms(!sms)}
-              >
-                <Text style={sms ? styles.filterChipTextActive : styles.filterChipText}>
-                  {sms ? '✓ 💬 SMS Alert Dispatch' : '○ 💬 SMS Alert Dispatch'}
                 </Text>
               </TouchableOpacity>
 
