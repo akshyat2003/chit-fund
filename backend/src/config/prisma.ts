@@ -11,10 +11,18 @@ if (!process.env.DIRECT_URL) {
   process.env.DIRECT_URL = SUPABASE_POOLER_URL;
 }
 
-export const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL || SUPABASE_POOLER_URL,
+const dbUrl = process.env.DATABASE_URL || SUPABASE_POOLER_URL;
+
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    datasources: {
+      db: {
+        url: dbUrl,
+      },
     },
-  },
-});
+  });
+
+globalForPrisma.prisma = prisma;

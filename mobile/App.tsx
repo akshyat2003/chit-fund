@@ -100,12 +100,26 @@ function MainApp() {
       {/* Responsive Content Area Centered up to 1280px */}
       <View style={styles.contentArea}>
         <View style={styles.contentInner}>
-          {activeTab === 'dashboard' && <DashboardTab user={user} />}
-          {activeTab === 'subscribers' && <SubscribersTab user={user} />}
-          {activeTab === 'groups' && <ChitGroupsTab user={user} />}
-          {activeTab === 'payments' && <CollectPaymentTab user={user} />}
-          {activeTab === 'auctions' && <AuctionsTab user={user} />}
-          {activeTab === 'reconciliation' && <ReconciliationTab user={user} />}
+          <View style={{ flex: 1, display: activeTab === 'dashboard' ? 'flex' : 'none' }}>
+            <DashboardTab user={user} />
+          </View>
+          <View style={{ flex: 1, display: activeTab === 'subscribers' ? 'flex' : 'none' }}>
+            <SubscribersTab user={user} />
+          </View>
+          <View style={{ flex: 1, display: activeTab === 'groups' ? 'flex' : 'none' }}>
+            <ChitGroupsTab user={user} />
+          </View>
+          <View style={{ flex: 1, display: activeTab === 'payments' ? 'flex' : 'none' }}>
+            <CollectPaymentTab user={user} />
+          </View>
+          {user.role !== 'COLLECTION_STAFF' && (
+            <View style={{ flex: 1, display: activeTab === 'auctions' ? 'flex' : 'none' }}>
+              <AuctionsTab user={user} />
+            </View>
+          )}
+          <View style={{ flex: 1, display: activeTab === 'reconciliation' ? 'flex' : 'none' }}>
+            <ReconciliationTab user={user} />
+          </View>
         </View>
       </View>
     </SafeAreaView>
@@ -853,8 +867,10 @@ function CollectPaymentTab({ user }: { user: any }) {
 
   const initData = async () => {
     try {
-      const sRes = await api.get('/subscribers');
-      const gRes = await api.get('/chit-groups');
+      const [sRes, gRes] = await Promise.all([
+        api.get('/subscribers'),
+        api.get('/chit-groups'),
+      ]);
       setSubscribers(sRes.data.data || []);
       setGroups(gRes.data.data || []);
     } catch (e) {
@@ -1018,8 +1034,10 @@ function AuctionsTab({ user }: { user: any }) {
 
   const loadData = async () => {
     try {
-      const gRes = await api.get('/chit-groups');
-      const sRes = await api.get('/subscribers');
+      const [gRes, sRes] = await Promise.all([
+        api.get('/chit-groups'),
+        api.get('/subscribers'),
+      ]);
       setGroups(gRes.data.data || []);
       setSubscribers(sRes.data.data || []);
       if (gRes.data.data?.length > 0) setSelectedGroup(gRes.data.data[0].id);

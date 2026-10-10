@@ -8,11 +8,13 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     const companyId = req.user?.companyId!;
 
     if (role === 'SUPER_ADMIN') {
-      const activeCompanies = await prisma.company.count({ where: { status: 'ACTIVE' } });
-      const activeBranches = await prisma.branch.count({ where: { status: 'ACTIVE' } });
-      const totalUsers = await prisma.user.count({ where: { status: 'ACTIVE' } });
-      const totalSubscribers = await prisma.subscriber.count({ where: { status: 'ACTIVE' } });
-      const activeGroups = await prisma.chitGroup.count({ where: { status: 'ACTIVE' } });
+      const [activeCompanies, activeBranches, totalUsers, totalSubscribers, activeGroups] = await Promise.all([
+        prisma.company.count({ where: { status: 'ACTIVE' } }),
+        prisma.branch.count({ where: { status: 'ACTIVE' } }),
+        prisma.user.count({ where: { status: 'ACTIVE' } }),
+        prisma.subscriber.count({ where: { status: 'ACTIVE' } }),
+        prisma.chitGroup.count({ where: { status: 'ACTIVE' } }),
+      ]);
 
       return res.json({
         success: true,
@@ -31,34 +33,33 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     if (role === 'MANAGER') {
       const branchId = req.user?.branchId;
       const whereBranch = branchId ? { branchId } : {};
-
-      const activeGroups = await prisma.chitGroup.count({
-        where: { companyId, status: 'ACTIVE', ...whereBranch },
-      });
-      const activeSubscribers = await prisma.subscriber.count({
-        where: { companyId, status: 'ACTIVE', ...whereBranch },
-      });
-
-      // Today's collections
       const todayStr = new Date().toISOString().split('T')[0];
-      const todayTransactions = await prisma.paymentTransaction.findMany({
-        where: {
-          companyId,
-          verificationStatus: { not: 'REVERSED' },
-          createdAt: {
-            gte: new Date(`${todayStr}T00:00:00.000Z`),
-            lte: new Date(`${todayStr}T23:59:59.999Z`),
+
+      const [activeGroups, activeSubscribers, todayTransactions, pendingPayouts] = await Promise.all([
+        prisma.chitGroup.count({
+          where: { companyId, status: 'ACTIVE', ...whereBranch },
+        }),
+        prisma.subscriber.count({
+          where: { companyId, status: 'ACTIVE', ...whereBranch },
+        }),
+        prisma.paymentTransaction.findMany({
+          where: {
+            companyId,
+            verificationStatus: { not: 'REVERSED' },
+            createdAt: {
+              gte: new Date(`${todayStr}T00:00:00.000Z`),
+              lte: new Date(`${todayStr}T23:59:59.999Z`),
+            },
           },
-        },
-      });
+        }),
+        prisma.payout.count({
+          where: { status: 'PENDING', subscriber: { companyId } },
+        }),
+      ]);
 
       const todayTotalCollected = todayTransactions.reduce((acc, t) => acc + t.amount, 0);
       const todayCashCollected = todayTransactions.filter(t => t.paymentMode === 'CASH').reduce((acc, t) => acc + t.amount, 0);
       const todayBankUpiCollected = todayTransactions.filter(t => t.paymentMode !== 'CASH').reduce((acc, t) => acc + t.amount, 0);
-
-      const pendingPayouts = await prisma.payout.count({
-        where: { status: 'PENDING', subscriber: { companyId } },
-      });
 
       return res.json({
         success: true,
@@ -77,21 +78,23 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
 
     // COLLECTION_STAFF role
     const staffId = req.user?.id!;
-    const assignedSubscribers = await prisma.subscriber.count({
-      where: { companyId, assignedStaffId: staffId, status: 'ACTIVE' },
-    });
-
     const todayStr = new Date().toISOString().split('T')[0];
-    const todayTransactions = await prisma.paymentTransaction.findMany({
-      where: {
-        recordedByUserId: staffId,
-        verificationStatus: { not: 'REVERSED' },
-        createdAt: {
-          gte: new Date(`${todayStr}T00:00:00.000Z`),
-          lte: new Date(`${todayStr}T23:59:59.999Z`),
+
+    const [assignedSubscribers, todayTransactions] = await Promise.all([
+      prisma.subscriber.count({
+        where: { companyId, assignedStaffId: staffId, status: 'ACTIVE' },
+      }),
+      prisma.paymentTransaction.findMany({
+        where: {
+          recordedByUserId: staffId,
+          verificationStatus: { not: 'REVERSED' },
+          createdAt: {
+            gte: new Date(`${todayStr}T00:00:00.000Z`),
+            lte: new Date(`${todayStr}T23:59:59.999Z`),
+          },
         },
-      },
-    });
+      }),
+    ]);
 
     const todayAmountCollected = todayTransactions.reduce((acc, t) => acc + t.amount, 0);
     const cashInHand = todayTransactions.filter(t => t.paymentMode === 'CASH').reduce((acc, t) => acc + t.amount, 0);
