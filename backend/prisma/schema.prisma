@@ -53,7 +53,7 @@ model Branch {
 
 model User {
   id           String   @id @default(uuid())
-  companyId    String
+  companyId    String?
   branchId     String?
   role         String   // SUPER_ADMIN, MANAGER, COLLECTION_STAFF
   username     String   @unique
@@ -65,8 +65,8 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch       Branch?  @relation(fields: [branchId], references: [id])
+  company      Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  branch       Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
   
   assignedSubscribers Subscriber[] @relation("AssignedStaff")
   recordedTransactions PaymentTransaction[] @relation("RecordedBy")

@@ -92,7 +92,7 @@ export const login = async (req: AuthRequest, res: Response) => {
     // Audit Log
     await prisma.auditLog.create({
       data: {
-        companyId: user.companyId,
+        companyId: user.companyId || null,
         userId: user.id,
         action: 'USER_LOGIN',
         entity: 'User',
@@ -113,11 +113,13 @@ export const login = async (req: AuthRequest, res: Response) => {
           phone: user.phone,
           email: user.email,
           role: user.role,
-          company: {
-            id: user.company.id,
-            name: user.company.name,
-            code: user.company.code,
-          },
+          company: user.company
+            ? {
+                id: user.company.id,
+                name: user.company.name,
+                code: user.company.code,
+              }
+            : null,
           branch: user.branch
             ? {
                 id: user.branch.id,
@@ -180,11 +182,13 @@ export const me = async (req: AuthRequest, res: Response) => {
         phone: user.phone,
         email: user.email,
         role: user.role,
-        company: {
-          id: user.company.id,
-          name: user.company.name,
-          code: user.company.code,
-        },
+        company: user.company
+          ? {
+              id: user.company.id,
+              name: user.company.name,
+              code: user.company.code,
+            }
+          : null,
         branch: user.branch
           ? {
               id: user.branch.id,
@@ -389,7 +393,7 @@ export const resetPassword = async (req: Request, res: Response) => {
     // Audit log
     await prisma.auditLog.create({
       data: {
-        companyId: updatedUser.companyId,
+        companyId: updatedUser.companyId || null,
         userId: updatedUser.id,
         action: 'PASSWORD_RESET',
         entity: 'User',

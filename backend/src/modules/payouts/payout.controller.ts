@@ -9,7 +9,7 @@ export const listPayouts = async (req: AuthRequest, res: Response) => {
 
     const payouts = await prisma.payout.findMany({
       where: {
-        subscriber: { companyId },
+        ...(companyId ? { subscriber: { companyId } } : {}),
         status: status ? String(status) : undefined,
       },
       include: {

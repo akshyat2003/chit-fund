@@ -5,7 +5,7 @@ import { prisma } from '../config/prisma.js';
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    companyId: string;
+    companyId?: string | null;
     branchId?: string | null;
     role: string;
     phone: string;
