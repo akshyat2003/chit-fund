@@ -201,51 +201,7 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
               <Text style={styles.refLinkText}>Forgot Password?</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Social Icons Section */}
-          <View style={styles.socialRow}>
-            {/* Google Icon */}
-            <TouchableOpacity style={styles.socialBox} activeOpacity={0.7} onPress={() => alert('Google login configured for enterprise SSO')}>
-              <Text style={{ fontSize: 22, fontWeight: 'bold' }}>G</Text>
-            </TouchableOpacity>
-
-            {/* Apple Icon */}
-            <TouchableOpacity style={styles.socialBox} activeOpacity={0.7} onPress={() => alert('Apple ID login configured for enterprise SSO')}>
-              <Text style={{ fontSize: 24, fontWeight: 'bold' }}></Text>
-            </TouchableOpacity>
-
-            {/* Facebook Icon */}
-            <TouchableOpacity style={styles.socialBox} activeOpacity={0.7} onPress={() => alert('Social sign-in configured for enterprise SSO')}>
-              <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#1877F2' }}>f</Text>
-            </TouchableOpacity>
-          </View>
         </View>
-
-        {/* Server Endpoint Config Link */}
-        <TouchableOpacity
-          style={{ marginTop: 32, alignSelf: 'center', opacity: 0.6 }}
-          onPress={() => setShowServerConfig(!showServerConfig)}
-        >
-          <Text style={{ fontSize: 11, color: '#E2E8D5' }}>⚙️ Endpoint: {API_BASE_URL}</Text>
-        </TouchableOpacity>
-
-        {showServerConfig && (
-          <View style={{ marginTop: 10, padding: 12, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, width: '100%', maxWidth: 360, alignSelf: 'center' }}>
-            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#FFF', marginBottom: 4 }}>Backend API URL:</Text>
-            <TextInput
-              style={[styles.pillInput, { height: 42, fontSize: 12, borderRadius: 8, paddingHorizontal: 12 }]}
-              value={customServerUrl}
-              onChangeText={setCustomServerUrl}
-              autoCapitalize="none"
-            />
-            <TouchableOpacity
-              style={[styles.limeBtn, { height: 40, marginTop: 8 }]}
-              onPress={handleSaveServerUrl}
-            >
-              <Text style={[styles.limeBtnText, { fontSize: 12 }]}>SAVE ENDPOINT</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
