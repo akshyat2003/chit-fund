@@ -819,12 +819,6 @@ let rolesPermissionsStore = [
     userCount: 5,
   },
   {
-    role: 'ACCOUNTANT',
-    description: 'Financial auditor with reconciliation and report generation rights',
-    permissions: ['view', 'approve', 'export'],
-    userCount: 2,
-  },
-  {
     role: 'COLLECTION_STAFF',
     description: 'Field agent for receipt creation and collection recording',
     permissions: ['view', 'create'],
