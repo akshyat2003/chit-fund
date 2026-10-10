@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { api, setAuthToken } from '../services/api';
+import { api, setAuthToken, API_BASE_URL } from '../services/api';
 
 export interface User {
   id: string;
@@ -42,7 +42,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, message: res.data.message || 'Login failed' };
     } catch (err: any) {
       setLoading(false);
-      const msg = err.response?.data?.message || err.message || 'Login failed';
+      const msg = !err.response
+        ? `Network Error: Cannot connect to ${API_BASE_URL}. Ensure your backend server is active or update the Server URL.`
+        : err.response?.data?.message || err.message || 'Login failed';
       return { success: false, message: msg };
     }
   };
