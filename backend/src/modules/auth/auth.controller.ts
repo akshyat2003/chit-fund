@@ -28,14 +28,26 @@ const normalizeKey = (key: string) => key.trim().toLowerCase();
 /**
  * Enforce Password Policy (FR-AUTH-008, FR-AUTH-015)
  * - Minimum 8 characters
- * - Must contain letters and numbers
+ * - At least one uppercase letter (A-Z)
+ * - At least one lowercase letter (a-z)
+ * - At least one number (0-9)
+ * - At least one special character (!@#$%^&*...)
  */
 export const validatePasswordPolicy = (password: string): { valid: boolean; message?: string } => {
   if (!password || password.length < 8) {
     return { valid: false, message: 'Password must be at least 8 characters long.' };
   }
-  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-    return { valid: false, message: 'Password must contain at least one letter and at least one number.' };
+  if (!/[A-Z]/.test(password)) {
+    return { valid: false, message: 'Password must contain at least one uppercase letter (A-Z).' };
+  }
+  if (!/[a-z]/.test(password)) {
+    return { valid: false, message: 'Password must contain at least one lowercase letter (a-z).' };
+  }
+  if (!/[0-9]/.test(password)) {
+    return { valid: false, message: 'Password must contain at least one number (0-9).' };
+  }
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) {
+    return { valid: false, message: 'Password must contain at least one special character (!@#$%^&*...).' };
   }
   return { valid: true };
 };
@@ -432,7 +444,7 @@ export const changePassword = async (req: AuthRequest, res: Response) => {
 };
 
 /**
- * FR-AUTH-006: Forgot Password - Send OTP to user's email
+ * FR-AUTH-006: Forgot Password - Generate OTP, persist in DB & send via Yahoo SMTP
  */
 export const forgotPassword = async (req: Request, res: Response) => {
   try {
@@ -444,11 +456,12 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
     const trimmed = emailOrUsername.trim();
 
+    // Case-insensitive lookup matching username, email, or phone
     const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { username: trimmed },
-          { email: trimmed },
+          { username: { equals: trimmed, mode: 'insensitive' } },
+          { email: { equals: trimmed, mode: 'insensitive' } },
           { phone: trimmed },
         ],
       },
@@ -470,7 +483,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
           data: { email: trimmed },
         });
       } else {
-        recipientEmail = 'akshyatraj@yahoo.com';
+        recipientEmail = 'akshatrajpati@gmail.com';
         await prisma.user.update({
           where: { id: user.id },
           data: { email: recipientEmail },
@@ -478,6 +491,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
       }
     }
 
+    // Generate fresh 6-digit numeric OTP code
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
 
@@ -489,9 +503,43 @@ export const forgotPassword = async (req: Request, res: Response) => {
       attempts: 0,
     };
 
+    // 1. Store in memory map
     otpStore.set(normalizeKey(user.username), storeEntry);
     otpStore.set(normalizeKey(recipientEmail), storeEntry);
+    otpStore.set(normalizeKey(user.phone), storeEntry);
+    otpStore.set(normalizeKey(trimmed), storeEntry);
 
+    // 2. Persist in database AuditLog table so any serverless container or restarted process has access
+    try {
+      // Invalidate any previous OTP records for this user
+      await prisma.auditLog.deleteMany({
+        where: {
+          userId: user.id,
+          action: 'PASSWORD_RESET_OTP',
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          action: 'PASSWORD_RESET_OTP',
+          entity: 'OTP',
+          entityId: otp, // The exact 6-digit code
+          details: JSON.stringify({
+            otp,
+            expiresAt,
+            username: user.username,
+            email: recipientEmail,
+            attempts: 0,
+          }),
+          ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown',
+        },
+      });
+    } catch (dbErr: any) {
+      console.warn('[ForgotPassword] DB persist notice:', dbErr.message);
+    }
+
+    // 3. Dispatch OTP via Yahoo Mail SMTP immediately
     const emailRes = await sendOtpEmail(recipientEmail, otp, user.fullName || user.username);
 
     const emailParts = recipientEmail.split('@');
@@ -504,7 +552,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
       success: true,
       message: emailRes.success
         ? `A 6-digit verification code has been sent to ${maskedEmail}`
-        : `OTP generated for ${maskedEmail}. (Email alert sent; code: ${otp})`,
+        : `OTP generated for ${maskedEmail}. Code: ${otp}`,
       maskedEmail,
       otp: emailRes.success ? undefined : otp,
     });
@@ -524,25 +572,61 @@ export const verifyOtp = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Identifier and OTP are required' });
     }
 
-    const key = normalizeKey(emailOrUsername);
-    const entry = otpStore.get(key);
+    const trimmed = emailOrUsername.toString().trim();
+    const cleanOtp = otp.toString().replace(/[^0-9]/g, '').trim();
 
-    if (!entry) {
-      return res.status(400).json({ success: false, message: 'No OTP requested or OTP has expired. Please request a new one.' });
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { username: { equals: trimmed, mode: 'insensitive' } },
+          { email: { equals: trimmed, mode: 'insensitive' } },
+          { phone: trimmed },
+        ],
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'No user account found.' });
     }
 
-    if (Date.now() > entry.expiresAt) {
-      otpStore.delete(key);
-      return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
-    }
-
-    if (entry.otp !== otp.toString().trim()) {
-      entry.attempts += 1;
-      if (entry.attempts >= 5) {
-        otpStore.delete(key);
-        return res.status(400).json({ success: false, message: 'Too many incorrect attempts. Please request a new OTP.' });
+    // Check memory first
+    let storedOtp = '';
+    let expiresAt = 0;
+    const memEntry = otpStore.get(normalizeKey(user.username)) || 
+                     (user.email ? otpStore.get(normalizeKey(user.email)) : undefined) ||
+                     otpStore.get(normalizeKey(trimmed));
+    if (memEntry) {
+      storedOtp = memEntry.otp;
+      expiresAt = memEntry.expiresAt;
+    } else {
+      // Check database AuditLog table
+      const dbRecord = await prisma.auditLog.findFirst({
+        where: {
+          userId: user.id,
+          action: 'PASSWORD_RESET_OTP',
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (dbRecord) {
+        storedOtp = dbRecord.entityId || '';
+        try {
+          const parsed = JSON.parse(dbRecord.details || '{}');
+          if (parsed.otp) storedOtp = parsed.otp;
+          if (parsed.expiresAt) expiresAt = parsed.expiresAt;
+        } catch (e) {}
       }
-      return res.status(400).json({ success: false, message: 'Invalid OTP code. Please check and try again.' });
+    }
+
+    if (!storedOtp) {
+      return res.status(400).json({ success: false, message: 'No active OTP found. Please request a new code.' });
+    }
+
+    if (expiresAt > 0 && Date.now() > expiresAt) {
+      return res.status(400).json({ success: false, message: 'OTP has expired. Please click Resend Code.' });
+    }
+
+    if (storedOtp !== cleanOtp) {
+      return res.status(400).json({ success: false, message: 'Invalid OTP code. Please check your email or click Resend Code.' });
     }
 
     return res.json({
@@ -568,48 +652,103 @@ export const resetPassword = async (req: Request, res: Response) => {
       });
     }
 
+    // Validate 8 chars, uppercase, lowercase, number, special char policy
     const policyCheck = validatePasswordPolicy(newPassword);
     if (!policyCheck.valid) {
       return res.status(400).json({ success: false, message: policyCheck.message });
     }
 
-    const key = normalizeKey(emailOrUsername);
-    const entry = otpStore.get(key);
+    const trimmed = emailOrUsername.toString().trim();
+    const cleanOtp = otp.toString().replace(/[^0-9]/g, '').trim();
 
-    if (!entry) {
-      return res.status(400).json({
+    // Case-insensitive user lookup
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { username: { equals: trimmed, mode: 'insensitive' } },
+          { email: { equals: trimmed, mode: 'insensitive' } },
+          { phone: trimmed },
+        ],
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
         success: false,
-        message: 'No OTP requested or OTP has expired. Please request a new code.',
+        message: 'No user account found matching this email or username.',
       });
     }
 
-    if (Date.now() > entry.expiresAt) {
-      otpStore.delete(key);
-      return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
+    // Retrieve active OTP from memory cache or PostgreSQL database
+    let storedOtp = '';
+    let expiresAt = 0;
+    const memEntry = otpStore.get(normalizeKey(user.username)) || 
+                     (user.email ? otpStore.get(normalizeKey(user.email)) : undefined) ||
+                     otpStore.get(normalizeKey(trimmed));
+    if (memEntry) {
+      storedOtp = memEntry.otp;
+      expiresAt = memEntry.expiresAt;
+    } else {
+      const dbRecord = await prisma.auditLog.findFirst({
+        where: {
+          userId: user.id,
+          action: 'PASSWORD_RESET_OTP',
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (dbRecord) {
+        storedOtp = dbRecord.entityId || '';
+        try {
+          const parsed = JSON.parse(dbRecord.details || '{}');
+          if (parsed.otp) storedOtp = parsed.otp;
+          if (parsed.expiresAt) expiresAt = parsed.expiresAt;
+        } catch (e) {}
+      }
     }
 
-    if (entry.otp !== otp.toString().trim()) {
-      return res.status(400).json({ success: false, message: 'Invalid OTP code' });
+    if (!storedOtp) {
+      return res.status(400).json({
+        success: false,
+        message: 'No active OTP requested or it has expired. Please click Resend Code.',
+      });
     }
 
+    if (expiresAt > 0 && Date.now() > expiresAt) {
+      return res.status(400).json({ success: false, message: 'OTP has expired. Please click Resend Code.' });
+    }
+
+    if (storedOtp !== cleanOtp) {
+      return res.status(400).json({ success: false, message: 'Invalid OTP code. Please check your email or click Resend Code.' });
+    }
+
+    // Hash password with bcrypt and directly update database
     const passwordHash = await bcrypt.hash(newPassword, 10);
 
     const updatedUser = await prisma.user.update({
-      where: { id: entry.userId },
+      where: { id: user.id },
       data: { passwordHash },
     });
+
+    // Invalidate and delete the consumed OTP from DB and memory
+    try {
+      await prisma.auditLog.deleteMany({
+        where: {
+          userId: updatedUser.id,
+          action: 'PASSWORD_RESET_OTP',
+        },
+      });
+    } catch (e) {}
+
+    otpStore.delete(normalizeKey(updatedUser.username));
+    if (updatedUser.email) {
+      otpStore.delete(normalizeKey(updatedUser.email));
+    }
+    otpStore.delete(normalizeKey(trimmed));
 
     // FR-AUTH-013: Invalidate all existing sessions / refresh tokens
     await prisma.refreshToken.deleteMany({
       where: { userId: updatedUser.id },
     });
-
-    // Clean up OTP entries
-    otpStore.delete(normalizeKey(updatedUser.username));
-    if (updatedUser.email) {
-      otpStore.delete(normalizeKey(updatedUser.email));
-    }
-    otpStore.delete(key);
 
     // Audit log (FR-AUTH-012)
     try {
@@ -625,9 +764,11 @@ export const resetPassword = async (req: Request, res: Response) => {
       });
     } catch (e) {}
 
+    console.log(`[ResetPassword] Successfully updated password in database for user ${updatedUser.username} (${updatedUser.email})`);
+
     return res.json({
       success: true,
-      message: 'Password reset successful! You can now log in with your new password.',
+      message: 'Password reset successful! Your password has been updated in the database. Please log in.',
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: 'Failed to reset password: ' + err.message });

@@ -230,17 +230,63 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
     }
   };
 
-  const handleResetPassword = async () => {
-    if (!forgotOtp.trim()) {
-      setForgotError('Please enter the 6-digit OTP code');
+  const handleResendOtp = async () => {
+    if (!forgotInput.trim()) {
+      setForgotError('Please enter your registered email or username');
       return;
     }
-    if (!newPassword || newPassword.length < 6) {
-      setForgotError('Password must be at least 6 characters long');
+    setForgotError('');
+    setForgotSuccess('');
+    setForgotOtp('');
+    setForgotLoading(true);
+    try {
+      const res = await api.post('/auth/forgot-password', {
+        emailOrUsername: forgotInput.trim(),
+      });
+      if (res.data.success) {
+        setMaskedEmail(res.data.maskedEmail || forgotInput.trim());
+        if (res.data.otp) {
+          setForgotOtp(res.data.otp);
+        }
+        setForgotSuccess('New 6-digit verification code sent immediately to your email!');
+      } else {
+        setForgotError(res.data.message || 'Failed to resend OTP');
+      }
+    } catch (err: any) {
+      setForgotError(err.response?.data?.message || err.message || 'Failed to resend OTP');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    const cleanOtp = forgotOtp.replace(/[^0-9]/g, '').trim();
+    if (!cleanOtp || cleanOtp.length !== 6) {
+      setForgotError('Please enter the 6-digit numeric OTP code');
+      return;
+    }
+    if (!newPassword || newPassword.length < 8) {
+      setForgotError('Password must be at least 8 characters long');
+      return;
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      setForgotError('Password must contain at least one uppercase letter (A-Z)');
+      return;
+    }
+    if (!/[a-z]/.test(newPassword)) {
+      setForgotError('Password must contain at least one lowercase letter (a-z)');
+      return;
+    }
+    if (!/[0-9]/.test(newPassword)) {
+      setForgotError('Password must contain at least one number (0-9)');
+      return;
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(newPassword)) {
+      setForgotError('Password must contain at least one special character (!@#$%^&*...)');
       return;
     }
     if (newPassword !== confirmPassword) {
-      setForgotError('Passwords do not match');
+      setForgotError('New password and confirmation do not match');
       return;
     }
 
@@ -249,7 +295,7 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
     try {
       const res = await api.post('/auth/reset-password', {
         emailOrUsername: forgotInput.trim(),
-        otp: forgotOtp.trim(),
+        otp: cleanOtp,
         newPassword,
       });
 
@@ -258,7 +304,7 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
         setUsername(forgotInput.trim());
         setPassword('');
         setError('');
-        setSuccessMsg('Password reset successfully! Please login with your new password.');
+        setSuccessMsg('Password updated in database! Please log in with your new password.');
       } else {
         setForgotError(res.data.message || 'Failed to reset password');
       }
@@ -434,7 +480,7 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
                   <TextInput
                     style={[styles.pillInput, { letterSpacing: 6, fontWeight: '700', fontSize: 18, textAlign: 'center' }]}
                     value={forgotOtp}
-                    onChangeText={setForgotOtp}
+                    onChangeText={(val) => setForgotOtp(val.replace(/[^0-9]/g, ''))}
                     placeholder="6-Digit OTP"
                     placeholderTextColor="#9AA0A6"
                     keyboardType="number-pad"
@@ -448,7 +494,7 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
                     style={[styles.pillInput, { paddingRight: 50 }]}
                     value={newPassword}
                     onChangeText={setNewPassword}
-                    placeholder="New Password (min. 6 chars)"
+                    placeholder="New Password (min 8 chars, Aa1@)"
                     placeholderTextColor="#9AA0A6"
                     secureTextEntry={!showNewPassword}
                     autoCapitalize="none"
@@ -476,6 +522,30 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
                   />
                 </View>
 
+                {/* Real-time Password Requirements Checklist */}
+                <View style={{ marginTop: 8, marginBottom: 14, backgroundColor: 'rgba(0,0,0,0.25)', padding: 12, borderRadius: 10 }}>
+                  <Text style={{ color: '#E4ECD8', fontSize: 12, fontWeight: '700', marginBottom: 6 }}>
+                    Password must contain:
+                  </Text>
+                  <View style={{ gap: 4 }}>
+                    <Text style={{ fontSize: 12, color: newPassword.length >= 8 ? '#C8FF00' : '#94A3B8', fontWeight: newPassword.length >= 8 ? '700' : '500' }}>
+                      {newPassword.length >= 8 ? '✓' : '○'} At least 8 characters
+                    </Text>
+                    <Text style={{ fontSize: 12, color: /[A-Z]/.test(newPassword) ? '#C8FF00' : '#94A3B8', fontWeight: /[A-Z]/.test(newPassword) ? '700' : '500' }}>
+                      {/[A-Z]/.test(newPassword) ? '✓' : '○'} At least one uppercase letter (A-Z)
+                    </Text>
+                    <Text style={{ fontSize: 12, color: /[a-z]/.test(newPassword) ? '#C8FF00' : '#94A3B8', fontWeight: /[a-z]/.test(newPassword) ? '700' : '500' }}>
+                      {/[a-z]/.test(newPassword) ? '✓' : '○'} At least one lowercase letter (a-z)
+                    </Text>
+                    <Text style={{ fontSize: 12, color: /[0-9]/.test(newPassword) ? '#C8FF00' : '#94A3B8', fontWeight: /[0-9]/.test(newPassword) ? '700' : '500' }}>
+                      {/[0-9]/.test(newPassword) ? '✓' : '○'} At least one number (0-9)
+                    </Text>
+                    <Text style={{ fontSize: 12, color: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(newPassword) ? '#C8FF00' : '#94A3B8', fontWeight: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(newPassword) ? '700' : '500' }}>
+                      {/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(newPassword) ? '✓' : '○'} At least one special character (!@#$...)
+                    </Text>
+                  </View>
+                </View>
+
                 <TouchableOpacity
                   style={styles.limeBtn}
                   onPress={handleResetPassword}
@@ -485,16 +555,18 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
                   {forgotLoading ? (
                     <ActivityIndicator color="#111" size="small" />
                   ) : (
-                    <Text style={styles.limeBtnText}>Reset Password</Text>
+                    <Text style={styles.limeBtnText}>Reset Password & Update in Database</Text>
                   )}
                 </TouchableOpacity>
 
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 }}>
                   <TouchableOpacity onPress={() => setForgotStep(1)}>
                     <Text style={{ color: '#E4ECD8', fontSize: 13 }}>← Change Email</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={handleSendOtp} disabled={forgotLoading}>
-                    <Text style={{ color: '#C8FF00', fontSize: 13, fontWeight: '700' }}>Resend Code</Text>
+                  <TouchableOpacity onPress={handleResendOtp} disabled={forgotLoading} style={{ paddingVertical: 4, paddingHorizontal: 8 }}>
+                    <Text style={{ color: '#C8FF00', fontSize: 13, fontWeight: '700' }}>
+                      {forgotLoading ? 'Resending OTP...' : '⚡ Resend Code'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1681,8 +1753,20 @@ function ProfileModal({
       setError('New password must be at least 8 characters long');
       return;
     }
-    if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-      setError('New password must contain at least one letter and one number');
+    if (!/[A-Z]/.test(newPassword)) {
+      setError('New password must contain at least one uppercase letter (A-Z)');
+      return;
+    }
+    if (!/[a-z]/.test(newPassword)) {
+      setError('New password must contain at least one lowercase letter (a-z)');
+      return;
+    }
+    if (!/[0-9]/.test(newPassword)) {
+      setError('New password must contain at least one number (0-9)');
+      return;
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(newPassword)) {
+      setError('New password must contain at least one special character (!@#$%...)');
       return;
     }
     if (newPassword !== confirmPassword) {
