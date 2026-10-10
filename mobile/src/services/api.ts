@@ -2,6 +2,7 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 
 const getDefaultBaseUrl = () => {
+  // 1. Check if user configured a custom URL in localStorage
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       const saved = window.localStorage.getItem('CHITKART_API_URL');
@@ -10,15 +11,17 @@ const getDefaultBaseUrl = () => {
       }
     } catch (e) {}
   }
+
+  // 2. If running on Web (in any browser, automatically uses the current website's domain)
   if (typeof window !== 'undefined' && window.location) {
-    // If running on Vercel or any non-localhost web domain, connect to production Render backend
-    if (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
-      return 'https://chit-fund-backend.onrender.com/api/v1';
-    }
+    return `${window.location.origin}/api/v1`;
   }
+
+  // 3. Android Emulator fallback
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:5000/api/v1';
   }
+
   return 'http://localhost:5000/api/v1';
 };
 
