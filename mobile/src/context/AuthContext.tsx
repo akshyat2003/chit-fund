@@ -6,8 +6,9 @@ export interface User {
   username: string;
   fullName: string;
   phone: string;
+  email?: string | null;
   role: 'SUPER_ADMIN' | 'MANAGER' | 'COLLECTION_STAFF';
-  company: { id: string; name: string; code: string };
+  company: { id: string; name: string; code: string } | null;
   branch?: { id: string; name: string; code: string } | null;
 }
 
@@ -17,6 +18,7 @@ interface AuthContextType {
   loading: boolean;
   login: (usernameOrPhone: string, password: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -49,6 +51,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const refreshUser = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      if (res.data.success && res.data.data) {
+        setUser(res.data.data);
+      }
+    } catch (e) {
+      // Ignore
+    }
+  };
+
   const logout = async () => {
     try {
       await api.post('/auth/logout');
@@ -61,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

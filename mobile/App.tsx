@@ -16,8 +16,9 @@ import { api } from './src/services/api';
 
 // --- MAIN APP CONTROLLER ---
 function MainApp() {
-  const { user, login, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'subscribers' | 'groups' | 'payments' | 'auctions' | 'reconciliation'>('dashboard');
+  const { user, login, logout, refreshUser } = useAuth();
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'companies' | 'subscribers' | 'groups' | 'payments' | 'auctions' | 'reconciliation'>('dashboard');
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   if (!user) {
     return <LoginView onLogin={login} />;
@@ -35,9 +36,14 @@ function MainApp() {
               {user.role.replace('_', ' ')} • {user.fullName}
             </Text>
           </View>
-          <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <TouchableOpacity style={styles.profileBtn} onPress={() => setShowProfileModal(true)}>
+              <Text style={styles.profileBtnText}>👤 Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
+              <Text style={styles.logoutText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -56,6 +62,15 @@ function MainApp() {
             >
               <Text style={[styles.navText, activeTab === 'dashboard' && styles.navTextActive]}>📊 Dashboard</Text>
             </TouchableOpacity>
+
+            {user.role === 'SUPER_ADMIN' && (
+              <TouchableOpacity
+                style={[styles.navItem, activeTab === 'companies' && styles.navItemActive]}
+                onPress={() => setActiveTab('companies')}
+              >
+                <Text style={[styles.navText, activeTab === 'companies' && styles.navTextActive]}>🏢 Companies</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={[styles.navItem, activeTab === 'subscribers' && styles.navItemActive]}
@@ -103,6 +118,11 @@ function MainApp() {
           <View style={{ flex: 1, display: activeTab === 'dashboard' ? 'flex' : 'none' }}>
             <DashboardTab user={user} />
           </View>
+          {user.role === 'SUPER_ADMIN' && (
+            <View style={{ flex: 1, display: activeTab === 'companies' ? 'flex' : 'none' }}>
+              <CompaniesTab user={user} />
+            </View>
+          )}
           <View style={{ flex: 1, display: activeTab === 'subscribers' ? 'flex' : 'none' }}>
             <SubscribersTab user={user} />
           </View>
@@ -122,6 +142,14 @@ function MainApp() {
           </View>
         </View>
       </View>
+
+      {/* Profile & Security Modal */}
+      <ProfileModal
+        visible={showProfileModal}
+        user={user}
+        onClose={() => setShowProfileModal(false)}
+        onRefreshUser={refreshUser}
+      />
     </SafeAreaView>
   );
 }
@@ -544,6 +572,395 @@ function MetricCard({ title, value, color }: { title: string; value: any; color:
     <View style={[styles.card, { borderLeftColor: color, borderLeftWidth: 5 }]}>
       <Text style={styles.cardTitle}>{title}</Text>
       <Text style={[styles.cardValue, { color }]}>{value}</Text>
+    </View>
+  );
+}
+
+// --- 2.5 COMPANIES TAB (SUPER ADMIN) ---
+function CompaniesTab({ user }: { user: any }) {
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
+  const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // New Company & Admin Form State
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [stateRegistrationNo, setStateRegistrationNo] = useState('');
+  const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [planId, setPlanId] = useState('plan_pro');
+
+  // Initial Admin State
+  const [adminFullName, setAdminFullName] = useState('');
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [adminPhone, setAdminPhone] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+
+  const [formError, setFormError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    loadCompanies();
+  }, [search, statusFilter]);
+
+  const loadCompanies = async () => {
+    try {
+      setLoading(true);
+      let url = `/super-admin/companies?search=${encodeURIComponent(search)}`;
+      if (statusFilter !== 'ALL') {
+        url += `&status=${statusFilter}`;
+      }
+      const res = await api.get(url);
+      setCompanies(res.data.data || []);
+    } catch (e: any) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateCompany = async () => {
+    setFormError('');
+    if (!name.trim() || !code.trim()) {
+      setFormError('Company name and unique company code are required.');
+      return;
+    }
+    if (!adminFullName.trim() || !adminUsername.trim() || !adminPassword.trim()) {
+      setFormError('Initial Admin Full Name, Username, and Password are required.');
+      return;
+    }
+    if (adminPassword.length < 8 || !/[A-Za-z]/.test(adminPassword) || !/[0-9]/.test(adminPassword)) {
+      setFormError('Admin password must be at least 8 characters and contain both letters and numbers.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const payload = {
+        code: code.trim().toUpperCase(),
+        name: name.trim(),
+        stateRegistrationNo: stateRegistrationNo.trim() || undefined,
+        address: address.trim() || undefined,
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+        planId,
+        initialAdmin: {
+          fullName: adminFullName.trim(),
+          username: adminUsername.trim(),
+          password: adminPassword,
+          phone: adminPhone.trim() || phone.trim() || '0000000000',
+          email: adminEmail.trim() || email.trim() || undefined,
+        },
+      };
+
+      const res = await api.post('/super-admin/companies', payload);
+      alert(`Company "${res.data.data.company.name}" (${res.data.data.company.code}) and Initial Admin "${adminUsername.trim()}" created successfully!`);
+      setShowAddModal(false);
+      // Reset form
+      setCode('');
+      setName('');
+      setStateRegistrationNo('');
+      setAddress('');
+      setPhone('');
+      setEmail('');
+      setAdminFullName('');
+      setAdminUsername('');
+      setAdminPassword('');
+      setAdminPhone('');
+      setAdminEmail('');
+      loadCompanies();
+    } catch (err: any) {
+      setFormError(err.response?.data?.message || 'Failed to create company');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleToggleStatus = async (comp: any) => {
+    const newStatus = comp.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+    const confirmMsg = comp.status === 'ACTIVE'
+      ? `Are you sure you want to suspend "${comp.name}"? Active user sessions for this company will be revoked.`
+      : `Re-activate company "${comp.name}"?`;
+    if (!window.confirm ? !confirm(confirmMsg) : !window.confirm(confirmMsg)) return;
+
+    try {
+      setActionLoading(true);
+      await api.patch(`/super-admin/companies/${comp.id}/status`, {
+        status: newStatus,
+        reason: newStatus === 'SUSPENDED' ? 'Administrative suspension by Super Admin' : undefined,
+      });
+      loadCompanies();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to update company status');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  return (
+    <View style={styles.tabContainer}>
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        <TextInput
+          style={[styles.searchBar, { flex: 1, marginBottom: 0 }]}
+          placeholder="Search by company name, code or email..."
+          value={search}
+          onChangeText={setSearch}
+        />
+        <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddModal(true)}>
+          <Text style={styles.addBtnText}>+ CREATE COMPANY</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Filter Chips */}
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+        {(['ALL', 'ACTIVE', 'SUSPENDED'] as const).map((st) => (
+          <TouchableOpacity
+            key={st}
+            style={[
+              styles.filterChip,
+              statusFilter === st && styles.filterChipActive,
+            ]}
+            onPress={() => setStatusFilter(st)}
+          >
+            <Text style={statusFilter === st ? styles.filterChipTextActive : styles.filterChipText}>
+              {st}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {loading ? (
+        <ActivityIndicator size="small" color="#0A2540" />
+      ) : companies.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>No companies found.</Text>
+          <Text style={styles.emptySubText}>Tap "+ CREATE COMPANY" to onboard a new chit fund company.</Text>
+        </View>
+      ) : (
+        <ScrollView style={{ flex: 1 }}>
+          <View style={styles.cardsGrid}>
+            {companies.map((c) => (
+              <View key={c.id} style={styles.companyCard}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.companyCodeBadge}>{c.code}</Text>
+                  <View style={c.status === 'ACTIVE' ? styles.statusBadgeActive : styles.statusBadgeSuspended}>
+                    <Text style={c.status === 'ACTIVE' ? styles.statusTextActive : styles.statusTextSuspended}>
+                      {c.status}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.companyNameText}>{c.name}</Text>
+                {c.stateRegistrationNo ? (
+                  <Text style={styles.companyMetaText}>Reg: {c.stateRegistrationNo}</Text>
+                ) : null}
+                <Text style={styles.companyMetaText}>Email: {c.email || 'N/A'} | Phone: {c.phone || 'N/A'}</Text>
+                {c.address ? <Text style={styles.companyMetaText}>Addr: {c.address}</Text> : null}
+
+                <View style={styles.companyStatsRow}>
+                  <Text style={styles.companyStatPill}>🏛 {c.stats?.branchesCount || 0} Branches</Text>
+                  <Text style={styles.companyStatPill}>👤 {c.stats?.usersCount || 0} Users</Text>
+                  <Text style={styles.companyStatPill}>👥 {c.stats?.subscribersCount || 0} Subs</Text>
+                  <Text style={styles.companyStatPill}>💰 {c.stats?.groupsCount || 0} Groups</Text>
+                </View>
+
+                <View style={{ marginTop: 8, padding: 8, backgroundColor: '#F8FAFC', borderRadius: 8 }}>
+                  <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '700' }}>
+                    PLAN: {c.subscription?.planName || 'Professional'} (Max Subs: {c.subscription?.limits?.maxSubscribers || 1000})
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.statusToggleBtn,
+                    {
+                      borderColor: c.status === 'ACTIVE' ? '#EF4444' : '#16A34A',
+                      backgroundColor: c.status === 'ACTIVE' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(22, 163, 74, 0.08)',
+                    },
+                  ]}
+                  onPress={() => handleToggleStatus(c)}
+                  disabled={actionLoading}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '700',
+                      color: c.status === 'ACTIVE' ? '#EF4444' : '#16A34A',
+                    }}
+                  >
+                    {c.status === 'ACTIVE' ? 'Suspend Company Account' : 'Reactivate Company Account'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      )}
+
+      {/* Create Company & Admin Modal */}
+      <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => setShowAddModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: 640 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.modalTitle}>Onboard Company & Admin</Text>
+              <TouchableOpacity onPress={() => setShowAddModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ fontSize: 22, color: '#64748B', fontWeight: '700' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {formError ? (
+              <View style={[styles.errorBadge, { width: '100%', marginBottom: 12 }]}>
+                <Text style={styles.errorBadgeText}>{formError}</Text>
+              </View>
+            ) : null}
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F2F52', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>
+                1. Company Profile
+              </Text>
+
+              <Text style={styles.label}>Company Legal Name *</Text>
+              <TextInput
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g. Apex Chit Funds Pvt Ltd"
+              />
+
+              <Text style={styles.label}>Company Code * (Unique Acronym)</Text>
+              <TextInput
+                style={styles.input}
+                value={code}
+                onChangeText={(t) => setCode(t.toUpperCase())}
+                autoCapitalize="characters"
+                placeholder="e.g. APEX"
+              />
+
+              <Text style={styles.label}>State Registration Number</Text>
+              <TextInput
+                style={styles.input}
+                value={stateRegistrationNo}
+                onChangeText={setStateRegistrationNo}
+                placeholder="e.g. REG/2026/TN/0987"
+              />
+
+              <Text style={styles.label}>Official Contact Phone</Text>
+              <TextInput
+                style={styles.input}
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                placeholder="e.g. 9876543210"
+              />
+
+              <Text style={styles.label}>Official Contact Email</Text>
+              <TextInput
+                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                placeholder="e.g. contact@apexchits.com"
+              />
+
+              <Text style={styles.label}>Registered Head Office Address</Text>
+              <TextInput
+                style={styles.input}
+                value={address}
+                onChangeText={setAddress}
+                placeholder="e.g. 12 Anna Salai, Chennai, TN"
+              />
+
+              <Text style={styles.label}>Subscription Plan Tier</Text>
+              <View style={styles.quickRow}>
+                {[
+                  { id: 'plan_starter', name: 'Starter (100 Subs)' },
+                  { id: 'plan_pro', name: 'Pro (1,000 Subs)' },
+                  { id: 'plan_enterprise', name: 'Enterprise' },
+                ].map((p) => (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={[styles.modeBtn, planId === p.id && styles.modeBtnActive]}
+                    onPress={() => setPlanId(p.id)}
+                  >
+                    <Text style={planId === p.id ? styles.modeTextActive : styles.modeText}>{p.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={{ height: 1, backgroundColor: '#E2E8F0', marginVertical: 18 }} />
+
+              <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F2F52', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>
+                2. Initial Admin cum Manager Account
+              </Text>
+
+              <Text style={styles.label}>Admin Full Name *</Text>
+              <TextInput
+                style={styles.input}
+                value={adminFullName}
+                onChangeText={setAdminFullName}
+                placeholder="e.g. Rajesh Kumar"
+              />
+
+              <Text style={styles.label}>Admin Login Username / Email *</Text>
+              <TextInput
+                style={styles.input}
+                value={adminUsername}
+                onChangeText={setAdminUsername}
+                autoCapitalize="none"
+                placeholder="e.g. rajesh.admin or rajesh@apexchits.com"
+              />
+
+              <Text style={styles.label}>Admin Mobile Number</Text>
+              <TextInput
+                style={styles.input}
+                value={adminPhone}
+                onChangeText={setAdminPhone}
+                keyboardType="phone-pad"
+                placeholder="e.g. 9876543210"
+              />
+
+              <Text style={styles.label}>Initial Password * (min. 8 chars, letters & numbers)</Text>
+              <View style={styles.passwordInputWrapper}>
+                <TextInput
+                  style={styles.passwordInput}
+                  value={adminPassword}
+                  onChangeText={setAdminPassword}
+                  secureTextEntry={!showAdminPassword}
+                  autoCapitalize="none"
+                  placeholder="Strong initial password"
+                />
+                <TouchableOpacity onPress={() => setShowAdminPassword(!showAdminPassword)} style={styles.eyeBtn}>
+                  <Text>{showAdminPassword ? '👁' : '👁‍🗨'}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 24, marginBottom: 10 }}>
+                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowAddModal(false)}>
+                  <Text style={styles.cancelBtnText}>CANCEL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { flex: 2, marginTop: 0 }]}
+                  onPress={handleCreateCompany}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>CREATE COMPANY & ADMIN</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1201,6 +1618,200 @@ function ReconciliationTab({ user }: { user: any }) {
   );
 }
 
+// --- 8. PROFILE & SECURITY MODAL ---
+function ProfileModal({
+  visible,
+  user,
+  onClose,
+  onRefreshUser,
+}: {
+  visible: boolean;
+  user: any;
+  onClose: () => void;
+  onRefreshUser: () => Promise<void>;
+}) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const handleChangePassword = async () => {
+    setError('');
+    setSuccess('');
+    if (!currentPassword) {
+      setError('Please enter your current password');
+      return;
+    }
+    if (!newPassword || newPassword.length < 8) {
+      setError('New password must be at least 8 characters long');
+      return;
+    }
+    if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      setError('New password must contain at least one letter and one number');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('New password and confirmation do not match');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await api.post('/auth/change-password', {
+        currentPassword,
+        newPassword,
+      });
+      setSuccess(res.data.message || 'Password changed successfully!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      if (onRefreshUser) await onRefreshUser();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to change password');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { maxWidth: 620 }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <Text style={styles.modalTitle}>User Profile & Security</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={{ fontSize: 22, color: '#64748B', fontWeight: '700' }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {/* User Profile Card */}
+            <View style={styles.profileCard}>
+              <View style={styles.profileHeaderRow}>
+                <View style={styles.profileAvatar}>
+                  <Text style={styles.profileAvatarText}>
+                    {user?.fullName ? user.fullName[0].toUpperCase() : 'U'}
+                  </Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 14 }}>
+                  <Text style={styles.profileFullName}>{user?.fullName || 'User'}</Text>
+                  <Text style={styles.profileRoleBadge}>{user?.role?.replace('_', ' ') || 'USER'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.profileDetailsGrid}>
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Username</Text>
+                  <Text style={styles.profileDetailValue}>{user?.username || '-'}</Text>
+                </View>
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Email</Text>
+                  <Text style={styles.profileDetailValue}>{user?.email || 'akshyatraj@yahoo.com'}</Text>
+                </View>
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Mobile Phone</Text>
+                  <Text style={styles.profileDetailValue}>{user?.phone || '-'}</Text>
+                </View>
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Company</Text>
+                  <Text style={styles.profileDetailValue}>
+                    {user?.company ? `${user.company.name} (${user.company.code})` : 'Platform Level'}
+                  </Text>
+                </View>
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Branch</Text>
+                  <Text style={styles.profileDetailValue}>
+                    {user?.branch ? `${user.branch.name} (${user.branch.code})` : 'All Branches / HQ'}
+                  </Text>
+                </View>
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Account Status</Text>
+                  <Text style={[styles.profileDetailValue, { color: '#16A34A', fontWeight: '700' }]}>ACTIVE</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Change Password Section */}
+            <View style={styles.changePasswordSection}>
+              <Text style={styles.subSectionTitle}>🔐 Update Password</Text>
+              <Text style={styles.subSectionDesc}>
+                Protect your account. Minimum 8 characters with at least one letter and one number.
+              </Text>
+
+              {error ? (
+                <View style={[styles.errorBadge, { width: '100%', marginBottom: 12 }]}>
+                  <Text style={styles.errorBadgeText}>{error}</Text>
+                </View>
+              ) : null}
+
+              {success ? (
+                <View style={[styles.successBadge, { width: '100%', marginBottom: 12 }]}>
+                  <Text style={styles.successBadgeText}>{success}</Text>
+                </View>
+              ) : null}
+
+              <Text style={styles.label}>Current Password *</Text>
+              <View style={styles.passwordInputWrapper}>
+                <TextInput
+                  style={styles.passwordInput}
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  secureTextEntry={!showCurrentPassword}
+                  placeholder="Enter current password"
+                />
+                <TouchableOpacity onPress={() => setShowCurrentPassword(!showCurrentPassword)} style={styles.eyeBtn}>
+                  <Text>{showCurrentPassword ? '👁' : '👁‍🗨'}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.label}>New Password *</Text>
+              <View style={styles.passwordInputWrapper}>
+                <TextInput
+                  style={styles.passwordInput}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry={!showNewPassword}
+                  placeholder="Min 8 chars, letter + number"
+                />
+                <TouchableOpacity onPress={() => setShowNewPassword(!showNewPassword)} style={styles.eyeBtn}>
+                  <Text>{showNewPassword ? '👁' : '👁‍🗨'}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.label}>Confirm New Password *</Text>
+              <View style={styles.passwordInputWrapper}>
+                <TextInput
+                  style={styles.passwordInput}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry={!showNewPassword}
+                  placeholder="Re-type new password"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.primaryBtn, { backgroundColor: '#16A34A' }]}
+                onPress={handleChangePassword}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>UPDATE PASSWORD</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -1813,5 +2424,210 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  profileBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  profileBtnText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  profileCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 20,
+  },
+  profileHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  profileAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#0284C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarText: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  profileFullName: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  profileRoleBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#E0F2FE',
+    color: '#0369A1',
+    fontWeight: '700',
+    fontSize: 11,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 4,
+    textTransform: 'uppercase',
+  },
+  profileDetailsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  profileDetailItem: {
+    flexBasis: 160,
+    flexGrow: 1,
+  },
+  profileDetailLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  profileDetailValue: {
+    fontSize: 14,
+    color: '#1E293B',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  changePasswordSection: {
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingTop: 16,
+  },
+  subSectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  subSectionDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  passwordInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 14,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#0F172A',
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#E2E8F0',
+  },
+  filterChipActive: {
+    backgroundColor: '#0F2F52',
+  },
+  filterChipText: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  filterChipTextActive: {
+    fontSize: 12,
+    color: '#FFF',
+    fontWeight: '700',
+  },
+  companyCard: {
+    backgroundColor: '#FFF',
+    padding: 18,
+    borderRadius: 14,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    flexBasis: 320,
+    flexGrow: 1,
+    borderTopWidth: 4,
+    borderTopColor: '#0284C7',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  companyCodeBadge: {
+    fontSize: 12,
+    color: '#0284C7',
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  companyNameText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginVertical: 4,
+  },
+  companyMetaText: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  companyStatsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  companyStatPill: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#334155',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statusBadgeActive: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  statusTextActive: {
+    color: '#166534',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  statusBadgeSuspended: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  statusTextSuspended: {
+    color: '#991B1B',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  statusToggleBtn: {
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
   },
 });
