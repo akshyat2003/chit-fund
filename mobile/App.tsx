@@ -536,11 +536,42 @@ function DashboardTab({ user }: { user: any }) {
       <Text style={styles.sectionTitle}>Dashboard ({stats?.role || user.role})</Text>
 
       {stats?.role === 'SUPER_ADMIN' && (
-        <View style={styles.gridRow}>
-          <MetricCard title="Active Companies" value={stats.activeCompanies || 0} color="#0070BA" />
-          <MetricCard title="Active Branches" value={stats.activeBranches || 0} color="#27AE60" />
-          <MetricCard title="Total Subscribers" value={stats.totalSubscribers || 0} color="#8E44AD" />
-          <MetricCard title="Active Chit Groups" value={stats.activeGroups || 0} color="#D35400" />
+        <View>
+          <View style={styles.gridRow}>
+            <MetricCard title="Active Companies" value={stats.activeCompanies || 0} color="#0070BA" />
+            <MetricCard title="Active Branches" value={stats.activeBranches || 0} color="#27AE60" />
+            <MetricCard title="Total Subscribers" value={stats.totalSubscribers || 0} color="#8E44AD" />
+            <MetricCard title="Active Chit Groups" value={stats.activeGroups || 0} color="#D35400" />
+            <MetricCard title="Total Platform Users" value={stats.totalUsers || 0} color="#2563EB" />
+            <MetricCard title="System Engine Status" value={stats.systemStatus || 'ONLINE'} color="#16A34A" />
+          </View>
+
+          {/* Super Admin Control Center Card */}
+          <View style={styles.superAdminPanelCard}>
+            <Text style={styles.superAdminPanelTitle}>🛡️ Super Admin Management Center (SA-01 to SA-22)</Text>
+            <Text style={styles.superAdminPanelSub}>
+              Database: Supabase PostgreSQL (Tokyo ap-northeast-1) • Email: Yahoo SMTP Verified • Immutable Financial Logs (FR-SA-018)
+            </Text>
+
+            <View style={styles.saControlsGrid}>
+              <View style={styles.saControlItem}>
+                <Text style={styles.saControlItemTitle}>🏢 Company Setup & SaaS (SA-02, FR-SA-002)</Text>
+                <Text style={styles.saControlItemDesc}>Create & configure companies, branch limits, and provision Initial Admin cum Manager accounts.</Text>
+              </View>
+              <View style={styles.saControlItem}>
+                <Text style={styles.saControlItemTitle}>🔐 Audit & Immutable Ledger (SA-11, FR-SA-018)</Text>
+                <Text style={styles.saControlItemDesc}>Full audit logs on security, authentication, and guaranteed prohibition of transaction tampering.</Text>
+              </View>
+              <View style={styles.saControlItem}>
+                <Text style={styles.saControlItemTitle}>⚖️ Compliance & Statutory (SA-12)</Text>
+                <Text style={styles.saControlItemDesc}>State Chit Funds Act compliance registration, foreman security deposits, and KYC audits.</Text>
+              </View>
+              <View style={styles.saControlItem}>
+                <Text style={styles.saControlItemTitle}>💾 Backup & Disaster Recovery (SA-15)</Text>
+                <Text style={styles.saControlItemDesc}>Continuous Write-Ahead Log (WAL) with 30-day Point-In-Time Recovery in Tokyo AWS region.</Text>
+              </View>
+            </View>
+          </View>
         </View>
       )}
 
@@ -2629,5 +2660,51 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     borderWidth: 1,
+  },
+  superAdminPanelCard: {
+    backgroundColor: '#0F2F52',
+    borderRadius: 14,
+    padding: 20,
+    marginTop: 18,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  superAdminPanelTitle: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  superAdminPanelSub: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  saControlsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  saControlItem: {
+    flexBasis: 260,
+    flexGrow: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  saControlItemTitle: {
+    color: '#38BDF8',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  saControlItemDesc: {
+    color: '#CBD5E1',
+    fontSize: 11,
+    lineHeight: 16,
   },
 });

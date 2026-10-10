@@ -95,6 +95,41 @@ router.get('/super-admin/platform-settings', authenticateToken, requireRoles('SU
 router.put('/super-admin/platform-settings', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updatePlatformSettings);
 router.post('/super-admin/support-access', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.requestSupportAccess);
 
+// SA-03: Branch Setup & Management
+router.get('/super-admin/branches', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listBranches);
+router.post('/super-admin/branches', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.createBranch);
+router.patch('/super-admin/branches/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateBranch);
+router.get('/branches', authenticateToken, superAdminController.listBranches);
+
+// SA-05, SA-06: Role & Permission Management
+router.get('/super-admin/roles', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listRolesAndPermissions);
+router.put('/super-admin/roles/:role/permissions', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateRolePermissions);
+
+// SA-12: Compliance Settings
+router.get('/super-admin/compliance', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getComplianceRecords);
+router.post('/super-admin/compliance', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.createComplianceRecord);
+
+// SA-13: Integration Configuration
+router.get('/super-admin/integrations', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getIntegrations);
+router.put('/super-admin/integrations', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateIntegrations);
+
+// SA-15: Backup Management
+router.get('/super-admin/backups', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getBackups);
+router.post('/super-admin/backups/trigger', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.triggerManualBackup);
+
+// SA-16, SA-17: Data Import & Export
+router.post('/super-admin/import', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.importData);
+router.get('/super-admin/export/:entity', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.exportData);
+
+// SA-19, SA-20: Financial Periods & Archival Policy
+router.get('/super-admin/financial-periods', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getFinancialPeriods);
+router.post('/super-admin/financial-periods/close', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.closeFinancialPeriod);
+router.post('/super-admin/financial-periods/reopen', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.reopenFinancialPeriod);
+router.get('/super-admin/archival-policy', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getArchivalPolicy);
+
+// SA-21, SA-22: Multi-Branch Oversight & Exception Management
+router.get('/super-admin/exceptions', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getMultiBranchExceptions);
+
 // Financial Record Immutability Enforcement (FR-SA-018)
 router.delete('/collections/transactions/:id', authenticateToken, superAdminController.rejectFinancialRecordMutation);
 router.put('/collections/transactions/:id', authenticateToken, superAdminController.rejectFinancialRecordMutation);
