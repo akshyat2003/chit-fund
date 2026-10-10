@@ -581,6 +581,15 @@ export const getSystemHealth = async (req: AuthRequest, res: Response) => {
     await prisma.$queryRaw`SELECT 1`;
     const latency = Date.now() - startDb;
 
+    const [compCount, userCount, logCount, subCount] = await Promise.all([
+      prisma.company.count().catch(() => 0),
+      prisma.user.count().catch(() => 0),
+      prisma.auditLog.count().catch(() => 0),
+      prisma.subscriber.count().catch(() => 0),
+    ]);
+
+    const mem = process.memoryUsage();
+
     return res.json({
       success: true,
       data: {
@@ -589,14 +598,30 @@ export const getSystemHealth = async (req: AuthRequest, res: Response) => {
           status: 'UP',
           latency: `${latency}ms`,
           pooler: 'IPv4 Supavisor Active (aws-0-ap-northeast-1)',
+          provider: 'PostgreSQL (Supabase Pooler)',
+          tableCounts: {
+            companies: compCount,
+            users: userCount,
+            auditLogs: logCount,
+            subscribers: subCount,
+          },
+        },
+        server: {
+          uptimeSeconds: Math.floor(process.uptime()),
+          nodeVersion: process.version,
+          platform: process.platform,
+          arch: process.arch,
+          memory: {
+            rssMB: (mem.rss / 1024 / 1024).toFixed(1),
+            heapUsedMB: (mem.heapUsed / 1024 / 1024).toFixed(1),
+            heapTotalMB: (mem.heapTotal / 1024 / 1024).toFixed(1),
+          },
         },
         backup: {
           lastBackupAt: platformSettings.lastBackupAt,
           status: platformSettings.backupStatus,
           retentionDays: 30,
         },
-        uptimeSeconds: Math.floor(process.uptime()),
-        nodeMemoryUsage: process.memoryUsage(),
         environment: process.env.NODE_ENV || 'production',
       },
     });
@@ -944,6 +969,20 @@ export const importData = async (req: AuthRequest, res: Response) => {
     if (!Array.isArray(records) || records.length === 0) {
       return res.status(400).json({ success: false, message: 'Valid array of records required' });
     }
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user?.id || null,
+          companyId: req.user?.companyId || null,
+          action: 'DATA_IMPORT_UPLOAD',
+          entity: entity || 'General',
+          details: JSON.stringify({ count: records.length, entity, importedAt: new Date().toISOString() }),
+          ipAddress: req.ip || 'unknown',
+        },
+      });
+    } catch (e) {}
+
     return res.json({
       success: true,
       message: `Batch import processed successfully: ${records.length} ${entity} records validated and ingested.`,
@@ -963,9 +1002,31 @@ export const exportData = async (req: AuthRequest, res: Response) => {
     } else if (entity === 'chit-groups') {
       data = await prisma.chitGroup.findMany({ take: 500 });
     } else if (entity === 'audit-logs') {
-      data = await prisma.auditLog.findMany({ take: 500 });
+      data = await prisma.auditLog.findMany({
+        take: 500,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: { select: { username: true, fullName: true, role: true } },
+          company: { select: { code: true, name: true } },
+        },
+      });
     } else if (entity === 'companies') {
       data = await prisma.company.findMany({ take: 500 });
+    } else if (entity === 'users') {
+      data = await prisma.user.findMany({
+        take: 500,
+        select: {
+          id: true,
+          username: true,
+          fullName: true,
+          role: true,
+          phone: true,
+          email: true,
+          status: true,
+          createdAt: true,
+          company: { select: { code: true, name: true } },
+        },
+      });
     }
 
     try {

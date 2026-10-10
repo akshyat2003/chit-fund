@@ -29,6 +29,16 @@ export const setAuthToken = (token: string | null) => {
   }
 };
 
+// Immediately restore token from localStorage upon browser refresh
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    const savedToken = localStorage.getItem('chitkart_auth_token');
+    if (savedToken) {
+      api.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`;
+    }
+  } catch (e) {}
+}
+
 let onSessionTerminatedCallback: ((msg: string) => void) | null = null;
 
 export const setOnSessionTerminated = (cb: (msg: string) => void) => {

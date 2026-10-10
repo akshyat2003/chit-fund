@@ -23,7 +23,51 @@ app.use(cors({
 }));
 app.use(cookieParser());
 app.use(express.json());
-app.use(morgan('dev'));
+// In-memory buffer of recent API requests for Super Admin observability
+export interface ApiLogEntry {
+  id: string;
+  timestamp: string;
+  method: string;
+  path: string;
+  status: number;
+  durationMs: number;
+  ip: string;
+  userAgent?: string;
+}
+
+const MAX_API_LOGS = 250;
+export const apiLogsBuffer: ApiLogEntry[] = [];
+
+// API Traffic & Request Interceptor for Super Admin System Observability
+app.use((req, res, next) => {
+  const start = Date.now();
+  const originalEnd = res.end;
+
+  res.end = function (...args: any[]) {
+    const durationMs = Date.now() - start;
+    const url = req.originalUrl || req.url;
+
+    // Filter out internal polling/health checks to prevent clutter
+    if (!url.includes('/super-admin/api-logs') && !url.includes('/health')) {
+      const entry: ApiLogEntry = {
+        id: `req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        path: url,
+        status: res.statusCode,
+        durationMs,
+        ip: (req.headers['x-forwarded-for'] as string) || req.ip || req.socket.remoteAddress || 'unknown',
+        userAgent: req.headers['user-agent'] ? String(req.headers['user-agent']).slice(0, 100) : undefined,
+      };
+      apiLogsBuffer.unshift(entry);
+      if (apiLogsBuffer.length > MAX_API_LOGS) {
+        apiLogsBuffer.pop();
+      }
+    }
+    return (originalEnd as any).apply(res, args);
+  };
+  next();
+});
 
 // Core Router for ChitKart API
 const router = express.Router();
@@ -98,6 +142,13 @@ router.patch('/super-admin/companies/:id/status', authenticateToken, requireRole
 router.put('/super-admin/companies/:id/settings', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateCompanySettings);
 router.get('/super-admin/subscriptions', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listSubscriptionPlans);
 router.get('/super-admin/audit-logs', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getAuditLogs);
+router.get('/super-admin/api-logs', authenticateToken, requireRoles('SUPER_ADMIN'), (req, res) => {
+  res.json({ success: true, count: apiLogsBuffer.length, data: apiLogsBuffer });
+});
+router.delete('/super-admin/api-logs', authenticateToken, requireRoles('SUPER_ADMIN'), (req, res) => {
+  apiLogsBuffer.length = 0;
+  res.json({ success: true, message: 'API request logs buffer cleared successfully' });
+});
 router.get('/super-admin/system-health', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getSystemHealth);
 router.get('/super-admin/platform-settings', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getPlatformSettings);
 router.post('/super-admin/support-access', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.requestSupportAccess);

@@ -25,13 +25,51 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
+const getInitialAuth = () => {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const storedToken = localStorage.getItem('chitkart_auth_token');
+      const storedUser = localStorage.getItem('chitkart_auth_user');
+      if (storedToken && storedUser) {
+        setAuthToken(storedToken);
+        return { token: storedToken, user: JSON.parse(storedUser) as User };
+      }
+    } catch (e) {}
+  }
+  return { token: null, user: null };
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const initialAuth = getInitialAuth();
+  const [user, setUser] = useState<User | null>(initialAuth.user);
+  const [token, setToken] = useState<string | null>(initialAuth.token);
   const [loading, setLoading] = useState<boolean>(false);
   const [inactivityMessage, setInactivityMessage] = useState<string | null>(null);
 
   const clearInactivityMessage = () => setInactivityMessage(null);
+
+  // Background verification of persisted session upon browser refresh
+  useEffect(() => {
+    if (token) {
+      api.get('/auth/me')
+        .then((res) => {
+          if (res.data.success && res.data.data) {
+            setUser(res.data.data);
+            if (typeof window !== 'undefined' && window.localStorage) {
+              try {
+                localStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
+              } catch (e) {}
+            }
+          }
+        })
+        .catch((err) => {
+          if (err.response?.status === 401) {
+            console.warn('[Session] Stored session invalid or expired. Logging out.');
+            logout(err.response?.data?.message || 'Session expired. Please sign in again.');
+          }
+        });
+    }
+  }, []);
 
   const login = async (usernameOrPhone: string, password: string) => {
     try {
@@ -43,6 +81,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(accessToken);
         setUser(loggedUser);
         setAuthToken(accessToken);
+
+        // Persist token and user in localStorage so page refresh doesn't log out
+        if (typeof window !== 'undefined' && window.localStorage) {
+          try {
+            localStorage.setItem('chitkart_auth_token', accessToken);
+            localStorage.setItem('chitkart_auth_user', JSON.stringify(loggedUser));
+          } catch (e) {}
+        }
 
         // Broadcast to other open windows/tabs on the same browser to log them out immediately
         if (typeof window !== 'undefined') {
@@ -81,6 +127,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await api.get('/auth/me');
       if (res.data.success && res.data.data) {
         setUser(res.data.data);
+        if (typeof window !== 'undefined' && window.localStorage) {
+          try {
+            localStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
+          } catch (e) {}
+        }
       }
     } catch (e) {
       // Ignore
@@ -93,6 +144,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       // Ignore network errors on logout
     }
+
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        localStorage.removeItem('chitkart_auth_token');
+        localStorage.removeItem('chitkart_auth_user');
+      } catch (e) {}
+    }
+
     setUser(null);
     setToken(null);
     setAuthToken(null);
