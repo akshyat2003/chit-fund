@@ -28,72 +28,82 @@ function MainApp() {
       <StatusBar barStyle="light-content" backgroundColor="#0A2540" />
       {/* Header Bar */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>{user.company?.name?.toUpperCase() || 'CHITKART'}</Text>
-          <Text style={styles.headerSubtitle}>
-            {user.role.replace('_', ' ')} • {user.fullName}
-          </Text>
-        </View>
-        <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Role Navigation Bar */}
-      <View style={styles.navBar}>
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === 'dashboard' && styles.navItemActive]}
-          onPress={() => setActiveTab('dashboard')}
-        >
-          <Text style={[styles.navText, activeTab === 'dashboard' && styles.navTextActive]}>Dashboard</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === 'subscribers' && styles.navItemActive]}
-          onPress={() => setActiveTab('subscribers')}
-        >
-          <Text style={[styles.navText, activeTab === 'subscribers' && styles.navTextActive]}>Subscribers</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === 'groups' && styles.navItemActive]}
-          onPress={() => setActiveTab('groups')}
-        >
-          <Text style={[styles.navText, activeTab === 'groups' && styles.navTextActive]}>Chit Groups</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === 'payments' && styles.navItemActive]}
-          onPress={() => setActiveTab('payments')}
-        >
-          <Text style={[styles.navText, activeTab === 'payments' && styles.navTextActive]}>Collect</Text>
-        </TouchableOpacity>
-
-        {user.role !== 'COLLECTION_STAFF' && (
-          <TouchableOpacity
-            style={[styles.navItem, activeTab === 'auctions' && styles.navItemActive]}
-            onPress={() => setActiveTab('auctions')}
-          >
-            <Text style={[styles.navText, activeTab === 'auctions' && styles.navTextActive]}>Auctions</Text>
+        <View style={styles.headerInner}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <Text style={styles.headerTitle} numberOfLines={1}>{user.company?.name?.toUpperCase() || 'CHITKART'}</Text>
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              {user.role.replace('_', ' ')} • {user.fullName}
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
+            <Text style={styles.logoutText}>Logout</Text>
           </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === 'reconciliation' && styles.navItemActive]}
-          onPress={() => setActiveTab('reconciliation')}
-        >
-          <Text style={[styles.navText, activeTab === 'reconciliation' && styles.navTextActive]}>Cash Handover</Text>
-        </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Active Tab Screen Content */}
-      <View style={{ flex: 1 }}>
-        {activeTab === 'dashboard' && <DashboardTab user={user} />}
-        {activeTab === 'subscribers' && <SubscribersTab user={user} />}
-        {activeTab === 'groups' && <ChitGroupsTab user={user} />}
-        {activeTab === 'payments' && <CollectPaymentTab user={user} />}
-        {activeTab === 'auctions' && <AuctionsTab user={user} />}
-        {activeTab === 'reconciliation' && <ReconciliationTab user={user} />}
+      {/* Role Navigation Bar with Responsive Horizontal Scroll for Mobiles/Tablets/Desktops */}
+      <View style={styles.navBarWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.navBar}
+        >
+          <TouchableOpacity
+            style={[styles.navItem, activeTab === 'dashboard' && styles.navItemActive]}
+            onPress={() => setActiveTab('dashboard')}
+          >
+            <Text style={[styles.navText, activeTab === 'dashboard' && styles.navTextActive]}>📊 Dashboard</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.navItem, activeTab === 'subscribers' && styles.navItemActive]}
+            onPress={() => setActiveTab('subscribers')}
+          >
+            <Text style={[styles.navText, activeTab === 'subscribers' && styles.navTextActive]}>👥 Subscribers</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.navItem, activeTab === 'groups' && styles.navItemActive]}
+            onPress={() => setActiveTab('groups')}
+          >
+            <Text style={[styles.navText, activeTab === 'groups' && styles.navTextActive]}>💰 Chit Groups</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.navItem, activeTab === 'payments' && styles.navItemActive]}
+            onPress={() => setActiveTab('payments')}
+          >
+            <Text style={[styles.navText, activeTab === 'payments' && styles.navTextActive]}>💳 Collect</Text>
+          </TouchableOpacity>
+
+          {user.role !== 'COLLECTION_STAFF' && (
+            <TouchableOpacity
+              style={[styles.navItem, activeTab === 'auctions' && styles.navItemActive]}
+              onPress={() => setActiveTab('auctions')}
+            >
+              <Text style={[styles.navText, activeTab === 'auctions' && styles.navTextActive]}>🏷 Auctions</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.navItem, activeTab === 'reconciliation' && styles.navItemActive]}
+            onPress={() => setActiveTab('reconciliation')}
+          >
+            <Text style={[styles.navText, activeTab === 'reconciliation' && styles.navTextActive]}>💼 Cash Handover</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* Responsive Content Area Centered up to 1280px */}
+      <View style={styles.contentArea}>
+        <View style={styles.contentInner}>
+          {activeTab === 'dashboard' && <DashboardTab user={user} />}
+          {activeTab === 'subscribers' && <SubscribersTab user={user} />}
+          {activeTab === 'groups' && <ChitGroupsTab user={user} />}
+          {activeTab === 'payments' && <CollectPaymentTab user={user} />}
+          {activeTab === 'auctions' && <AuctionsTab user={user} />}
+          {activeTab === 'reconciliation' && <ReconciliationTab user={user} />}
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -615,18 +625,20 @@ function SubscribersTab({ user }: { user: any }) {
         </View>
       ) : (
         <ScrollView style={{ flex: 1 }}>
-          {subscribers.map((s) => (
-            <View key={s.id} style={styles.listItem}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.itemHeader}>{s.fullName} ({s.subscriberCode})</Text>
-                <Text style={styles.itemSub}>Phone: {s.phone} | KYC: {s.kycStatus}</Text>
-                <Text style={styles.itemSub}>Branch: {s.branch?.name || 'Main'}</Text>
+          <View style={styles.subscriberGrid}>
+            {subscribers.map((s) => (
+              <View key={s.id} style={styles.listItem}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={styles.itemHeader} numberOfLines={1}>{s.fullName} ({s.subscriberCode})</Text>
+                  <Text style={styles.itemSub} numberOfLines={1}>Phone: {s.phone} | KYC: {s.kycStatus}</Text>
+                  <Text style={styles.itemSub} numberOfLines={1}>Branch: {s.branch?.name || 'Main'}</Text>
+                </View>
+                <View style={styles.statusBadge}>
+                  <Text style={styles.statusText}>{s.status}</Text>
+                </View>
               </View>
-              <View style={styles.statusBadge}>
-                <Text style={styles.statusText}>{s.status}</Text>
-              </View>
-            </View>
-          ))}
+            ))}
+          </View>
         </ScrollView>
       )}
 
@@ -765,19 +777,21 @@ function ChitGroupsTab({ user }: { user: any }) {
           <Text style={styles.emptySubText}>Tap "+ NEW GROUP" to configure a chit group.</Text>
         </View>
       ) : (
-        groups.map((g) => (
-          <View key={g.id} style={styles.groupCard}>
-            <Text style={styles.groupCode}>{g.groupCode}</Text>
-            <Text style={styles.groupName}>{g.name}</Text>
-            <View style={styles.groupGrid}>
-              <Text style={styles.groupStat}>Chit Value: ₹{(g.chitValue || 0).toLocaleString()}</Text>
-              <Text style={styles.groupStat}>Monthly Dues: ₹{(g.monthlyInstallment || 0).toLocaleString()}</Text>
-              <Text style={styles.groupStat}>Members: {g.members?.length || 0} / {g.maxMembers}</Text>
-              <Text style={styles.groupStat}>Duration: {g.totalMonths} Months</Text>
-              <Text style={styles.groupStat}>Start Date: {g.startDate}</Text>
+        <View style={styles.cardsGrid}>
+          {groups.map((g) => (
+            <View key={g.id} style={styles.groupCard}>
+              <Text style={styles.groupCode}>{g.groupCode}</Text>
+              <Text style={styles.groupName}>{g.name}</Text>
+              <View style={styles.groupGrid}>
+                <Text style={styles.groupStat}>Chit Value: ₹{(g.chitValue || 0).toLocaleString()}</Text>
+                <Text style={styles.groupStat}>Monthly Dues: ₹{(g.monthlyInstallment || 0).toLocaleString()}</Text>
+                <Text style={styles.groupStat}>Members: {g.members?.length || 0} / {g.maxMembers}</Text>
+                <Text style={styles.groupStat}>Duration: {g.totalMonths} Months</Text>
+                <Text style={styles.groupStat}>Start Date: {g.startDate}</Text>
+              </View>
             </View>
-          </View>
-        ))
+          ))}
+        </View>
       )}
 
       {/* Add Chit Group Modal */}
@@ -888,97 +902,99 @@ function CollectPaymentTab({ user }: { user: any }) {
 
   return (
     <ScrollView style={styles.tabScroll}>
-      <Text style={styles.sectionTitle}>Record Payment & Issue Receipt</Text>
+      <View style={styles.formContainer}>
+        <Text style={styles.sectionTitle}>Record Payment & Issue Receipt</Text>
 
-      <Text style={styles.label}>Select Subscriber *</Text>
-      <View style={styles.pickerBox}>
-        {subscribers.map((s) => (
-          <TouchableOpacity
-            key={s.id}
-            style={[styles.pickerItem, selectedSub === s.id && styles.pickerItemActive]}
-            onPress={() => setSelectedSub(s.id)}
-          >
-            <Text style={selectedSub === s.id ? styles.pickerTextActive : styles.pickerText}>
-              {s.fullName} ({s.subscriberCode})
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.label}>Select Chit Group *</Text>
-      <View style={styles.pickerBox}>
-        {groups.map((g) => (
-          <TouchableOpacity
-            key={g.id}
-            style={[styles.pickerItem, selectedGroup === g.id && styles.pickerItemActive]}
-            onPress={() => {
-              setSelectedGroup(g.id);
-              if (g.monthlyInstallment) setAmount(String(g.monthlyInstallment));
-            }}
-          >
-            <Text style={selectedGroup === g.id ? styles.pickerTextActive : styles.pickerText}>
-              {g.name} ({g.groupCode})
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.label}>Installment Month Number *</Text>
-      <TextInput
-        style={styles.input}
-        value={installmentNo}
-        onChangeText={setInstallmentNo}
-        keyboardType="numeric"
-        placeholder="e.g. 1"
-      />
-
-      <Text style={styles.label}>Amount Received (₹) *</Text>
-      <TextInput
-        style={styles.input}
-        value={amount}
-        onChangeText={setAmount}
-        keyboardType="numeric"
-        placeholder="Amount received"
-      />
-
-      <Text style={styles.label}>Payment Method</Text>
-      <View style={styles.quickRow}>
-        {['CASH', 'UPI', 'BANK_TRANSFER'].map((mode) => (
-          <TouchableOpacity
-            key={mode}
-            style={[styles.modeBtn, paymentMode === mode && styles.modeBtnActive]}
-            onPress={() => setPaymentMode(mode)}
-          >
-            <Text style={paymentMode === mode ? styles.modeTextActive : styles.modeText}>{mode}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {paymentMode !== 'CASH' && (
-        <>
-          <Text style={styles.label}>UPI / Bank Reference Transaction ID</Text>
-          <TextInput
-            style={styles.input}
-            value={externalRef}
-            onChangeText={setExternalRef}
-            placeholder="e.g. UPI/123456789/HDFC"
-          />
-        </>
-      )}
-
-      <TouchableOpacity style={styles.primaryBtn} onPress={handleRecordPayment} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>RECORD PAYMENT & ISSUE RECEIPT</Text>}
-      </TouchableOpacity>
-
-      {receipt && (
-        <View style={styles.receiptBox}>
-          <Text style={styles.receiptTitle}>OFFICIAL RECEIPT: {receipt.receiptNo}</Text>
-          <Text style={styles.receiptSub}>Subscriber: {receipt.subscriberName}</Text>
-          <Text style={styles.receiptSub}>Amount Paid: ₹{receipt.amount}</Text>
-          <Text style={styles.receiptSub}>Payment Mode: {receipt.paymentMode}</Text>
-          <Text style={styles.receiptSub}>Verification Status: {receipt.verificationStatus}</Text>
+        <Text style={styles.label}>Select Subscriber *</Text>
+        <View style={styles.pickerBox}>
+          {subscribers.map((s) => (
+            <TouchableOpacity
+              key={s.id}
+              style={[styles.pickerItem, selectedSub === s.id && styles.pickerItemActive]}
+              onPress={() => setSelectedSub(s.id)}
+            >
+              <Text style={selectedSub === s.id ? styles.pickerTextActive : styles.pickerText}>
+                {s.fullName} ({s.subscriberCode})
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
-      )}
+
+        <Text style={styles.label}>Select Chit Group *</Text>
+        <View style={styles.pickerBox}>
+          {groups.map((g) => (
+            <TouchableOpacity
+              key={g.id}
+              style={[styles.pickerItem, selectedGroup === g.id && styles.pickerItemActive]}
+              onPress={() => {
+                setSelectedGroup(g.id);
+                if (g.monthlyInstallment) setAmount(String(g.monthlyInstallment));
+              }}
+            >
+              <Text style={selectedGroup === g.id ? styles.pickerTextActive : styles.pickerText}>
+                {g.name} ({g.groupCode})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.label}>Installment Month Number *</Text>
+        <TextInput
+          style={styles.input}
+          value={installmentNo}
+          onChangeText={setInstallmentNo}
+          keyboardType="numeric"
+          placeholder="e.g. 1"
+        />
+
+        <Text style={styles.label}>Amount Received (₹) *</Text>
+        <TextInput
+          style={styles.input}
+          value={amount}
+          onChangeText={setAmount}
+          keyboardType="numeric"
+          placeholder="Amount received"
+        />
+
+        <Text style={styles.label}>Payment Method</Text>
+        <View style={styles.quickRow}>
+          {['CASH', 'UPI', 'BANK_TRANSFER'].map((mode) => (
+            <TouchableOpacity
+              key={mode}
+              style={[styles.modeBtn, paymentMode === mode && styles.modeBtnActive]}
+              onPress={() => setPaymentMode(mode)}
+            >
+              <Text style={paymentMode === mode ? styles.modeTextActive : styles.modeText}>{mode}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {paymentMode !== 'CASH' && (
+          <>
+            <Text style={styles.label}>UPI / Bank Reference Transaction ID</Text>
+            <TextInput
+              style={styles.input}
+              value={externalRef}
+              onChangeText={setExternalRef}
+              placeholder="e.g. UPI/123456789/HDFC"
+            />
+          </>
+        )}
+
+        <TouchableOpacity style={styles.primaryBtn} onPress={handleRecordPayment} disabled={loading}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>RECORD PAYMENT & ISSUE RECEIPT</Text>}
+        </TouchableOpacity>
+
+        {receipt && (
+          <View style={styles.receiptBox}>
+            <Text style={styles.receiptTitle}>OFFICIAL RECEIPT: {receipt.receiptNo}</Text>
+            <Text style={styles.receiptSub}>Subscriber: {receipt.subscriberName}</Text>
+            <Text style={styles.receiptSub}>Amount Paid: ₹{receipt.amount}</Text>
+            <Text style={styles.receiptSub}>Payment Mode: {receipt.paymentMode}</Text>
+            <Text style={styles.receiptSub}>Verification Status: {receipt.verificationStatus}</Text>
+          </View>
+        )}
+      </View>
     </ScrollView>
   );
 }
@@ -1048,59 +1064,61 @@ function AuctionsTab({ user }: { user: any }) {
 
   return (
     <ScrollView style={styles.tabScroll}>
-      <Text style={styles.sectionTitle}>Record Monthly Auction & Dividend</Text>
+      <View style={styles.formContainer}>
+        <Text style={styles.sectionTitle}>Record Monthly Auction & Dividend</Text>
 
-      <Text style={styles.label}>Select Chit Group *</Text>
-      <View style={styles.pickerBox}>
-        {groups.map((g) => (
-          <TouchableOpacity
-            key={g.id}
-            style={[styles.pickerItem, selectedGroup === g.id && styles.pickerItemActive]}
-            onPress={() => setSelectedGroup(g.id)}
-          >
-            <Text style={selectedGroup === g.id ? styles.pickerTextActive : styles.pickerText}>
-              {g.name} ({g.groupCode})
-            </Text>
-          </TouchableOpacity>
-        ))}
+        <Text style={styles.label}>Select Chit Group *</Text>
+        <View style={styles.pickerBox}>
+          {groups.map((g) => (
+            <TouchableOpacity
+              key={g.id}
+              style={[styles.pickerItem, selectedGroup === g.id && styles.pickerItemActive]}
+              onPress={() => setSelectedGroup(g.id)}
+            >
+              <Text style={selectedGroup === g.id ? styles.pickerTextActive : styles.pickerText}>
+                {g.name} ({g.groupCode})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.label}>Auction Installment Month Number *</Text>
+        <TextInput
+          style={styles.input}
+          value={installmentNo}
+          onChangeText={setInstallmentNo}
+          keyboardType="numeric"
+          placeholder="e.g. 1"
+        />
+
+        <Text style={styles.label}>Winning Subscriber *</Text>
+        <View style={styles.pickerBox}>
+          {subscribers.map((s) => (
+            <TouchableOpacity
+              key={s.id}
+              style={[styles.pickerItem, winnerSub === s.id && styles.pickerItemActive]}
+              onPress={() => setWinnerSub(s.id)}
+            >
+              <Text style={winnerSub === s.id ? styles.pickerTextActive : styles.pickerText}>
+                {s.fullName} ({s.subscriberCode})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.label}>Winning Bid Discount Offered (₹) *</Text>
+        <TextInput
+          style={styles.input}
+          value={winningDiscount}
+          onChangeText={setWinningDiscount}
+          keyboardType="numeric"
+          placeholder="Discount amount surrendered"
+        />
+
+        <TouchableOpacity style={styles.primaryBtn} onPress={handleConfirmAuction} disabled={loading}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>CONFIRM AUCTION & AUTO-CALCULATE DIVIDENDS</Text>}
+        </TouchableOpacity>
       </View>
-
-      <Text style={styles.label}>Auction Installment Month Number *</Text>
-      <TextInput
-        style={styles.input}
-        value={installmentNo}
-        onChangeText={setInstallmentNo}
-        keyboardType="numeric"
-        placeholder="e.g. 1"
-      />
-
-      <Text style={styles.label}>Winning Subscriber *</Text>
-      <View style={styles.pickerBox}>
-        {subscribers.map((s) => (
-          <TouchableOpacity
-            key={s.id}
-            style={[styles.pickerItem, winnerSub === s.id && styles.pickerItemActive]}
-            onPress={() => setWinnerSub(s.id)}
-          >
-            <Text style={winnerSub === s.id ? styles.pickerTextActive : styles.pickerText}>
-              {s.fullName} ({s.subscriberCode})
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.label}>Winning Bid Discount Offered (₹) *</Text>
-      <TextInput
-        style={styles.input}
-        value={winningDiscount}
-        onChangeText={setWinningDiscount}
-        keyboardType="numeric"
-        placeholder="Discount amount surrendered"
-      />
-
-      <TouchableOpacity style={styles.primaryBtn} onPress={handleConfirmAuction} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>CONFIRM AUCTION & AUTO-CALCULATE DIVIDENDS</Text>}
-      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -1135,27 +1153,29 @@ function ReconciliationTab({ user }: { user: any }) {
 
   return (
     <ScrollView style={styles.tabScroll}>
-      <Text style={styles.sectionTitle}>End-Of-Day Cash Handover</Text>
-      <Text style={styles.label}>Actual Cash Count Handed Over (₹) *</Text>
-      <TextInput
-        style={styles.input}
-        value={actualCash}
-        onChangeText={setActualCash}
-        keyboardType="numeric"
-        placeholder="Counted cash amount"
-      />
+      <View style={styles.formContainer}>
+        <Text style={styles.sectionTitle}>End-Of-Day Cash Handover</Text>
+        <Text style={styles.label}>Actual Cash Count Handed Over (₹) *</Text>
+        <TextInput
+          style={styles.input}
+          value={actualCash}
+          onChangeText={setActualCash}
+          keyboardType="numeric"
+          placeholder="Counted cash amount"
+        />
 
-      <Text style={styles.label}>Notes</Text>
-      <TextInput
-        style={styles.input}
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="Handover remarks or denomination breakdown"
-      />
+        <Text style={styles.label}>Notes</Text>
+        <TextInput
+          style={styles.input}
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="Handover remarks or denomination breakdown"
+        />
 
-      <TouchableOpacity style={styles.primaryBtn} onPress={handleSubmitHandover} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>SUBMIT CASH HANDOVER REPORT</Text>}
-      </TouchableOpacity>
+        <TouchableOpacity style={styles.primaryBtn} onPress={handleSubmitHandover} disabled={loading}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>SUBMIT CASH HANDOVER REPORT</Text>}
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -1170,95 +1190,441 @@ export default function App() {
 
 // --- STYLES ---
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4F6F9' },
+  container: {
+    flex: 1,
+    backgroundColor: '#F1F5F9',
+  },
   header: {
     backgroundColor: '#0A2540',
-    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  headerInner: {
+    maxWidth: 1280,
+    width: '100%',
+    alignSelf: 'center',
+    paddingHorizontal: 18,
     paddingVertical: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  headerTitle: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
-  headerSubtitle: { color: '#A0AEC0', fontSize: 12, marginTop: 2 },
-  logoutBtn: { backgroundColor: '#E53E3E', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
-  logoutText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
-  navBar: {
-    backgroundColor: '#1A365D',
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 8,
+  headerTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
-  navItem: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 4 },
-  navItemActive: { backgroundColor: '#2B6CB0' },
-  navText: { color: '#CBD5E0', fontSize: 12, fontWeight: '500' },
-  navTextActive: { color: '#FFF', fontWeight: '700' },
-  loginContainer: { flex: 1, backgroundColor: '#0A2540', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  loginCard: { backgroundColor: '#FFF', width: '100%', maxWidth: 420, borderRadius: 12, padding: 24, elevation: 5 },
-  logoBadge: { backgroundColor: '#0070BA', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, alignSelf: 'flex-start', marginBottom: 12 },
-  logoBadgeText: { color: '#FFF', fontWeight: 'bold', fontSize: 11 },
-  loginTitle: { fontSize: 22, fontWeight: 'bold', color: '#1A202C' },
-  loginSub: { fontSize: 13, color: '#718096', marginBottom: 20 },
-  label: { fontSize: 13, fontWeight: '600', color: '#2D3748', marginTop: 12, marginBottom: 6 },
-  input: { backgroundColor: '#EDF2F7', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#1A202C' },
-  primaryBtn: { backgroundColor: '#0070BA', borderRadius: 8, paddingVertical: 14, marginTop: 20, alignItems: 'center' },
-  primaryBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 13, letterSpacing: 0.5 },
-  errorText: { color: '#E53E3E', fontSize: 12, marginBottom: 10 },
-  tabScroll: { flex: 1, padding: 16 },
-  tabContainer: { flex: 1, padding: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1A202C', marginBottom: 16 },
-  gridRow: { gap: 12 },
-  card: { backgroundColor: '#FFF', padding: 16, borderRadius: 8, elevation: 2, marginBottom: 10 },
-  cardTitle: { fontSize: 12, color: '#718096', fontWeight: '600' },
-  cardValue: { fontSize: 22, fontWeight: 'bold', marginTop: 4 },
-  searchBar: { backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 12, elevation: 1 },
-  addBtn: { backgroundColor: '#27AE60', paddingHorizontal: 16, justifyContent: 'center', borderRadius: 8 },
-  addBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
-  listItem: { backgroundColor: '#FFF', borderRadius: 8, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center' },
-  itemHeader: { fontSize: 14, fontWeight: 'bold', color: '#2D3748' },
-  itemSub: { fontSize: 12, color: '#718096', marginTop: 2 },
-  statusBadge: { backgroundColor: '#C6F6D5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
-  statusText: { color: '#22543D', fontSize: 10, fontWeight: 'bold' },
-  emptyBox: { padding: 40, alignItems: 'center', justifyContent: 'center' },
-  emptyText: { fontSize: 16, fontWeight: 'bold', color: '#718096' },
-  emptySubText: { fontSize: 12, color: '#A0AEC0', marginTop: 4 },
-  groupCard: { backgroundColor: '#FFF', padding: 16, borderRadius: 8, marginBottom: 12, elevation: 2 },
-  groupCode: { fontSize: 12, color: '#0070BA', fontWeight: 'bold' },
-  groupName: { fontSize: 16, fontWeight: 'bold', color: '#1A202C', marginVertical: 4 },
-  groupGrid: { marginTop: 8, gap: 4 },
-  groupStat: { fontSize: 12, color: '#4A5568' },
-  pickerBox: { gap: 6, marginBottom: 12 },
-  pickerItem: { padding: 10, backgroundColor: '#EDF2F7', borderRadius: 6 },
-  pickerItemActive: { backgroundColor: '#2B6CB0' },
-  pickerText: { color: '#2D3748', fontSize: 12 },
-  pickerTextActive: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
-  modeBtn: { flex: 1, padding: 10, backgroundColor: '#EDF2F7', borderRadius: 6, alignItems: 'center' },
-  modeBtnActive: { backgroundColor: '#27AE60' },
-  modeText: { color: '#2D3748', fontSize: 12 },
-  modeTextActive: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
-  receiptBox: { marginTop: 20, backgroundColor: '#EBF8FF', borderColor: '#3182CE', borderWidth: 1, padding: 16, borderRadius: 8 },
-  receiptTitle: { color: '#2B6CB0', fontWeight: 'bold', fontSize: 14, marginBottom: 6 },
-  receiptSub: { color: '#2D3748', fontSize: 12, marginTop: 2 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { backgroundColor: '#FFF', width: '100%', maxWidth: 450, maxHeight: '90%', borderRadius: 12, padding: 20 },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1A202C', marginBottom: 14 },
-  cancelBtn: { backgroundColor: '#CBD5E0', borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
-  cancelBtnText: { color: '#2D3748', fontWeight: 'bold', fontSize: 13 },
-
-  // --- REFERENCE DESIGN STYLES ---
+  headerSubtitle: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  logoutBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  logoutText: {
+    color: '#F87171',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  navBarWrapper: {
+    backgroundColor: '#0F2F52',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  navBar: {
+    maxWidth: 1280,
+    width: '100%',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  navItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  navItemActive: {
+    backgroundColor: '#2563EB',
+  },
+  navText: {
+    color: '#94A3B8',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  navTextActive: {
+    color: '#FFF',
+    fontWeight: '700',
+  },
+  contentArea: {
+    flex: 1,
+  },
+  contentInner: {
+    flex: 1,
+    maxWidth: 1280,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  tabScroll: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+  },
+  tabContainer: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 16,
+    letterSpacing: -0.3,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 14,
+    marginBottom: 16,
+  },
+  card: {
+    backgroundColor: '#FFF',
+    padding: 18,
+    borderRadius: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    flexGrow: 1,
+    minWidth: 260,
+    borderLeftWidth: 5,
+  },
+  cardTitle: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  cardValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    marginTop: 6,
+  },
+  cardsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  groupCard: {
+    backgroundColor: '#FFF',
+    padding: 18,
+    borderRadius: 14,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    flexBasis: 300,
+    flexGrow: 1,
+    borderTopWidth: 4,
+    borderTopColor: '#2563EB',
+  },
+  groupCode: {
+    fontSize: 12,
+    color: '#2563EB',
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  groupName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginVertical: 6,
+  },
+  groupGrid: {
+    marginTop: 8,
+    gap: 6,
+  },
+  groupStat: {
+    fontSize: 13,
+    color: '#475569',
+  },
+  searchBar: {
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  addBtn: {
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 10,
+    shadowColor: '#16A34A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  addBtnText: {
+    color: '#FFF',
+    fontWeight: '800',
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  subscriberGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  listItem: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    flexBasis: 320,
+    flexGrow: 1,
+  },
+  itemHeader: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  itemSub: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 3,
+  },
+  statusBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statusText: {
+    color: '#166534',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  formContainer: {
+    maxWidth: 720,
+    width: '100%',
+    alignSelf: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 22,
+    marginBottom: 24,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  primaryBtn: {
+    backgroundColor: '#0284C7',
+    borderRadius: 10,
+    paddingVertical: 14,
+    marginTop: 20,
+    alignItems: 'center',
+    shadowColor: '#0284C7',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  primaryBtnText: {
+    color: '#FFF',
+    fontWeight: '800',
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  cancelBtn: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  cancelBtnText: {
+    color: '#475569',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  pickerBox: {
+    maxHeight: 180,
+    marginBottom: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 6,
+    backgroundColor: '#F8FAFC',
+  },
+  pickerItem: {
+    padding: 10,
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  pickerItemActive: {
+    backgroundColor: '#0284C7',
+    borderColor: '#0284C7',
+  },
+  pickerText: {
+    color: '#334155',
+    fontSize: 13,
+  },
+  pickerTextActive: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  modeBtn: {
+    flex: 1,
+    padding: 12,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  modeBtnActive: {
+    backgroundColor: '#16A34A',
+    borderColor: '#16A34A',
+  },
+  modeText: {
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  modeTextActive: {
+    color: '#FFF',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  receiptBox: {
+    marginTop: 22,
+    backgroundColor: '#F0F9FF',
+    borderColor: '#BAE6FD',
+    borderWidth: 1,
+    padding: 18,
+    borderRadius: 12,
+  },
+  receiptTitle: {
+    color: '#0369A1',
+    fontWeight: '800',
+    fontSize: 15,
+    marginBottom: 6,
+  },
+  receiptSub: {
+    color: '#0F172A',
+    fontSize: 13,
+    marginTop: 3,
+  },
+  emptyBox: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  emptySubText: {
+    fontSize: 13,
+    color: '#94A3B8',
+    marginTop: 6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    backgroundColor: '#FFF',
+    width: '100%',
+    maxWidth: 580,
+    maxHeight: '90%',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 16,
+  },
+  // --- REFERENCE DESIGN STYLES FOR LOGIN ---
   refContainer: {
     flex: 1,
-    backgroundColor: '#3E5030', // Deep olive green background matching reference image
+    backgroundColor: '#3E5030',
   },
   refContentContainer: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingHorizontal: 28,
-    paddingVertical: 30,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 36,
   },
   refHeader: {
     alignItems: 'center',
-    marginBottom: 44,
+    marginBottom: 36,
   },
   chitKartBrand: {
     fontSize: 16,
@@ -1283,7 +1649,7 @@ const styles = StyleSheet.create({
   },
   refForm: {
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 400,
     alignSelf: 'center',
   },
   pillInputWrapper: {
@@ -1312,7 +1678,7 @@ const styles = StyleSheet.create({
   limeBtn: {
     width: '100%',
     height: 56,
-    backgroundColor: '#C8FF00', // Electric neon lime green
+    backgroundColor: '#C8FF00',
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1358,7 +1724,7 @@ const styles = StyleSheet.create({
   },
   forgotCard: {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 440,
     backgroundColor: '#2A3A21',
     borderRadius: 24,
     padding: 24,
@@ -1379,7 +1745,7 @@ const styles = StyleSheet.create({
   forgotModalTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#FFFFFF', // High-contrast bright white
+    color: '#FFFFFF',
     letterSpacing: 0.3,
   },
   modalCloseText: {
