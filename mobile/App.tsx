@@ -17,7 +17,7 @@ import { api } from './src/services/api';
 // --- MAIN APP CONTROLLER ---
 function MainApp() {
   const { user, login, logout, refreshUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'companies' | 'admins' | 'audits' | 'system' | 'backups'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'companies' | 'admins' | 'audits' | 'system' | 'backups' | 'notifications'>('dashboard');
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   if (!user) {
@@ -37,6 +37,19 @@ function MainApp() {
             </Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            {user.role === 'SUPER_ADMIN' && (
+              <TouchableOpacity
+                style={[
+                  styles.profileBtn,
+                  activeTab === 'notifications' && { backgroundColor: '#0284C7', borderColor: '#0284C7' },
+                ]}
+                onPress={() => setActiveTab('notifications')}
+              >
+                <Text style={[styles.profileBtnText, activeTab === 'notifications' && { color: '#FFF' }]}>
+                  🔔 Notifications
+                </Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.profileBtn} onPress={() => setShowProfileModal(true)}>
               <Text style={styles.profileBtnText}>👤 Profile</Text>
             </TouchableOpacity>
@@ -99,6 +112,13 @@ function MainApp() {
                 >
                   <Text style={[styles.navText, activeTab === 'backups' && styles.navTextActive]}>💾 Backups & Export</Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, activeTab === 'notifications' && styles.navItemActive]}
+                  onPress={() => setActiveTab('notifications')}
+                >
+                  <Text style={[styles.navText, activeTab === 'notifications' && styles.navTextActive]}>🔔 Notification Center</Text>
+                </TouchableOpacity>
               </>
             )}
           </ScrollView>
@@ -127,6 +147,9 @@ function MainApp() {
               </View>
               <View style={{ flex: 1, display: activeTab === 'backups' ? 'flex' : 'none' }}>
                 <BackupsTab user={user} />
+              </View>
+              <View style={{ flex: 1, display: activeTab === 'notifications' ? 'flex' : 'none' }}>
+                <NotificationsTab user={user} />
               </View>
             </>
           )}
@@ -2937,6 +2960,818 @@ function BackupsTab({ user }: { user: any }) {
           </View>
         )}
       </View>
+    </ScrollView>
+  );
+}
+
+// --- 6. MULTI-TARGET NOTIFICATION CENTER (SUPER ADMIN) ---
+function NotificationsTab({ user }: { user: any }) {
+  const [subTab, setSubTab] = useState<'compose' | 'history'>('compose');
+
+  // Recipient data loaded from backend
+  const [recipientsData, setRecipientsData] = useState<any>({
+    admins: [],
+    companies: [],
+    chitGroups: [],
+    customers: [],
+    counts: { totalUsers: 0, totalSubscribers: 0, totalAll: 0 },
+  });
+  const [loadingRecipients, setLoadingRecipients] = useState(true);
+
+  // Notification history
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Form State
+  const [targetType, setTargetType] = useState<
+    'ALL_USERS' | 'INDIVIDUAL_ADMIN' | 'ADMIN_GROUP' | 'INDIVIDUAL_CUSTOMER' | 'CUSTOMER_GROUP'
+  >('ALL_USERS');
+  const [targetId, setTargetId] = useState<string>('');
+  const [targetFilter, setTargetFilter] = useState<string>('ALL_MANAGERS');
+
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [priority, setPriority] = useState<'NORMAL' | 'HIGH' | 'CRITICAL'>('NORMAL');
+  const [type, setType] = useState<string>('GENERAL_ANNOUNCEMENT');
+
+  // Channels
+  const [inApp, setInApp] = useState(true);
+  const [sms, setSms] = useState(false);
+  const [email, setEmail] = useState(false);
+
+  // Search queries for individual pickers
+  const [adminSearch, setAdminSearch] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
+
+  // Sending state & result
+  const [sending, setSending] = useState(false);
+  const [sendSuccess, setSendSuccess] = useState<any | null>(null);
+
+  useEffect(() => {
+    loadRecipients();
+    loadHistory();
+  }, []);
+
+  const loadRecipients = async () => {
+    try {
+      setLoadingRecipients(true);
+      const res = await api.get('/super-admin/notifications/recipients');
+      if (res.data?.success) {
+        setRecipientsData(res.data.data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingRecipients(false);
+    }
+  };
+
+  const loadHistory = async () => {
+    try {
+      setLoadingHistory(true);
+      const res = await api.get('/super-admin/notifications');
+      if (res.data?.success) {
+        setNotifications(res.data.data || []);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    try {
+      await api.delete(`/super-admin/notifications/${id}`);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'Failed to delete notification');
+    }
+  };
+
+  const handleSendNotification = async () => {
+    if (!title.trim()) {
+      alert('Please enter a notification title / headline.');
+      return;
+    }
+    if (!message.trim()) {
+      alert('Please enter a notification message.');
+      return;
+    }
+    if ((targetType === 'INDIVIDUAL_ADMIN' || targetType === 'INDIVIDUAL_CUSTOMER') && !targetId) {
+      alert('Please select a specific recipient from the list.');
+      return;
+    }
+    if (
+      (targetType === 'ADMIN_GROUP' && targetFilter === 'COMPANY_ADMINS' && !targetId) ||
+      (targetType === 'CUSTOMER_GROUP' && (targetFilter === 'CHIT_GROUP_MEMBERS' || targetFilter === 'COMPANY_CUSTOMERS') && !targetId)
+    ) {
+      alert('Please select a specific group / company / scheme target.');
+      return;
+    }
+
+    const channels: string[] = [];
+    if (inApp) channels.push('IN_APP');
+    if (sms) channels.push('SMS');
+    if (email) channels.push('EMAIL');
+    if (channels.length === 0) channels.push('IN_APP');
+
+    try {
+      setSending(true);
+      setSendSuccess(null);
+      const res = await api.post('/super-admin/notifications/send', {
+        title: title.trim(),
+        message: message.trim(),
+        targetType,
+        targetId,
+        targetFilter,
+        channels,
+        type,
+        priority,
+      });
+
+      setSendSuccess(res.data);
+      setTitle('');
+      setMessage('');
+      loadHistory();
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'Failed to send notification');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Filtered lists for individual pickers
+  const filteredAdmins = (recipientsData.admins || []).filter((a: any) => {
+    if (!adminSearch) return true;
+    const q = adminSearch.toLowerCase();
+    return (
+      a.fullName?.toLowerCase().includes(q) ||
+      a.username?.toLowerCase().includes(q) ||
+      a.company?.name?.toLowerCase().includes(q) ||
+      a.role?.toLowerCase().includes(q)
+    );
+  });
+
+  const filteredCustomers = (recipientsData.customers || []).filter((c: any) => {
+    if (!customerSearch) return true;
+    const q = customerSearch.toLowerCase();
+    return (
+      c.fullName?.toLowerCase().includes(q) ||
+      c.phone?.includes(q) ||
+      c.subscriberCode?.toLowerCase().includes(q)
+    );
+  });
+
+  const selectedAdmin = (recipientsData.admins || []).find((a: any) => a.id === targetId);
+  const selectedCustomer = (recipientsData.customers || []).find((c: any) => c.id === targetId);
+
+  return (
+    <ScrollView style={styles.tabScroll}>
+      <Text style={styles.sectionTitle}>Multi-Tier Notification Engine</Text>
+
+      {/* Sub-tab Navigation */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TouchableOpacity
+            style={[
+              {
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: 9,
+                paddingHorizontal: 16,
+                borderRadius: 10,
+                backgroundColor: subTab === 'compose' ? '#0F172A' : '#FFF',
+                borderWidth: 1,
+                borderColor: subTab === 'compose' ? '#0F172A' : '#E2E8F0',
+              },
+            ]}
+            onPress={() => setSubTab('compose')}
+          >
+            <Text style={{ color: subTab === 'compose' ? '#FFF' : '#334155', fontWeight: '800', fontSize: 13 }}>
+              ✍️ Compose & Dispatch Notification
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              {
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: 9,
+                paddingHorizontal: 16,
+                borderRadius: 10,
+                backgroundColor: subTab === 'history' ? '#0F172A' : '#FFF',
+                borderWidth: 1,
+                borderColor: subTab === 'history' ? '#0F172A' : '#E2E8F0',
+              },
+            ]}
+            onPress={() => setSubTab('history')}
+          >
+            <Text style={{ color: subTab === 'history' ? '#FFF' : '#334155', fontWeight: '800', fontSize: 13 }}>
+              📜 Sent History
+            </Text>
+            <View
+              style={{
+                marginLeft: 8,
+                backgroundColor: subTab === 'history' ? '#334155' : '#F1F5F9',
+                paddingHorizontal: 7,
+                paddingVertical: 2,
+                borderRadius: 12,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '800', color: subTab === 'history' ? '#93C5FD' : '#64748B' }}>
+                {notifications.length}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.filterChip, { paddingVertical: 8, paddingHorizontal: 12 }]}
+          onPress={() => {
+            loadRecipients();
+            loadHistory();
+          }}
+        >
+          <Text style={{ fontSize: 12, color: '#0284C7', fontWeight: '700' }}>🔄 Refresh Recipients & Logs</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* SUBTAB 1: COMPOSE & DISPATCH */}
+      {subTab === 'compose' && (
+        <View style={{ gap: 16, paddingBottom: 40 }}>
+          {/* SUCCESS BANNER */}
+          {sendSuccess && (
+            <View style={{ backgroundColor: '#DCFCE7', padding: 14, borderRadius: 10, borderWidth: 1, borderColor: '#86EFAC' }}>
+              <Text style={{ color: '#166534', fontWeight: '800', fontSize: 14 }}>
+                ✓ {sendSuccess.message}
+              </Text>
+              <Text style={{ color: '#15803D', fontSize: 12, marginTop: 4 }}>
+                Channels: {sendSuccess.notification?.channels} • Reference ID: {sendSuccess.notification?.id} • Logged in Security Audit Trail
+              </Text>
+            </View>
+          )}
+
+          {/* SECTION 1: TARGET AUDIENCE SELECTION */}
+          <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 18, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 3 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
+              <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A' }}>
+                1. Select Target Audience
+              </Text>
+              <Text style={{ fontSize: 11, color: '#64748B' }}>
+                Total Platform Users: {recipientsData.counts?.totalUsers || 0} Admins & Staff • {recipientsData.counts?.totalSubscribers || 0} Customers
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+              {[
+                { id: 'ALL_USERS', label: '📢 All Platform Users (Broadcast)', desc: 'All admins, staff & customers' },
+                { id: 'INDIVIDUAL_ADMIN', label: '👤 Individual Admin / Manager', desc: 'Single specific administrator' },
+                { id: 'ADMIN_GROUP', label: '👔 Group of Admins', desc: 'All managers, staff, or company admins' },
+                { id: 'INDIVIDUAL_CUSTOMER', label: '👤 Individual Customer', desc: 'Single specific subscriber' },
+                { id: 'CUSTOMER_GROUP', label: '👥 Group of Customers', desc: 'Chit scheme members or company customers' },
+              ].map((t) => (
+                <TouchableOpacity
+                  key={t.id}
+                  style={[
+                    styles.filterChip,
+                    targetType === t.id && styles.filterChipActive,
+                    { paddingVertical: 8, paddingHorizontal: 12 },
+                  ]}
+                  onPress={() => {
+                    setTargetType(t.id as any);
+                    setTargetId('');
+                  }}
+                >
+                  <Text style={targetType === t.id ? styles.filterChipTextActive : styles.filterChipText}>
+                    {t.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* CONDITIONAL TARGET SELECTOR: ALL USERS */}
+            {targetType === 'ALL_USERS' && (
+              <View style={{ backgroundColor: '#F0F9FF', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#BAE6FD' }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#0369A1' }}>
+                  📢 Broadcast Mode Active
+                </Text>
+                <Text style={{ fontSize: 12, color: '#0C4A6E', marginTop: 2 }}>
+                  This notification will be transmitted platform-wide to all registered users ({recipientsData.counts?.totalUsers || 0}) and subscribers ({recipientsData.counts?.totalSubscribers || 0}) across all companies.
+                </Text>
+              </View>
+            )}
+
+            {/* CONDITIONAL TARGET SELECTOR: INDIVIDUAL ADMIN */}
+            {targetType === 'INDIVIDUAL_ADMIN' && (
+              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', gap: 10 }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155' }}>
+                  Select Administrator / Manager:
+                </Text>
+                <TextInput
+                  style={[styles.searchBar, { marginBottom: 0 }]}
+                  placeholder="🔍 Search admin by name, username, or company..."
+                  value={adminSearch}
+                  onChangeText={setAdminSearch}
+                />
+
+                {selectedAdmin && (
+                  <View style={{ backgroundColor: '#DCFCE7', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#86EFAC', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#166534' }}>
+                      ✓ Selected: {selectedAdmin.fullName} (@{selectedAdmin.username}) • {selectedAdmin.role} • {selectedAdmin.company?.name || 'Platform'}
+                    </Text>
+                    <TouchableOpacity onPress={() => setTargetId('')}>
+                      <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '800' }}>Change</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <ScrollView style={{ maxHeight: 180 }}>
+                  <View style={{ gap: 6 }}>
+                    {filteredAdmins.length === 0 ? (
+                      <Text style={{ fontSize: 12, color: '#94A3B8', padding: 8 }}>No administrators found.</Text>
+                    ) : (
+                      filteredAdmins.slice(0, 15).map((adm: any) => (
+                        <TouchableOpacity
+                          key={adm.id}
+                          style={{
+                            backgroundColor: targetId === adm.id ? '#0F172A' : '#FFF',
+                            padding: 10,
+                            borderRadius: 6,
+                            borderWidth: 1,
+                            borderColor: targetId === adm.id ? '#0F172A' : '#CBD5E1',
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                          onPress={() => setTargetId(adm.id)}
+                        >
+                          <View>
+                            <Text style={{ fontWeight: '800', color: targetId === adm.id ? '#FFF' : '#0F172A', fontSize: 12 }}>
+                              {adm.fullName} (@{adm.username})
+                            </Text>
+                            <Text style={{ fontSize: 11, color: targetId === adm.id ? '#94A3B8' : '#64748B' }}>
+                              Company: {adm.company?.name || 'Root Platform'} • Phone: {adm.phone}
+                            </Text>
+                          </View>
+                          <View style={{ backgroundColor: targetId === adm.id ? '#334155' : '#F1F5F9', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: targetId === adm.id ? '#38BDF8' : '#0284C7' }}>
+                              {adm.role}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </View>
+                </ScrollView>
+              </View>
+            )}
+
+            {/* CONDITIONAL TARGET SELECTOR: GROUP OF ADMINS */}
+            {targetType === 'ADMIN_GROUP' && (
+              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', gap: 10 }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155' }}>
+                  Filter Administrator Group:
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {[
+                    { id: 'ALL_MANAGERS', label: 'All Branch Managers Across All Companies' },
+                    { id: 'ALL_STAFF', label: 'All Field & Collection Staff' },
+                    { id: 'COMPANY_ADMINS', label: 'Admins & Staff of a Specific Company' },
+                  ].map((f) => (
+                    <TouchableOpacity
+                      key={f.id}
+                      style={[styles.filterChip, targetFilter === f.id && styles.filterChipActive]}
+                      onPress={() => {
+                        setTargetFilter(f.id);
+                        if (f.id !== 'COMPANY_ADMINS') setTargetId('');
+                      }}
+                    >
+                      <Text style={targetFilter === f.id ? styles.filterChipTextActive : styles.filterChipText}>
+                        {f.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {targetFilter === 'COMPANY_ADMINS' && (
+                  <View style={{ marginTop: 6, gap: 6 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>Select Target Company:</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {(recipientsData.companies || []).map((comp: any) => (
+                        <TouchableOpacity
+                          key={comp.id}
+                          style={[styles.filterChip, targetId === comp.id && styles.filterChipActive]}
+                          onPress={() => setTargetId(comp.id)}
+                        >
+                          <Text style={targetId === comp.id ? styles.filterChipTextActive : styles.filterChipText}>
+                            🏢 {comp.name} ({comp.code})
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* CONDITIONAL TARGET SELECTOR: INDIVIDUAL CUSTOMER */}
+            {targetType === 'INDIVIDUAL_CUSTOMER' && (
+              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', gap: 10 }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155' }}>
+                  Select Individual Customer / Subscriber:
+                </Text>
+                <TextInput
+                  style={[styles.searchBar, { marginBottom: 0 }]}
+                  placeholder="🔍 Search customer by name, phone, or subscriber code (e.g. SUB-001)..."
+                  value={customerSearch}
+                  onChangeText={setCustomerSearch}
+                />
+
+                {selectedCustomer && (
+                  <View style={{ backgroundColor: '#DCFCE7', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#86EFAC', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#166534' }}>
+                      ✓ Selected Customer: {selectedCustomer.fullName} • Code: {selectedCustomer.subscriberCode} • Phone: {selectedCustomer.phone}
+                    </Text>
+                    <TouchableOpacity onPress={() => setTargetId('')}>
+                      <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '800' }}>Change</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <ScrollView style={{ maxHeight: 180 }}>
+                  <View style={{ gap: 6 }}>
+                    {filteredCustomers.length === 0 ? (
+                      <Text style={{ fontSize: 12, color: '#94A3B8', padding: 8 }}>No customers found matching search.</Text>
+                    ) : (
+                      filteredCustomers.slice(0, 15).map((cust: any) => (
+                        <TouchableOpacity
+                          key={cust.id}
+                          style={{
+                            backgroundColor: targetId === cust.id ? '#0F172A' : '#FFF',
+                            padding: 10,
+                            borderRadius: 6,
+                            borderWidth: 1,
+                            borderColor: targetId === cust.id ? '#0F172A' : '#CBD5E1',
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                          onPress={() => setTargetId(cust.id)}
+                        >
+                          <View>
+                            <Text style={{ fontWeight: '800', color: targetId === cust.id ? '#FFF' : '#0F172A', fontSize: 12 }}>
+                              {cust.fullName} ({cust.subscriberCode})
+                            </Text>
+                            <Text style={{ fontSize: 11, color: targetId === cust.id ? '#94A3B8' : '#64748B' }}>
+                              Phone: {cust.phone} • Status: {cust.status}
+                            </Text>
+                          </View>
+                          <View style={{ backgroundColor: targetId === cust.id ? '#334155' : '#F1F5F9', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: targetId === cust.id ? '#34D399' : '#16A34A' }}>
+                              KYC: {cust.kycStatus}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </View>
+                </ScrollView>
+              </View>
+            )}
+
+            {/* CONDITIONAL TARGET SELECTOR: GROUP OF CUSTOMERS */}
+            {targetType === 'CUSTOMER_GROUP' && (
+              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', gap: 10 }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155' }}>
+                  Filter Customer Group:
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {[
+                    { id: 'CHIT_GROUP_MEMBERS', label: 'Customers in a Specific Chit Scheme' },
+                    { id: 'COMPANY_CUSTOMERS', label: 'All Customers of a Specific Company' },
+                    { id: 'VERIFIED_KYC', label: 'All KYC-Verified Customers' },
+                    { id: 'PENDING_KYC', label: 'All Customers with Pending KYC' },
+                  ].map((f) => (
+                    <TouchableOpacity
+                      key={f.id}
+                      style={[styles.filterChip, targetFilter === f.id && styles.filterChipActive]}
+                      onPress={() => {
+                        setTargetFilter(f.id);
+                        if (f.id !== 'CHIT_GROUP_MEMBERS' && f.id !== 'COMPANY_CUSTOMERS') {
+                          setTargetId('');
+                        }
+                      }}
+                    >
+                      <Text style={targetFilter === f.id ? styles.filterChipTextActive : styles.filterChipText}>
+                        {f.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {targetFilter === 'CHIT_GROUP_MEMBERS' && (
+                  <View style={{ marginTop: 6, gap: 6 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>Select Chit Scheme:</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {(recipientsData.chitGroups || []).map((grp: any) => (
+                        <TouchableOpacity
+                          key={grp.id}
+                          style={[styles.filterChip, targetId === grp.id && styles.filterChipActive]}
+                          onPress={() => setTargetId(grp.id)}
+                        >
+                          <Text style={targetId === grp.id ? styles.filterChipTextActive : styles.filterChipText}>
+                            📊 {grp.name} ({grp.groupCode})
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {targetFilter === 'COMPANY_CUSTOMERS' && (
+                  <View style={{ marginTop: 6, gap: 6 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>Select Target Company:</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {(recipientsData.companies || []).map((comp: any) => (
+                        <TouchableOpacity
+                          key={comp.id}
+                          style={[styles.filterChip, targetId === comp.id && styles.filterChipActive]}
+                          onPress={() => setTargetId(comp.id)}
+                        >
+                          <Text style={targetId === comp.id ? styles.filterChipTextActive : styles.filterChipText}>
+                            🏢 {comp.name} ({comp.code})
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
+          {/* SECTION 2: NOTIFICATION CONTENT & URGENCY */}
+          <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 18, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 3, gap: 14 }}>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A' }}>
+              2. Notification Content & Priority
+            </Text>
+
+            {/* Notification Type & Urgency Pills */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
+              <View style={{ flex: 1, minWidth: 260 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6 }}>Category / Intent:</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {[
+                    { id: 'GENERAL_ANNOUNCEMENT', label: '📢 Announcement' },
+                    { id: 'SYSTEM_ALERT', label: '⚠️ System Alert' },
+                    { id: 'PAYMENT_REMINDER', label: '💳 Payment Reminder' },
+                    { id: 'AUCTION_NOTICE', label: '🏆 Auction Notice' },
+                    { id: 'SECURITY_NOTICE', label: '🛡️ Security Advisory' },
+                  ].map((t) => (
+                    <TouchableOpacity
+                      key={t.id}
+                      style={[styles.filterChip, type === t.id && styles.filterChipActive]}
+                      onPress={() => setType(t.id)}
+                    >
+                      <Text style={type === t.id ? styles.filterChipTextActive : styles.filterChipText}>
+                        {t.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={{ minWidth: 200 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6 }}>Urgency Priority:</Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {[
+                    { id: 'NORMAL', label: '🔵 Normal', color: '#0284C7' },
+                    { id: 'HIGH', label: '🟠 High', color: '#D97706' },
+                    { id: 'CRITICAL', label: '🔴 Critical', color: '#DC2626' },
+                  ].map((p) => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[
+                        styles.filterChip,
+                        priority === p.id && { backgroundColor: p.color, borderColor: p.color },
+                      ]}
+                      onPress={() => setPriority(p.id as any)}
+                    >
+                      <Text style={priority === p.id ? { color: '#FFF', fontWeight: '800' } : styles.filterChipText}>
+                        {p.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+
+            {/* Title Input */}
+            <View>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 4 }}>
+                Notification Title / Headline:
+              </Text>
+              <TextInput
+                style={[styles.input, { marginBottom: 0 }]}
+                placeholder="e.g. Scheduled System Maintenance or Monthly Auction Notice"
+                value={title}
+                onChangeText={setTitle}
+              />
+            </View>
+
+            {/* Message Textarea */}
+            <View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569' }}>
+                  Message Body:
+                </Text>
+                <Text style={{ fontSize: 11, color: '#94A3B8' }}>{message.length} characters</Text>
+              </View>
+              <TextInput
+                style={[styles.input, { height: 100, textAlignVertical: 'top', paddingTop: 10 }]}
+                placeholder="Type the message body to be dispatched to recipients..."
+                value={message}
+                onChangeText={setMessage}
+                multiline
+                numberOfLines={4}
+              />
+            </View>
+          </View>
+
+          {/* SECTION 3: DELIVERY CHANNELS & DISPATCH */}
+          <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 18, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 3 }}>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A', marginBottom: 10 }}>
+              3. Delivery Channels & Dispatch
+            </Text>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 18 }}>
+              <TouchableOpacity
+                style={[styles.filterChip, inApp && styles.filterChipActive]}
+                onPress={() => setInApp(!inApp)}
+              >
+                <Text style={inApp ? styles.filterChipTextActive : styles.filterChipText}>
+                  {inApp ? '✓ 📱 In-App Dashboard Alert' : '○ 📱 In-App Dashboard Alert'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.filterChip, sms && styles.filterChipActive]}
+                onPress={() => setSms(!sms)}
+              >
+                <Text style={sms ? styles.filterChipTextActive : styles.filterChipText}>
+                  {sms ? '✓ 💬 SMS Alert Dispatch' : '○ 💬 SMS Alert Dispatch'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.filterChip, email && styles.filterChipActive]}
+                onPress={() => setEmail(!email)}
+              >
+                <Text style={email ? styles.filterChipTextActive : styles.filterChipText}>
+                  {email ? '✓ 📧 Email Notification' : '○ 📧 Email Notification'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.addBtn,
+                {
+                  backgroundColor: '#0F172A',
+                  paddingVertical: 12,
+                  paddingHorizontal: 22,
+                  alignSelf: 'flex-start',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  borderRadius: 8,
+                },
+              ]}
+              onPress={handleSendNotification}
+              disabled={sending}
+            >
+              {sending ? (
+                <ActivityIndicator color="#FFF" size="small" />
+              ) : (
+                <>
+                  <Text style={{ fontSize: 16 }}>🚀</Text>
+                  <Text style={[styles.addBtnText, { fontSize: 13, letterSpacing: 0.5 }]}>
+                    SEND NOTIFICATION NOW
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* SUBTAB 2: SENT NOTIFICATIONS LOG */}
+      {subTab === 'history' && (
+        <View style={{ paddingBottom: 40 }}>
+          {loadingHistory ? (
+            <ActivityIndicator size="large" color="#0A2540" style={{ marginTop: 30 }} />
+          ) : notifications.length === 0 ? (
+            <View style={[styles.emptyBox, { padding: 36, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' }]}>
+              <Text style={{ fontSize: 32, marginBottom: 8 }}>🔔</Text>
+              <Text style={[styles.emptyText, { fontSize: 16, fontWeight: '800', color: '#0F172A' }]}>
+                No notifications sent yet.
+              </Text>
+              <Text style={[styles.emptySubText, { maxWidth: 420, textAlign: 'center', marginTop: 4 }]}>
+                Dispatched messages to individual administrators, manager groups, individual customers, and platform broadcasts will be recorded here.
+              </Text>
+              <TouchableOpacity
+                style={[styles.addBtn, { backgroundColor: '#0284C7', marginTop: 14 }]}
+                onPress={() => setSubTab('compose')}
+              >
+                <Text style={styles.addBtnText}>Compose First Notification</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ gap: 12 }}>
+              {notifications.map((n: any) => {
+                const isCritical = n.priority === 'CRITICAL';
+                const isHigh = n.priority === 'HIGH';
+                const borderColor = isCritical ? '#DC2626' : isHigh ? '#D97706' : '#0284C7';
+
+                return (
+                  <View
+                    key={n.id}
+                    style={{
+                      backgroundColor: '#FFF',
+                      borderRadius: 12,
+                      padding: 16,
+                      borderWidth: 1,
+                      borderColor: '#E2E8F0',
+                      borderLeftWidth: 5,
+                      borderLeftColor: borderColor,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: 0.03,
+                      shadowRadius: 3,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <View style={{ backgroundColor: borderColor + '18', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: borderColor + '40' }}>
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: borderColor }}>
+                            {n.priority}
+                          </Text>
+                        </View>
+                        <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569' }}>
+                            {n.type?.replace('_', ' ')}
+                          </Text>
+                        </View>
+                        <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A' }}>
+                          {n.title}
+                        </Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Text style={{ fontSize: 11, color: '#94A3B8' }}>
+                          🕒 {new Date(n.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                        </Text>
+                        <TouchableOpacity onPress={() => handleDeleteNotification(n.id)}>
+                          <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '700' }}>🗑️ Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <Text style={{ fontSize: 13, color: '#334155', lineHeight: 20, marginBottom: 10 }}>
+                      {n.message}
+                    </Text>
+
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+                      <View style={{ backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                        <Text style={{ fontSize: 11, color: '#64748B' }}>
+                          🎯 Target: <Text style={{ fontWeight: '800', color: '#0F172A' }}>{n.targetName || n.targetType}</Text>
+                        </Text>
+                      </View>
+                      <View style={{ backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                        <Text style={{ fontSize: 11, color: '#64748B' }}>
+                          👥 Recipients: <Text style={{ fontWeight: '800', color: '#16A34A' }}>{n.recipientCount}</Text>
+                        </Text>
+                      </View>
+                      <View style={{ backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                        <Text style={{ fontSize: 11, color: '#64748B' }}>
+                          📡 Channels: <Text style={{ fontWeight: '700', color: '#334155' }}>{n.channels}</Text>
+                        </Text>
+                      </View>
+                      <View style={{ backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                        <Text style={{ fontSize: 11, color: '#64748B' }}>
+                          👤 Sent By: <Text style={{ fontWeight: '700', color: '#334155' }}>{n.senderName || 'Super Admin'}</Text>
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      )}
     </ScrollView>
   );
 }

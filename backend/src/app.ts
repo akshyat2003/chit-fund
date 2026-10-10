@@ -193,6 +193,12 @@ router.get('/super-admin/archival-policy', authenticateToken, requireRoles('SUPE
 // SA-21, SA-22: Multi-Branch Oversight & Exception Management
 router.get('/super-admin/exceptions', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getMultiBranchExceptions);
 
+// SA-23: Multi-Tier Notification Engine
+router.get('/super-admin/notifications/recipients', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getNotificationRecipientsData);
+router.get('/super-admin/notifications', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getNotifications);
+router.post('/super-admin/notifications/send', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.sendNotification);
+router.delete('/super-admin/notifications/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.deleteNotification);
+
 // Financial Record Immutability Enforcement (FR-SA-018)
 router.delete('/collections/transactions/:id', authenticateToken, superAdminController.rejectFinancialRecordMutation);
 router.put('/collections/transactions/:id', authenticateToken, superAdminController.rejectFinancialRecordMutation);

@@ -1397,3 +1397,294 @@ export const createSuperAdmin = async (req: AuthRequest, res: Response) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// ==========================================
+// SA-23: MULTI-TIER NOTIFICATION ENGINE
+// ==========================================
+
+export const getNotificationRecipientsData = async (req: AuthRequest, res: Response) => {
+  try {
+    const [admins, companies, chitGroups, customers] = await Promise.all([
+      prisma.user.findMany({
+        where: { role: { not: 'SUPER_ADMIN' } },
+        select: {
+          id: true,
+          fullName: true,
+          username: true,
+          role: true,
+          phone: true,
+          email: true,
+          companyId: true,
+          company: { select: { name: true, code: true } },
+        },
+        orderBy: { fullName: 'asc' },
+      }).catch(() => []),
+      prisma.company.findMany({
+        select: { id: true, name: true, code: true, status: true },
+        orderBy: { name: 'asc' },
+      }).catch(() => []),
+      prisma.chitGroup.findMany({
+        select: { id: true, name: true, groupCode: true, companyId: true, status: true },
+        orderBy: { name: 'asc' },
+      }).catch(() => []),
+      prisma.subscriber.findMany({
+        select: {
+          id: true,
+          fullName: true,
+          phone: true,
+          subscriberCode: true,
+          companyId: true,
+          kycStatus: true,
+          status: true,
+        },
+        orderBy: { fullName: 'asc' },
+        take: 500,
+      }).catch(() => []),
+    ]);
+
+    const totalUsers = await prisma.user.count().catch(() => 0);
+    const totalSubscribers = await prisma.subscriber.count().catch(() => 0);
+
+    return res.json({
+      success: true,
+      data: {
+        admins,
+        companies,
+        chitGroups,
+        customers,
+        counts: {
+          totalUsers,
+          totalSubscribers,
+          totalAll: totalUsers + totalSubscribers,
+        },
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const sendNotification = async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      title,
+      message,
+      targetType,
+      targetId,
+      targetFilter,
+      channels,
+      type,
+      priority,
+    } = req.body;
+
+    if (!title || !title.trim() || !message || !message.trim()) {
+      return res.status(400).json({ success: false, message: 'Notification title and message body are required.' });
+    }
+
+    if (!targetType) {
+      return res.status(400).json({ success: false, message: 'Please specify the target audience (targetType).' });
+    }
+
+    let targetName = 'All Platform Users';
+    let recipientCount = 1;
+    let recipientsSummary: any = {};
+
+    if (targetType === 'ALL_USERS') {
+      const [userCount, subCount] = await Promise.all([
+        prisma.user.count().catch(() => 0),
+        prisma.subscriber.count().catch(() => 0),
+      ]);
+      recipientCount = userCount + subCount;
+      targetName = 'All Platform Users (Admins, Staff & Customers)';
+      recipientsSummary = { scope: 'ALL_PLATFORM', users: userCount, customers: subCount };
+    } else if (targetType === 'INDIVIDUAL_ADMIN') {
+      if (!targetId) {
+        return res.status(400).json({ success: false, message: 'Please select an admin or manager recipient.' });
+      }
+      const admin = await prisma.user.findUnique({
+        where: { id: targetId },
+        select: { id: true, fullName: true, username: true, role: true, phone: true, email: true },
+      });
+      if (!admin) {
+        return res.status(404).json({ success: false, message: 'Selected admin user was not found.' });
+      }
+      targetName = `Admin: ${admin.fullName} (@${admin.username} - ${admin.role})`;
+      recipientCount = 1;
+      recipientsSummary = { user: admin.fullName, username: admin.username, role: admin.role };
+    } else if (targetType === 'ADMIN_GROUP') {
+      if (targetFilter === 'ALL_MANAGERS') {
+        const managers = await prisma.user.findMany({ where: { role: 'MANAGER' } });
+        recipientCount = managers.length;
+        targetName = 'All Company Managers';
+        recipientsSummary = { role: 'MANAGER', count: managers.length };
+      } else if (targetFilter === 'ALL_STAFF') {
+        const staff = await prisma.user.findMany({ where: { role: 'COLLECTION_STAFF' } });
+        recipientCount = staff.length;
+        targetName = 'All Collection & Field Staff';
+        recipientsSummary = { role: 'COLLECTION_STAFF', count: staff.length };
+      } else if (targetFilter === 'COMPANY_ADMINS' && targetId) {
+        const company = await prisma.company.findUnique({ where: { id: targetId } });
+        const users = await prisma.user.findMany({ where: { companyId: targetId } });
+        recipientCount = users.length;
+        targetName = `Admins & Staff of Company: ${company?.name || targetId}`;
+        recipientsSummary = { companyId: targetId, companyName: company?.name, count: users.length };
+      } else {
+        const allStaff = await prisma.user.findMany({ where: { role: { not: 'SUPER_ADMIN' } } });
+        recipientCount = allStaff.length;
+        targetName = 'All Admins, Managers & Staff';
+        recipientsSummary = { scope: 'ALL_STAFF', count: allStaff.length };
+      }
+    } else if (targetType === 'INDIVIDUAL_CUSTOMER') {
+      if (!targetId) {
+        return res.status(400).json({ success: false, message: 'Please select an individual customer.' });
+      }
+      const customer = await prisma.subscriber.findUnique({
+        where: { id: targetId },
+        select: { id: true, fullName: true, subscriberCode: true, phone: true },
+      });
+      if (!customer) {
+        return res.status(404).json({ success: false, message: 'Selected customer was not found.' });
+      }
+      targetName = `Customer: ${customer.fullName} (${customer.subscriberCode})`;
+      recipientCount = 1;
+      recipientsSummary = { customer: customer.fullName, code: customer.subscriberCode, phone: customer.phone };
+    } else if (targetType === 'CUSTOMER_GROUP') {
+      if (targetFilter === 'CHIT_GROUP_MEMBERS' && targetId) {
+        const chitGroup = await prisma.chitGroup.findUnique({ where: { id: targetId } });
+        const members = await prisma.chitGroupMember.findMany({ where: { groupId: targetId } });
+        recipientCount = members.length;
+        targetName = `Customers of Chit Scheme: ${chitGroup?.name || targetId} (${chitGroup?.groupCode || ''})`;
+        recipientsSummary = { groupId: targetId, groupCode: chitGroup?.groupCode, count: members.length };
+      } else if (targetFilter === 'COMPANY_CUSTOMERS' && targetId) {
+        const company = await prisma.company.findUnique({ where: { id: targetId } });
+        const subs = await prisma.subscriber.findMany({ where: { companyId: targetId } });
+        recipientCount = subs.length;
+        targetName = `All Customers of Company: ${company?.name || targetId}`;
+        recipientsSummary = { companyId: targetId, companyName: company?.name, count: subs.length };
+      } else if (targetFilter === 'VERIFIED_KYC') {
+        const verified = await prisma.subscriber.findMany({ where: { kycStatus: 'VERIFIED' } });
+        recipientCount = verified.length;
+        targetName = 'All KYC-Verified Customers';
+        recipientsSummary = { filter: 'VERIFIED_KYC', count: verified.length };
+      } else if (targetFilter === 'PENDING_KYC') {
+        const pending = await prisma.subscriber.findMany({ where: { kycStatus: 'PENDING' } });
+        recipientCount = pending.length;
+        targetName = 'All Customers with Pending KYC';
+        recipientsSummary = { filter: 'PENDING_KYC', count: pending.length };
+      } else {
+        const allSubs = await prisma.subscriber.count().catch(() => 0);
+        recipientCount = allSubs;
+        targetName = 'All Registered Customers';
+        recipientsSummary = { scope: 'ALL_CUSTOMERS', count: allSubs };
+      }
+    }
+
+    const channelArray = Array.isArray(channels)
+      ? channels
+      : typeof channels === 'string'
+      ? channels.split(',')
+      : ['IN_APP'];
+    const channelsString = channelArray.join(',');
+
+    const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    // Insert record into PostgreSQL Notification table
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "Notification" ("id", "title", "message", "type", "priority", "targetType", "targetId", "targetName", "channels", "recipientCount", "recipients", "senderId", "senderName", "createdAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW());`,
+      notifId,
+      title.trim(),
+      message.trim(),
+      type || 'GENERAL_ANNOUNCEMENT',
+      priority || 'NORMAL',
+      targetType,
+      targetId || null,
+      targetName,
+      channelsString,
+      recipientCount,
+      JSON.stringify(recipientsSummary),
+      req.user?.id || 'super_admin',
+      req.user?.fullName || 'Super Administrator'
+    );
+
+    // Record immutable audit trail
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user?.id || null,
+          companyId: req.user?.companyId || null,
+          action: 'NOTIFICATION_DISPATCHED',
+          entity: 'Notification',
+          entityId: notifId,
+          details: JSON.stringify({
+            title: title.trim(),
+            targetType,
+            targetName,
+            recipientCount,
+            channels: channelsString,
+            priority: priority || 'NORMAL',
+          }),
+          ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown',
+        },
+      });
+    } catch (e) {}
+
+    return res.status(201).json({
+      success: true,
+      message: `Notification successfully sent to ${targetName} (${recipientCount} recipient${recipientCount === 1 ? '' : 's'}).`,
+      notification: {
+        id: notifId,
+        title: title.trim(),
+        message: message.trim(),
+        targetType,
+        targetName,
+        recipientCount,
+        channels: channelsString,
+        priority: priority || 'NORMAL',
+        type: type || 'GENERAL_ANNOUNCEMENT',
+        createdAt: new Date().toISOString(),
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const getNotifications = async (req: AuthRequest, res: Response) => {
+  try {
+    const notifications: any[] = await prisma.$queryRawUnsafe(`
+      SELECT * FROM "Notification" ORDER BY "createdAt" DESC LIMIT 100;
+    `);
+
+    return res.json({
+      success: true,
+      data: notifications,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const deleteNotification = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    await prisma.$executeRawUnsafe(`DELETE FROM "Notification" WHERE "id" = $1;`, id);
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user?.id || null,
+          action: 'NOTIFICATION_DELETED',
+          entity: 'Notification',
+          entityId: id,
+          details: JSON.stringify({ deletedNotificationId: id }),
+          ipAddress: req.ip || 'unknown',
+        },
+      });
+    } catch (e) {}
+
+    return res.json({ success: true, message: 'Notification deleted successfully' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
