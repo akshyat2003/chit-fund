@@ -806,11 +806,30 @@ export const resetPassword = async (req: Request, res: Response) => {
 export const listUsers = async (req: AuthRequest, res: Response) => {
   try {
     const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
+    const { role, companyId, search } = req.query;
     const whereClause: any = {};
 
     if (!isSuperAdmin) {
       if (req.user?.companyId) whereClause.companyId = req.user.companyId;
       if (req.user?.branchId) whereClause.branchId = req.user.branchId;
+    } else {
+      if (companyId && typeof companyId === 'string' && companyId !== 'ALL') {
+        whereClause.companyId = companyId;
+      }
+    }
+
+    if (role && typeof role === 'string' && role !== 'ALL') {
+      whereClause.role = role;
+    }
+
+    if (search && typeof search === 'string' && search.trim()) {
+      const q = search.trim();
+      whereClause.OR = [
+        { fullName: { contains: q, mode: 'insensitive' } },
+        { username: { contains: q, mode: 'insensitive' } },
+        { phone: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+      ];
     }
 
     const users = await prisma.user.findMany({
@@ -823,6 +842,8 @@ export const listUsers = async (req: AuthRequest, res: Response) => {
         email: true,
         role: true,
         status: true,
+        companyId: true,
+        branchId: true,
         createdAt: true,
         company: { select: { id: true, name: true, code: true } },
         branch: { select: { id: true, name: true, code: true } },
@@ -1021,6 +1042,189 @@ export const revokeUserSessions = async (req: AuthRequest, res: Response) => {
     return res.json({
       success: true,
       message: `Terminated ${deleted.count} active session(s) for user ${targetUser.username}.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * Super Admin & Admin: Update Any User Credential
+ * Allows updating fullName, username, phone, email, role, status, company, branch, and direct password reset
+ */
+export const updateUser = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { fullName, username, phone, email, role, companyId, branchId, status, password } = req.body;
+
+    const targetUser = await prisma.user.findUnique({ where: { id } });
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Role escalation check
+    if (req.user?.role !== 'SUPER_ADMIN') {
+      if (targetUser.role === 'SUPER_ADMIN' || role === 'SUPER_ADMIN') {
+        return res.status(403).json({ success: false, message: 'Only Super Administrators can manage Super Admin accounts.' });
+      }
+    }
+
+    // Uniqueness checks if username, phone, or email are changed
+    if (username && username.trim() !== targetUser.username) {
+      const existing = await prisma.user.findFirst({
+        where: { username: username.trim(), id: { not: id } },
+      });
+      if (existing) {
+        return res.status(409).json({ success: false, message: 'Username is already taken by another account.' });
+      }
+    }
+
+    if (phone && phone.trim() !== targetUser.phone) {
+      const existing = await prisma.user.findFirst({
+        where: { phone: phone.trim(), id: { not: id } },
+      });
+      if (existing) {
+        return res.status(409).json({ success: false, message: 'Phone number is already registered to another account.' });
+      }
+    }
+
+    if (email && email.trim() !== (targetUser.email || '')) {
+      const existing = await prisma.user.findFirst({
+        where: { email: email.trim(), id: { not: id } },
+      });
+      if (existing) {
+        return res.status(409).json({ success: false, message: 'Email address is already in use.' });
+      }
+    }
+
+    const updateData: any = {};
+    if (fullName) updateData.fullName = fullName.trim();
+    if (username) updateData.username = username.trim();
+    if (phone) updateData.phone = phone.trim();
+    if (email !== undefined) updateData.email = email ? email.trim() : null;
+    if (role) updateData.role = role;
+    if (status) updateData.status = status;
+    if (companyId !== undefined) updateData.companyId = companyId || null;
+    if (branchId !== undefined) updateData.branchId = branchId || null;
+
+    // Direct password reset by Super Admin
+    if (password && password.trim()) {
+      const policy = validatePasswordPolicy(password);
+      if (!policy.valid) {
+        return res.status(400).json({ success: false, message: policy.message });
+      }
+      updateData.passwordHash = await bcrypt.hash(password, 10);
+      // Revoke user's existing sessions
+      await prisma.refreshToken.deleteMany({ where: { userId: id } });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: updateData,
+      include: {
+        company: { select: { id: true, name: true, code: true } },
+        branch: { select: { id: true, name: true, code: true } },
+      },
+    });
+
+    // Audit Log
+    try {
+      await prisma.auditLog.create({
+        data: {
+          companyId: updatedUser.companyId || null,
+          userId: req.user?.id || null,
+          action: 'USER_UPDATED',
+          entity: 'User',
+          entityId: id,
+          details: JSON.stringify({
+            updatedBy: req.user?.fullName || req.user?.id,
+            fieldsUpdated: Object.keys(updateData).filter((k) => k !== 'passwordHash'),
+            passwordReset: !!password,
+          }),
+          ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown',
+        },
+      });
+    } catch (e) {}
+
+    return res.json({
+      success: true,
+      message: `User credentials for @${updatedUser.username} updated successfully.${password ? ' Password reset complete.' : ''}`,
+      data: updatedUser,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * Super Admin: Delete User Credential
+ * Permanently deletes unlinked user accounts or safely deactivates users linked to financial ledgers
+ */
+export const deleteUser = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (req.user?.id === id) {
+      return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id } });
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (targetUser.role === 'SUPER_ADMIN' && req.user?.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ success: false, message: 'Only Super Administrators can delete Super Admin accounts.' });
+    }
+
+    if (targetUser.role === 'SUPER_ADMIN') {
+      const activeSuperAdmins = await prisma.user.count({
+        where: { role: 'SUPER_ADMIN', status: 'ACTIVE' },
+      });
+      if (activeSuperAdmins <= 1) {
+        return res.status(400).json({ success: false, message: 'Cannot delete the platform\'s last active Super Administrator.' });
+      }
+    }
+
+    // Revoke sessions first
+    await prisma.refreshToken.deleteMany({ where: { userId: id } });
+
+    let permanentlyDeleted = false;
+    try {
+      await prisma.user.delete({ where: { id } });
+      permanentlyDeleted = true;
+    } catch (e: any) {
+      // If foreign keys prevent hard delete (recorded transactions, payouts, etc.), safely deactivate
+      await prisma.user.update({
+        where: { id },
+        data: { status: 'DEACTIVATED' },
+      });
+    }
+
+    // Audit log
+    try {
+      await prisma.auditLog.create({
+        data: {
+          companyId: targetUser.companyId || null,
+          userId: req.user?.id || null,
+          action: 'USER_DELETED',
+          entity: 'User',
+          entityId: id,
+          details: JSON.stringify({
+            username: targetUser.username,
+            role: targetUser.role,
+            type: permanentlyDeleted ? 'PERMANENT_DELETE' : 'DEACTIVATED_DUE_TO_FINANCIAL_RECORDS',
+          }),
+          ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown',
+        },
+      });
+    } catch (e) {}
+
+    return res.json({
+      success: true,
+      message: permanentlyDeleted
+        ? `User @${targetUser.username} permanently deleted from platform.`
+        : `User @${targetUser.username} has linked financial records. Account was safely deactivated and all active sessions revoked.`,
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });

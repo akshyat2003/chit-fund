@@ -43,11 +43,19 @@ router.post('/auth/verify-otp', authController.verifyOtp);
 router.post('/auth/reset-password', authController.resetPassword);
 router.get('/auth/me', authenticateToken, authController.me);
 
-// User Account Administration (FR-AUTH-007, FR-AUTH-013, FR-AUTH-014)
+// User Account Administration (FR-AUTH-007, FR-AUTH-013, FR-AUTH-014, SA-04)
 router.get('/auth/users', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.listUsers);
 router.post('/auth/users', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.createUser);
+router.put('/auth/users/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.updateUser);
 router.patch('/auth/users/:id/status', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.updateUserStatus);
+router.delete('/auth/users/:id', authenticateToken, requireRoles('SUPER_ADMIN'), authController.deleteUser);
 router.post('/auth/users/:id/revoke-sessions', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.revokeUserSessions);
+
+// Super Admin User Credential Management Aliases (SA-04)
+router.get('/super-admin/users', authenticateToken, requireRoles('SUPER_ADMIN'), authController.listUsers);
+router.post('/super-admin/users', authenticateToken, requireRoles('SUPER_ADMIN'), authController.createUser);
+router.put('/super-admin/users/:id', authenticateToken, requireRoles('SUPER_ADMIN'), authController.updateUser);
+router.delete('/super-admin/users/:id', authenticateToken, requireRoles('SUPER_ADMIN'), authController.deleteUser);
 
 // Dashboard Statistics Route
 router.get('/reports/dashboard', authenticateToken, reportController.getDashboardStats);

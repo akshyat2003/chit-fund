@@ -76,7 +76,7 @@ function MainApp() {
                   style={[styles.navItem, activeTab === 'admins' && styles.navItemActive]}
                   onPress={() => setActiveTab('admins')}
                 >
-                  <Text style={[styles.navText, activeTab === 'admins' && styles.navTextActive]}>🛡️ Super Admins</Text>
+                  <Text style={[styles.navText, activeTab === 'admins' && styles.navTextActive]}>🛡️ Users & Credentials</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -1113,172 +1113,426 @@ function CompaniesTab({ user }: { user: any }) {
   );
 }
 
-// --- 2.8 SUPER ADMINS TAB (MANAGE CO-SUPER ADMIN CREDENTIALS) ---
+// --- 2.8 SUPER ADMINS & USERS TAB (CREATE, UPDATE, DELETE & RESET CREDENTIALS) ---
 function SuperAdminsTab({ user }: { user: any }) {
-  const [admins, setAdmins] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
 
-  // Form State
+  // Filters & Search
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'ALL' | 'SUPER_ADMIN' | 'MANAGER' | 'COLLECTION_STAFF' | 'ACCOUNTANT'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED'>('ALL');
+  const [companyFilter, setCompanyFilter] = useState<string>('ALL');
+
+  // Modal State (Create / Edit)
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+
+  // Form Fields
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState<'SUPER_ADMIN' | 'MANAGER' | 'COLLECTION_STAFF' | 'ACCOUNTANT'>('MANAGER');
+  const [companyId, setCompanyId] = useState('');
+  const [userStatus, setUserStatus] = useState<'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED'>('ACTIVE');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState('');
+  const [formSuccess, setFormSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Delete Confirmation Modal State
+  const [deleteTargetUser, setDeleteTargetUser] = useState<any | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   useEffect(() => {
-    loadAdmins();
+    loadData();
   }, []);
 
-  const loadAdmins = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/super-admin/admins');
-      setAdmins(res.data.data || []);
+      const [usersRes, compRes] = await Promise.all([
+        api.get('/auth/users'),
+        api.get('/super-admin/companies').catch(() => ({ data: { data: [] } })),
+      ]);
+      setUsers(usersRes.data.data || []);
+      setCompanies(compRes.data.data || []);
     } catch (e: any) {
-      console.error(e);
+      console.error('Failed to load users:', e);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateAdmin = async () => {
+  const openCreateModal = () => {
+    setModalMode('create');
+    setEditingUserId(null);
+    setFullName('');
+    setUsername('');
+    setPhone('');
+    setEmail('');
+    setRole('MANAGER');
+    setCompanyId(companies[0]?.id || '');
+    setUserStatus('ACTIVE');
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
     setFormError('');
-    if (!fullName.trim() || !username.trim() || !phone.trim() || !password) {
-      setFormError('Please fill Full Name, Username, Mobile Phone, and Password.');
+    setFormSuccess('');
+    setModalVisible(true);
+  };
+
+  const openEditModal = (target: any) => {
+    setModalMode('edit');
+    setEditingUserId(target.id);
+    setFullName(target.fullName || '');
+    setUsername(target.username || '');
+    setPhone(target.phone || '');
+    setEmail(target.email || '');
+    setRole(target.role || 'MANAGER');
+    setCompanyId(target.companyId || (target.company?.id || ''));
+    setUserStatus(target.status || 'ACTIVE');
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setFormError('');
+    setFormSuccess('');
+    setModalVisible(true);
+  };
+
+  const handleSaveUser = async () => {
+    setFormError('');
+    setFormSuccess('');
+
+    if (!fullName.trim() || !username.trim() || !phone.trim() || !role) {
+      setFormError('Please fill Full Name, Username, Phone Number, and Role.');
       return;
     }
-    if (password.length < 8) {
-      setFormError('Password must be at least 8 characters long.');
+
+    if (role !== 'SUPER_ADMIN' && !companyId && companies.length > 0) {
+      setFormError('Please assign a company for this user role.');
       return;
     }
-    if (!/[A-Z]/.test(password)) {
-      setFormError('Password must contain at least one uppercase letter (A-Z).');
-      return;
-    }
-    if (!/[a-z]/.test(password)) {
-      setFormError('Password must contain at least one lowercase letter (a-z).');
-      return;
-    }
-    if (!/[0-9]/.test(password)) {
-      setFormError('Password must contain at least one number (0-9).');
-      return;
-    }
-    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) {
-      setFormError('Password must contain at least one special character (!@#$%^&*...).');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setFormError('Passwords do not match.');
-      return;
+
+    // Password validation
+    if (modalMode === 'create' || (modalMode === 'edit' && password.trim())) {
+      if (password.length < 8) {
+        setFormError('Password must be at least 8 characters long.');
+        return;
+      }
+      if (!/[A-Z]/.test(password)) {
+        setFormError('Password must contain at least one uppercase letter (A-Z).');
+        return;
+      }
+      if (!/[a-z]/.test(password)) {
+        setFormError('Password must contain at least one lowercase letter (a-z).');
+        return;
+      }
+      if (!/[0-9]/.test(password)) {
+        setFormError('Password must contain at least one number (0-9).');
+        return;
+      }
+      if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) {
+        setFormError('Password must contain at least one special character (!@#$%...).');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setFormError('Passwords do not match.');
+        return;
+      }
     }
 
     try {
       setSubmitting(true);
-      const res = await api.post('/super-admin/admins', {
-        fullName: fullName.trim(),
-        username: username.trim(),
-        phone: phone.trim(),
-        email: email.trim() || undefined,
-        password,
-      });
-
-      alert(res.data.message || 'Super Admin account created successfully!');
-      setShowAddModal(false);
-      setFullName('');
-      setUsername('');
-      setPhone('');
-      setEmail('');
-      setPassword('');
-      setConfirmPassword('');
-      loadAdmins();
+      if (modalMode === 'create') {
+        const payload: any = {
+          fullName: fullName.trim(),
+          username: username.trim(),
+          phone: phone.trim(),
+          email: email.trim() || undefined,
+          role,
+          companyId: role === 'SUPER_ADMIN' ? undefined : companyId,
+          password,
+        };
+        const res = await api.post('/auth/users', payload);
+        alert(res.data.message || 'User credential created successfully!');
+        setModalVisible(false);
+        loadData();
+      } else {
+        const payload: any = {
+          fullName: fullName.trim(),
+          username: username.trim(),
+          phone: phone.trim(),
+          email: email.trim() || null,
+          role,
+          companyId: role === 'SUPER_ADMIN' ? null : companyId || null,
+          status: userStatus,
+        };
+        if (password.trim()) {
+          payload.password = password.trim();
+        }
+        const res = await api.put(`/auth/users/${editingUserId}`, payload);
+        alert(res.data.message || 'User credentials updated successfully!');
+        setModalVisible(false);
+        loadData();
+      }
     } catch (e: any) {
-      setFormError(e.response?.data?.message || e.message || 'Failed to create Super Admin account');
+      setFormError(e.response?.data?.message || e.message || 'Failed to save user credentials');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleDeleteUser = async () => {
+    if (!deleteTargetUser) return;
+    try {
+      setDeleting(true);
+      const res = await api.delete(`/auth/users/${deleteTargetUser.id}`);
+      alert(res.data.message || `User @${deleteTargetUser.username} removed.`);
+      setDeleteTargetUser(null);
+      loadData();
+    } catch (e: any) {
+      alert(e.response?.data?.message || e.message || 'Failed to delete user');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleToggleStatus = async (targetUser: any) => {
+    const nextStatus = targetUser.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+    try {
+      const res = await api.patch(`/auth/users/${targetUser.id}/status`, { status: nextStatus });
+      alert(res.data.message || `User status changed to ${nextStatus}`);
+      loadData();
+    } catch (e: any) {
+      alert(e.response?.data?.message || e.message || 'Failed to update user status');
+    }
+  };
+
+  // Filtered Users List
+  const filteredUsers = users.filter((u) => {
+    if (roleFilter !== 'ALL' && u.role !== roleFilter) return false;
+    if (statusFilter !== 'ALL' && u.status !== statusFilter) return false;
+    if (companyFilter !== 'ALL' && u.companyId !== companyFilter) return false;
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      const matchName = u.fullName?.toLowerCase().includes(term);
+      const matchUser = u.username?.toLowerCase().includes(term);
+      const matchPhone = u.phone?.toLowerCase().includes(term);
+      const matchEmail = u.email?.toLowerCase().includes(term);
+      if (!matchName && !matchUser && !matchPhone && !matchEmail) return false;
+    }
+    return true;
+  });
+
   return (
     <View style={{ flex: 1, padding: 16 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      {/* Top Header */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <View style={{ flex: 1, marginRight: 12 }}>
-          <Text style={styles.sectionTitle}>🛡️ Super Admin Credentials</Text>
+          <Text style={styles.sectionTitle}>🛡️ Platform User Credentials Management</Text>
           <Text style={{ color: '#64748B', fontSize: 13, marginTop: 2 }}>
-            Provision and manage Super Administrator accounts with full platform dashboard access
+            Create, update, reset password, change roles, or delete user credentials across the platform
           </Text>
         </View>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddModal(true)}>
-          <Text style={styles.addBtnText}>+ CREATE SUPER ADMIN</Text>
+        <TouchableOpacity style={styles.addBtn} onPress={openCreateModal}>
+          <Text style={styles.addBtnText}>+ CREATE USER</Text>
         </TouchableOpacity>
       </View>
 
+      {/* Search & Filter Bar */}
+      <View style={{ backgroundColor: '#FFF', padding: 14, borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', gap: 10 }}>
+        {/* Search Input */}
+        <TextInput
+          style={styles.searchBar}
+          placeholder="🔍 Search users by name, username (@), phone, or email..."
+          value={searchTerm}
+          onChangeText={setSearchTerm}
+        />
+
+        {/* Role Filters */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B', marginRight: 4 }}>Role:</Text>
+          {(['ALL', 'SUPER_ADMIN', 'MANAGER', 'COLLECTION_STAFF', 'ACCOUNTANT'] as const).map((r) => (
+            <TouchableOpacity
+              key={r}
+              style={[styles.filterChip, roleFilter === r && styles.filterChipActive]}
+              onPress={() => setRoleFilter(r)}
+            >
+              <Text style={roleFilter === r ? styles.filterChipTextActive : styles.filterChipText}>
+                {r === 'ALL' ? 'All Roles' : r.replace('_', ' ')}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Status Filters */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B', marginRight: 4 }}>Status:</Text>
+          {(['ALL', 'ACTIVE', 'SUSPENDED', 'DEACTIVATED'] as const).map((s) => (
+            <TouchableOpacity
+              key={s}
+              style={[styles.filterChip, statusFilter === s && styles.filterChipActive]}
+              onPress={() => setStatusFilter(s)}
+            >
+              <Text style={statusFilter === s ? styles.filterChipTextActive : styles.filterChipText}>
+                {s === 'ALL' ? 'All Status' : s}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Company Filter (if companies exist) */}
+        {companies.length > 0 && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B', marginRight: 4 }}>Company:</Text>
+            <TouchableOpacity
+              style={[styles.filterChip, companyFilter === 'ALL' && styles.filterChipActive]}
+              onPress={() => setCompanyFilter('ALL')}
+            >
+              <Text style={companyFilter === 'ALL' ? styles.filterChipTextActive : styles.filterChipText}>All Companies</Text>
+            </TouchableOpacity>
+            {companies.map((c) => (
+              <TouchableOpacity
+                key={c.id}
+                style={[styles.filterChip, companyFilter === c.id && styles.filterChipActive]}
+                onPress={() => setCompanyFilter(c.id)}
+              >
+                <Text style={companyFilter === c.id ? styles.filterChipTextActive : styles.filterChipText}>
+                  {c.code || c.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+
+      {/* Users List Grid */}
       {loading ? (
-        <ActivityIndicator size="small" color="#0A2540" />
-      ) : admins.length === 0 ? (
+        <ActivityIndicator size="large" color="#0A2540" style={{ marginTop: 30 }} />
+      ) : filteredUsers.length === 0 ? (
         <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>No additional Super Admins found.</Text>
-          <Text style={styles.emptySubText}>Tap "+ CREATE SUPER ADMIN" to provision a new Super Admin credential.</Text>
+          <Text style={styles.emptyText}>No user credentials found.</Text>
+          <Text style={styles.emptySubText}>Try adjusting your search criteria or tap "+ CREATE USER".</Text>
         </View>
       ) : (
         <ScrollView style={{ flex: 1 }}>
           <View style={styles.cardsGrid}>
-            {admins.map((adm) => (
-              <View key={adm.id} style={[styles.companyCard, { borderTopColor: '#0F2F52' }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={[styles.companyCodeBadge, { color: '#0F2F52' }]}>SUPER ADMIN</Text>
-                  <View style={adm.status === 'ACTIVE' ? styles.statusBadgeActive : styles.statusBadgeSuspended}>
-                    <Text style={adm.status === 'ACTIVE' ? styles.statusTextActive : styles.statusTextSuspended}>
-                      {adm.status}
-                    </Text>
+            {filteredUsers.map((u) => {
+              const isSuper = u.role === 'SUPER_ADMIN';
+              const isCurrentUser = user?.id === u.id;
+              const roleColor = isSuper ? '#0F2F52' : u.role === 'MANAGER' ? '#0284C7' : u.role === 'COLLECTION_STAFF' ? '#16A34A' : '#7C3AED';
+
+              return (
+                <View key={u.id} style={[styles.companyCard, { borderTopColor: roleColor }]}>
+                  {/* Card Header: Role & Status */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ backgroundColor: roleColor + '18', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: roleColor, letterSpacing: 0.5 }}>
+                        {u.role?.replace('_', ' ')}
+                      </Text>
+                    </View>
+                    <View style={u.status === 'ACTIVE' ? styles.statusBadgeActive : styles.statusBadgeSuspended}>
+                      <Text style={u.status === 'ACTIVE' ? styles.statusTextActive : styles.statusTextSuspended}>
+                        {u.status}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Name & Credentials Info */}
+                  <Text style={styles.companyNameText}>
+                    {u.fullName} {isCurrentUser ? ' (You)' : ''}
+                  </Text>
+                  <Text style={[styles.companyMetaText, { fontWeight: '700', color: '#0F172A' }]}>
+                    Login: @{u.username}
+                  </Text>
+                  <Text style={styles.companyMetaText}>📞 Phone: {u.phone || '-'}</Text>
+                  <Text style={styles.companyMetaText}>✉️ Email: {u.email || '-'}</Text>
+                  <Text style={styles.companyMetaText}>
+                    🏢 Company: {u.company ? `${u.company.name} (${u.company.code})` : 'Platform Level (All Companies)'}
+                  </Text>
+                  {u.branch && <Text style={styles.companyMetaText}>📍 Branch: {u.branch.name}</Text>}
+
+                  {/* Actions Row */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 10 }}>
+                    {/* Edit Credential Button */}
+                    <TouchableOpacity
+                      style={{ flex: 1, minWidth: 90, backgroundColor: '#0284C7', paddingVertical: 8, borderRadius: 6, alignItems: 'center' }}
+                      onPress={() => openEditModal(u)}
+                    >
+                      <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>✏️ Edit</Text>
+                    </TouchableOpacity>
+
+                    {/* Quick Status Toggle */}
+                    {!isCurrentUser && (
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 90,
+                          backgroundColor: u.status === 'ACTIVE' ? '#FEF3C7' : '#DCFCE7',
+                          paddingVertical: 8,
+                          borderRadius: 6,
+                          alignItems: 'center',
+                          borderWidth: 1,
+                          borderColor: u.status === 'ACTIVE' ? '#F59E0B' : '#16A34A',
+                        }}
+                        onPress={() => handleToggleStatus(u)}
+                      >
+                        <Text style={{ color: u.status === 'ACTIVE' ? '#B45309' : '#166534', fontWeight: '700', fontSize: 12 }}>
+                          {u.status === 'ACTIVE' ? '⏸ Suspend' : '▶ Activate'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* Delete Credential Button */}
+                    {!isCurrentUser && (
+                      <TouchableOpacity
+                        style={{ flex: 1, minWidth: 80, backgroundColor: '#FEF2F2', paddingVertical: 8, borderRadius: 6, alignItems: 'center', borderWidth: 1, borderColor: '#EF4444' }}
+                        onPress={() => setDeleteTargetUser(u)}
+                      >
+                        <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 12 }}>🗑️ Delete</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
-
-                <Text style={styles.companyNameText}>{adm.fullName}</Text>
-                <Text style={styles.companyMetaText}>Username: @{adm.username}</Text>
-                <Text style={styles.companyMetaText}>Email: {adm.email || 'Not specified'}</Text>
-                <Text style={styles.companyMetaText}>Phone: {adm.phone}</Text>
-
-                <View style={{ marginTop: 12, padding: 10, backgroundColor: '#F8FAFC', borderRadius: 8 }}>
-                  <Text style={{ fontSize: 11, color: '#16A34A', fontWeight: '700' }}>
-                    ✓ Full Platform Dashboard & SaaS Administration Access
-                  </Text>
-                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>
-                    Created: {new Date(adm.createdAt).toLocaleDateString()}
-                  </Text>
-                </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         </ScrollView>
       )}
 
-      {/* Create Super Admin Modal */}
-      <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => setShowAddModal(false)}>
+      {/* CREATE / EDIT USER MODAL */}
+      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxWidth: 580 }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <Text style={styles.modalTitle}>Create Super Admin Credential</Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <View style={[styles.modalContent, { maxWidth: 620 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.modalTitle}>
+                {modalMode === 'create' ? 'Create User Credential' : `Edit User Credential (@${username})`}
+              </Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Text style={{ fontSize: 22, color: '#64748B', fontWeight: '700' }}>✕</Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={{ color: '#64748B', fontSize: 13, marginBottom: 14 }}>
-                This user will have identical full administrative permissions across all companies, branches, and platform audit records.
-              </Text>
-
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
               {formError ? (
-                <View style={[styles.errorBadge, { width: '100%', marginBottom: 12 }]}>
-                  <Text style={styles.errorBadgeText}>{formError}</Text>
+                <View style={styles.modalErrorBadge}>
+                  <Text style={styles.modalErrorBadgeText}>⚠️ {formError}</Text>
                 </View>
               ) : null}
 
+              {formSuccess ? (
+                <View style={styles.modalSuccessBadge}>
+                  <Text style={styles.modalSuccessBadgeText}>✓ {formSuccess}</Text>
+                </View>
+              ) : null}
+
+              {/* Full Name */}
               <Text style={styles.label}>Full Name *</Text>
               <TextInput
                 style={styles.input}
@@ -1287,16 +1541,18 @@ function SuperAdminsTab({ user }: { user: any }) {
                 placeholder="e.g. Priyanshu Sharma"
               />
 
-              <Text style={styles.label}>Username *</Text>
+              {/* Username */}
+              <Text style={styles.label}>Login Username *</Text>
               <TextInput
                 style={styles.input}
                 value={username}
                 onChangeText={setUsername}
                 autoCapitalize="none"
-                placeholder="e.g. priyanshu_admin"
+                placeholder="e.g. priyanshu.manager"
               />
 
-              <Text style={styles.label}>Mobile Phone Number *</Text>
+              {/* Mobile Phone */}
+              <Text style={styles.label}>Mobile Phone *</Text>
               <TextInput
                 style={styles.input}
                 value={phone}
@@ -1305,17 +1561,78 @@ function SuperAdminsTab({ user }: { user: any }) {
                 placeholder="e.g. 9876543210"
               />
 
-              <Text style={styles.label}>Email Address (Recommended for OTP recovery)</Text>
+              {/* Email */}
+              <Text style={styles.label}>Email Address (For OTP Recovery)</Text>
               <TextInput
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
-                autoCapitalize="none"
                 keyboardType="email-address"
-                placeholder="e.g. priyanshu@chitkart.com"
+                autoCapitalize="none"
+                placeholder="e.g. user@company.com"
               />
 
-              <Text style={styles.label}>Password *</Text>
+              {/* Role Selection */}
+              <Text style={styles.label}>System Role *</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                {[
+                  { id: 'SUPER_ADMIN', name: 'Super Admin' },
+                  { id: 'MANAGER', name: 'Manager' },
+                  { id: 'COLLECTION_STAFF', name: 'Staff' },
+                  { id: 'ACCOUNTANT', name: 'Accountant' },
+                ].map((rItem) => (
+                  <TouchableOpacity
+                    key={rItem.id}
+                    style={[styles.modeBtn, role === rItem.id && styles.modeBtnActive]}
+                    onPress={() => setRole(rItem.id as any)}
+                  >
+                    <Text style={role === rItem.id ? styles.modeTextActive : styles.modeText}>{rItem.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Company Selection (Required if not Super Admin) */}
+              {role !== 'SUPER_ADMIN' && companies.length > 0 && (
+                <>
+                  <Text style={styles.label}>Assigned Company *</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {companies.map((c) => (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={[styles.filterChip, companyId === c.id && styles.filterChipActive]}
+                        onPress={() => setCompanyId(c.id)}
+                      >
+                        <Text style={companyId === c.id ? styles.filterChipTextActive : styles.filterChipText}>
+                          {c.name} ({c.code})
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* Account Status Selection (in edit mode) */}
+              {modalMode === 'edit' && (
+                <>
+                  <Text style={styles.label}>Account Status *</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                    {(['ACTIVE', 'SUSPENDED', 'DEACTIVATED'] as const).map((st) => (
+                      <TouchableOpacity
+                        key={st}
+                        style={[styles.modeBtn, userStatus === st && styles.modeBtnActive]}
+                        onPress={() => setUserStatus(st)}
+                      >
+                        <Text style={userStatus === st ? styles.modeTextActive : styles.modeText}>{st}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* Password Section */}
+              <Text style={styles.label}>
+                {modalMode === 'create' ? 'Password *' : 'Reset Password (Leave blank to keep existing)'}
+              </Text>
               <View style={styles.passwordInputWrapper}>
                 <TextInput
                   style={styles.passwordInput}
@@ -1323,61 +1640,118 @@ function SuperAdminsTab({ user }: { user: any }) {
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
-                  placeholder="Min 8 chars, uppercase, lowercase, number, special"
+                  placeholder={modalMode === 'create' ? 'Min 8 chars, Aa, 1-9, !@#$' : 'Enter new password to reset'}
                 />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
                   <Text>{showPassword ? '👁' : '👁‍🗨'}</Text>
                 </TouchableOpacity>
               </View>
 
-              {/* Real-time Checklist */}
-              <View style={{ marginVertical: 8, padding: 10, backgroundColor: '#F8FAFC', borderRadius: 8, gap: 4 }}>
-                <Text style={{ fontSize: 11, color: password.length >= 8 ? '#16A34A' : '#94A3B8', fontWeight: '600' }}>
-                  {password.length >= 8 ? '✓' : '○'} At least 8 characters
-                </Text>
-                <Text style={{ fontSize: 11, color: /[A-Z]/.test(password) ? '#16A34A' : '#94A3B8', fontWeight: '600' }}>
-                  {/[A-Z]/.test(password) ? '✓' : '○'} Uppercase letter (A-Z)
-                </Text>
-                <Text style={{ fontSize: 11, color: /[a-z]/.test(password) ? '#16A34A' : '#94A3B8', fontWeight: '600' }}>
-                  {/[a-z]/.test(password) ? '✓' : '○'} Lowercase letter (a-z)
-                </Text>
-                <Text style={{ fontSize: 11, color: /[0-9]/.test(password) ? '#16A34A' : '#94A3B8', fontWeight: '600' }}>
-                  {/[0-9]/.test(password) ? '✓' : '○'} Number (0-9)
-                </Text>
-                <Text style={{ fontSize: 11, color: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password) ? '#16A34A' : '#94A3B8', fontWeight: '600' }}>
-                  {/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password) ? '✓' : '○'} Special character (!@#$%^&*...)
-                </Text>
-              </View>
+              {/* Dynamic Live Password Checklist (if password entered) */}
+              {password.length > 0 && (
+                <View style={styles.passwordRequirementsBox}>
+                  <Text style={styles.passwordRequirementsTitle}>Password Requirements:</Text>
+                  <View style={{ gap: 4 }}>
+                    <Text style={[styles.reqItem, password.length >= 8 && styles.reqItemPassed]}>
+                      {password.length >= 8 ? '✓' : '○'} At least 8 characters
+                    </Text>
+                    <Text style={[styles.reqItem, /[A-Z]/.test(password) && styles.reqItemPassed]}>
+                      {/[A-Z]/.test(password) ? '✓' : '○'} At least one uppercase letter (A-Z)
+                    </Text>
+                    <Text style={[styles.reqItem, /[a-z]/.test(password) && styles.reqItemPassed]}>
+                      {/[a-z]/.test(password) ? '✓' : '○'} At least one lowercase letter (a-z)
+                    </Text>
+                    <Text style={[styles.reqItem, /[0-9]/.test(password) && styles.reqItemPassed]}>
+                      {/[0-9]/.test(password) ? '✓' : '○'} At least one number (0-9)
+                    </Text>
+                    <Text style={[styles.reqItem, /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password) && styles.reqItemPassed]}>
+                      {/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password) ? '✓' : '○'} At least one special character (!@#$...)
+                    </Text>
+                  </View>
+                </View>
+              )}
 
-              <Text style={styles.label}>Confirm Password *</Text>
-              <View style={styles.passwordInputWrapper}>
-                <TextInput
-                  style={styles.passwordInput}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  placeholder="Re-type password"
-                />
-              </View>
+              {/* Confirm Password */}
+              {(modalMode === 'create' || password.length > 0) && (
+                <>
+                  <Text style={styles.label}>Confirm Password *</Text>
+                  <View style={styles.passwordInputWrapper}>
+                    <TextInput
+                      style={styles.passwordInput}
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      placeholder="Re-type password"
+                    />
+                  </View>
+                  {confirmPassword.length > 0 && confirmPassword !== password && (
+                    <Text style={{ color: '#DC2626', fontSize: 12, marginTop: 4, fontWeight: '600' }}>
+                      ✕ Passwords do not match
+                    </Text>
+                  )}
+                </>
+              )}
 
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 24, marginBottom: 10 }}>
-                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setShowAddModal(false)}>
+              {/* Action Buttons */}
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 24 }}>
+                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setModalVisible(false)}>
                   <Text style={styles.cancelBtnText}>CANCEL</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.primaryBtn, { flex: 2, marginTop: 0, backgroundColor: '#0F2F52' }]}
-                  onPress={handleCreateAdmin}
+                  onPress={handleSaveUser}
                   disabled={submitting}
                 >
                   {submitting ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
-                    <Text style={styles.primaryBtnText}>CREATE SUPER ADMIN</Text>
+                    <Text style={styles.primaryBtnText}>
+                      {modalMode === 'create' ? 'CREATE USER CREDENTIAL' : 'SAVE CREDENTIAL CHANGES'}
+                    </Text>
                   )}
                 </TouchableOpacity>
               </View>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* DELETE CONFIRMATION MODAL */}
+      <Modal visible={!!deleteTargetUser} transparent animationType="fade" onRequestClose={() => setDeleteTargetUser(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: 440, padding: 22 }]}>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: '#991B1B', marginBottom: 10 }}>
+              🗑️ Confirm Credential Deletion
+            </Text>
+            <Text style={{ fontSize: 14, color: '#334155', lineHeight: 20 }}>
+              Are you sure you want to delete user <Text style={{ fontWeight: '800' }}>@{deleteTargetUser?.username}</Text> ({deleteTargetUser?.fullName})?
+            </Text>
+            <Text style={{ fontSize: 12, color: '#64748B', marginTop: 8 }}>
+              • If this user has no financial ledger records, their credential will be permanently removed.
+              {"\n"}• If linked to audit or collection transactions, their account will be safely deactivated and all active login sessions terminated.
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <TouchableOpacity
+                style={[styles.cancelBtn, { flex: 1 }]}
+                onPress={() => setDeleteTargetUser(null)}
+                disabled={deleting}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryBtn, { flex: 1, marginTop: 0, backgroundColor: '#DC2626' }]}
+                onPress={handleDeleteUser}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>DELETE</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
