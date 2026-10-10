@@ -17,8 +17,10 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   login: (usernameOrPhone: string, password: string) => Promise<{ success: boolean; message?: string }>;
-  logout: () => void;
+  logout: (reason?: string) => void;
   refreshUser: () => Promise<void>;
+  inactivityMessage: string | null;
+  clearInactivityMessage: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -27,10 +29,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [inactivityMessage, setInactivityMessage] = useState<string | null>(null);
+
+  const clearInactivityMessage = () => setInactivityMessage(null);
 
   const login = async (usernameOrPhone: string, password: string) => {
     try {
       setLoading(true);
+      setInactivityMessage(null);
       const res = await api.post('/auth/login', { usernameOrPhone, password });
       if (res.data.success) {
         const { accessToken, user: loggedUser } = res.data.data;
@@ -62,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = async () => {
+  const logout = async (reason?: string) => {
     try {
       await api.post('/auth/logout');
     } catch (e) {
@@ -71,10 +77,73 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setToken(null);
     setAuthToken(null);
+    if (reason) {
+      setInactivityMessage(reason);
+    }
   };
 
+  // 5-Minute Inactivity Auto-Logout Tracker (FR-AUTH-010 / SA-01 Session Management)
+  // Automatically logs out when the administrator does not move the mouse cursor or interact for 5 minutes
+  useEffect(() => {
+    if (!user) return;
+
+    const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes (300,000ms)
+    let timeoutId: any = null;
+
+    const performAutoLogout = () => {
+      console.warn(`[Session] Admin ${user.username} inactive for 5 minutes without mouse movement. Automatically logging out.`);
+      logout('You have been automatically logged out due to 5 minutes of inactivity.');
+    };
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(performAutoLogout, INACTIVITY_TIMEOUT_MS);
+    };
+
+    // Initialize the 5-minute timer
+    resetTimer();
+
+    // Listen to mouse cursor movements and user interactions on web
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      let lastActivityTime = Date.now();
+      const onUserActivity = () => {
+        const now = Date.now();
+        // Throttle resetting the timer to at most once per second for zero performance overhead
+        if (now - lastActivityTime > 1000) {
+          lastActivityTime = now;
+          resetTimer();
+        }
+      };
+
+      const interactionEvents = [
+        'mousemove',
+        'pointermove',
+        'mousedown',
+        'keydown',
+        'scroll',
+        'wheel',
+        'touchstart',
+      ];
+
+      interactionEvents.forEach((evt) => {
+        window.addEventListener(evt, onUserActivity, { passive: true });
+      });
+
+      return () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        interactionEvents.forEach((evt) => {
+          window.removeEventListener(evt, onUserActivity);
+        });
+      };
+    }
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [user]);
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, loading, login, logout, refreshUser, inactivityMessage, clearInactivityMessage }}>
       {children}
     </AuthContext.Provider>
   );

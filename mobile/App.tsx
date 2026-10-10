@@ -156,6 +156,7 @@ function MainApp() {
 
 // --- 1. LOGIN SCREEN (MATCHING REFERENCE DESIGN) ---
 function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any> }) {
+  const { inactivityMessage, clearInactivityMessage } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -326,6 +327,14 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
           <Text style={styles.refTitle}>Welcome Back!</Text>
           <Text style={styles.refSubtitle}>Sign in with your account</Text>
         </View>
+
+        {inactivityMessage ? (
+          <View style={[styles.errorBadge, { backgroundColor: 'rgba(217, 119, 6, 0.28)', borderColor: '#F59E0B', borderWidth: 1 }]}>
+            <Text style={[styles.errorBadgeText, { color: '#FDE68A', fontWeight: '700' }]}>
+              ⏳ {inactivityMessage}
+            </Text>
+          </View>
+        ) : null}
 
         {successMsg ? (
           <View style={styles.successBadge}>
