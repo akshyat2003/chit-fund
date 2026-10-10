@@ -308,10 +308,10 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
           <View style={styles.forgotCard}>
             {/* Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
+              <Text style={styles.forgotModalTitle}>
                 {forgotStep === 1 ? 'Reset Password' : 'Enter Verification Code'}
               </Text>
-              <TouchableOpacity onPress={() => setShowForgotModal(false)}>
+              <TouchableOpacity onPress={() => setShowForgotModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Text style={styles.modalCloseText}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -361,10 +361,10 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={{ marginTop: 18, alignSelf: 'center' }}
+                  style={{ marginTop: 22, alignSelf: 'center', padding: 8 }}
                   onPress={() => setShowForgotModal(false)}
                 >
-                  <Text style={{ color: '#E4ECD8', fontSize: 14 }}>Back to Login</Text>
+                  <Text style={{ color: '#C8FF00', fontSize: 15, fontWeight: '700' }}>← Back to Login</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -1250,14 +1250,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#3E5030', // Deep olive green background matching reference image
   },
-  dynamicIsland: {
-    width: 110,
-    height: 30,
-    backgroundColor: '#000',
-    borderRadius: 18,
-    alignSelf: 'center',
-    marginTop: 8,
-  },
   refContentContainer: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -1347,25 +1339,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
   },
-  socialRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 16,
-    marginTop: 44,
-  },
-  socialBox: {
-    width: 56,
-    height: 56,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
-  },
   errorBadge: {
     backgroundColor: 'rgba(239, 68, 68, 0.25)',
     borderWidth: 1,
@@ -1403,16 +1376,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  modalCloseText: {
+  forgotModalTitle: {
     fontSize: 22,
+    fontWeight: '800',
+    color: '#FFFFFF', // High-contrast bright white
+    letterSpacing: 0.3,
+  },
+  modalCloseText: {
+    fontSize: 24,
     color: '#C8FF00',
     fontWeight: '700',
     padding: 4,
   },
   modalSubtext: {
     fontSize: 14,
-    color: '#D1DFC3',
-    lineHeight: 20,
+    color: '#E5EEDD',
+    lineHeight: 22,
     marginBottom: 20,
   },
   successBadge: {

@@ -4,9 +4,9 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function clean() {
-  console.log('Cleaning all existing data from database...');
+  console.log('Cleaning all tables from database...');
 
-  // Delete all dependent transactional and operational records
+  // 1. Wipe all operational and relational tables
   await prisma.receipt.deleteMany();
   await prisma.paymentTransaction.deleteMany();
   await prisma.payout.deleteMany();
@@ -24,35 +24,10 @@ async function clean() {
   await prisma.branch.deleteMany();
   await prisma.company.deleteMany();
 
-  console.log('All previous records wiped clean successfully.');
-
-  // Create ChitKart Company
-  const company = await prisma.company.create({
-    data: {
-      code: 'CHITKART-01',
-      name: 'ChitKart',
-      status: 'ACTIVE',
-    },
-  });
-
-  // Create Head Office Branch
-  const branch = await prisma.branch.create({
-    data: {
-      companyId: company.id,
-      code: 'HQ-01',
-      name: 'ChitKart Head Office',
-      status: 'ACTIVE',
-    },
-  });
-
-  // Password: admin123
+  // 2. Create the sole Super Admin user
   const passwordHash = await bcrypt.hash('admin123', 10);
-
-  // Create Sole Super Admin
   const superAdmin = await prisma.user.create({
     data: {
-      companyId: company.id,
-      branchId: branch.id,
       role: 'SUPER_ADMIN',
       username: 'akshyatraj',
       fullName: 'Akshyatraj Pati',
@@ -63,26 +38,9 @@ async function clean() {
     },
   });
 
-  console.log('Database cleanly reset with Super Admin:');
-  console.log({
-    id: superAdmin.id,
-    fullName: superAdmin.fullName,
-    phone: superAdmin.phone,
-    email: superAdmin.email,
-    username: superAdmin.username,
-    role: superAdmin.role,
-    company: company.name,
-  });
-  console.log('Login credentials:');
-  console.log('  Username/Email/Phone: "akshyatraj" OR "8260521302" OR "akshatrajpati@gmail.com"');
-  console.log('  Password: "admin123"');
+  console.log('Database cleanly reset with sole Super Admin:', superAdmin.fullName, superAdmin.phone);
 }
 
 clean()
-  .catch((e) => {
-    console.error('Error during database cleanup:', e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+  .catch(console.error)
+  .finally(() => prisma.$disconnect());
