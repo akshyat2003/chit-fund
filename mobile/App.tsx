@@ -99,10 +99,11 @@ function MainApp() {
   );
 }
 
-// --- 1. LOGIN SCREEN ---
+// --- 1. LOGIN SCREEN (MATCHING REFERENCE DESIGN) ---
 function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any> }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showServerConfig, setShowServerConfig] = useState(false);
@@ -110,7 +111,7 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
-      setError('Please enter your username and password');
+      setError('Please enter your email or username and password');
       return;
     }
     setError('');
@@ -118,7 +119,7 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
     const res = await onLogin(username.trim(), password.trim());
     setLoading(false);
     if (!res.success) {
-      setError(res.message || 'Login failed');
+      setError(res.message || 'Invalid credentials');
     }
   };
 
@@ -128,76 +129,130 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
   };
 
   return (
-    <SafeAreaView style={styles.loginContainer}>
-      <View style={styles.loginCard}>
-        <View style={styles.logoBadge}>
-          <Text style={styles.logoBadgeText}>CHIT FUND PLATFORM</Text>
+    <SafeAreaView style={styles.refContainer}>
+      <StatusBar barStyle="light-content" backgroundColor="#324124" />
+
+      {/* Dynamic Notch / Pill indicator at top */}
+      <View style={styles.dynamicIsland} />
+
+      <ScrollView contentContainerStyle={styles.refContentContainer} keyboardShouldPersistTaps="handled">
+        {/* Title Section */}
+        <View style={styles.refHeader}>
+          <Text style={styles.refTitle}>Welcome Back!</Text>
+          <Text style={styles.refSubtitle}>Sign in with your account</Text>
         </View>
-        <Text style={styles.loginTitle}>Sign In</Text>
-        <Text style={styles.loginSub}>Enter your credentials to access the system</Text>
 
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {error ? (
+          <View style={styles.errorBadge}>
+            <Text style={styles.errorBadgeText}>{error}</Text>
+          </View>
+        ) : null}
 
-        <Text style={styles.label}>Username or Mobile Number</Text>
-        <TextInput
-          style={styles.input}
-          value={username}
-          onChangeText={setUsername}
-          placeholder="Enter username or mobile"
-          placeholderTextColor="#999"
-          autoCapitalize="none"
-        />
+        {/* Input Fields Container */}
+        <View style={styles.refForm}>
+          {/* Username / Email Field */}
+          <View style={styles.pillInputWrapper}>
+            <TextInput
+              style={styles.pillInput}
+              value={username}
+              onChangeText={setUsername}
+              placeholder="Email or Username"
+              placeholderTextColor="#9AA0A6"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
 
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Enter password"
-          placeholderTextColor="#999"
-          secureTextEntry
-        />
+          {/* Password Field with Show/Hide toggle */}
+          <View style={styles.pillInputWrapper}>
+            <TextInput
+              style={[styles.pillInput, { paddingRight: 50 }]}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Password"
+              placeholderTextColor="#9AA0A6"
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity
+              style={styles.eyeBtn}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <Text style={{ fontSize: 18, color: '#757575' }}>
+                {showPassword ? '👁' : '👁‍🗨'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
+          {/* Lime Green Login Button */}
+          <TouchableOpacity
+            style={styles.limeBtn}
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            {loading ? (
+              <ActivityIndicator color="#111" size="small" />
+            ) : (
+              <Text style={styles.limeBtnText}>Login</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Forgot Password & Signup Links */}
+          <View style={styles.linkGroup}>
+            <TouchableOpacity onPress={() => alert('Account creation is managed by your Chit Fund administrator.')}>
+              <Text style={styles.refLinkText}>Don’t have any account?</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ marginTop: 8 }} onPress={() => alert('Please contact your branch manager to reset your password.')}>
+              <Text style={styles.refLinkText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Social Icons Section */}
+          <View style={styles.socialRow}>
+            {/* Google Icon */}
+            <TouchableOpacity style={styles.socialBox} activeOpacity={0.7} onPress={() => alert('Google login configured for enterprise SSO')}>
+              <Text style={{ fontSize: 22, fontWeight: 'bold' }}>G</Text>
+            </TouchableOpacity>
+
+            {/* Apple Icon */}
+            <TouchableOpacity style={styles.socialBox} activeOpacity={0.7} onPress={() => alert('Apple ID login configured for enterprise SSO')}>
+              <Text style={{ fontSize: 24, fontWeight: 'bold' }}></Text>
+            </TouchableOpacity>
+
+            {/* Facebook Icon */}
+            <TouchableOpacity style={styles.socialBox} activeOpacity={0.7} onPress={() => alert('Social sign-in configured for enterprise SSO')}>
+              <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#1877F2' }}>f</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Server Endpoint Config Link */}
         <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.primaryBtnText}>SIGN IN</Text>
-          )}
-        </TouchableOpacity>
-
-        {/* Server Endpoint Configuration */}
-        <TouchableOpacity
-          style={{ marginTop: 16, alignSelf: 'center' }}
+          style={{ marginTop: 32, alignSelf: 'center', opacity: 0.6 }}
           onPress={() => setShowServerConfig(!showServerConfig)}
         >
-          <Text style={{ fontSize: 11, color: '#718096' }}>
-            ⚙️ Server URL: {API_BASE_URL}
-          </Text>
+          <Text style={{ fontSize: 11, color: '#E2E8D5' }}>⚙️ Endpoint: {API_BASE_URL}</Text>
         </TouchableOpacity>
 
         {showServerConfig && (
-          <View style={{ marginTop: 10, padding: 10, backgroundColor: '#EDF2F7', borderRadius: 8 }}>
-            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#2D3748', marginBottom: 4 }}>Backend API Endpoint:</Text>
+          <View style={{ marginTop: 10, padding: 12, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, width: '100%', maxWidth: 360, alignSelf: 'center' }}>
+            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#FFF', marginBottom: 4 }}>Backend API URL:</Text>
             <TextInput
-              style={[styles.input, { fontSize: 12, paddingVertical: 6 }]}
+              style={[styles.pillInput, { height: 42, fontSize: 12, borderRadius: 8, paddingHorizontal: 12 }]}
               value={customServerUrl}
               onChangeText={setCustomServerUrl}
               autoCapitalize="none"
             />
             <TouchableOpacity
-              style={[styles.primaryBtn, { paddingVertical: 8, marginTop: 8 }]}
+              style={[styles.limeBtn, { height: 40, marginTop: 8 }]}
               onPress={handleSaveServerUrl}
             >
-              <Text style={{ color: '#fff', fontSize: 11, fontWeight: 'bold' }}>UPDATE ENDPOINT</Text>
+              <Text style={[styles.limeBtnText, { fontSize: 12 }]}>SAVE ENDPOINT</Text>
             </TouchableOpacity>
           </View>
         )}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -995,4 +1050,136 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1A202C', marginBottom: 14 },
   cancelBtn: { backgroundColor: '#CBD5E0', borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
   cancelBtnText: { color: '#2D3748', fontWeight: 'bold', fontSize: 13 },
+
+  // --- REFERENCE DESIGN STYLES ---
+  refContainer: {
+    flex: 1,
+    backgroundColor: '#3E5030', // Deep olive green background matching reference image
+  },
+  dynamicIsland: {
+    width: 110,
+    height: 30,
+    backgroundColor: '#000',
+    borderRadius: 18,
+    alignSelf: 'center',
+    marginTop: 8,
+  },
+  refContentContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    paddingVertical: 30,
+  },
+  refHeader: {
+    alignItems: 'center',
+    marginBottom: 44,
+  },
+  refTitle: {
+    fontSize: 34,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+    textAlign: 'center',
+  },
+  refSubtitle: {
+    fontSize: 16,
+    color: '#D8E2CB',
+    marginTop: 8,
+    fontWeight: '400',
+    textAlign: 'center',
+  },
+  refForm: {
+    width: '100%',
+    maxWidth: 380,
+    alignSelf: 'center',
+  },
+  pillInputWrapper: {
+    width: '100%',
+    height: 56,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  pillInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  eyeBtn: {
+    padding: 6,
+  },
+  limeBtn: {
+    width: '100%',
+    height: 56,
+    backgroundColor: '#C8FF00', // Electric neon lime green
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    shadowColor: '#C8FF00',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  limeBtnText: {
+    color: '#1C2414',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  linkGroup: {
+    alignItems: 'center',
+    marginTop: 26,
+  },
+  refLinkText: {
+    color: '#E4ECD8',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  socialRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 44,
+  },
+  socialBox: {
+    width: 56,
+    height: 56,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  errorBadge: {
+    backgroundColor: 'rgba(239, 68, 68, 0.25)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginBottom: 16,
+    alignSelf: 'center',
+    maxWidth: 360,
+  },
+  errorBadgeText: {
+    color: '#FEE2E2',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
 });
