@@ -1456,58 +1456,33 @@ export const createSuperAdmin = async (req: AuthRequest, res: Response) => {
 
 export const getNotificationRecipientsData = async (req: AuthRequest, res: Response) => {
   try {
-    const [admins, companies, chitGroups, customers] = await Promise.all([
-      prisma.user.findMany({
-        where: { role: { not: 'SUPER_ADMIN' } },
-        select: {
-          id: true,
-          fullName: true,
-          username: true,
-          role: true,
-          phone: true,
-          email: true,
-          companyId: true,
-          company: { select: { name: true, code: true } },
-        },
-        orderBy: { fullName: 'asc' },
-      }).catch(() => []),
-      prisma.company.findMany({
-        select: { id: true, name: true, code: true, status: true },
-        orderBy: { name: 'asc' },
-      }).catch(() => []),
-      prisma.chitGroup.findMany({
-        select: { id: true, name: true, groupCode: true, companyId: true, status: true },
-        orderBy: { name: 'asc' },
-      }).catch(() => []),
-      prisma.subscriber.findMany({
-        select: {
-          id: true,
-          fullName: true,
-          phone: true,
-          subscriberCode: true,
-          companyId: true,
-          kycStatus: true,
-          status: true,
-        },
-        orderBy: { fullName: 'asc' },
-        take: 500,
-      }).catch(() => []),
-    ]);
+    const admins = await prisma.user.findMany({
+      where: { role: { not: 'SUPER_ADMIN' } },
+      select: {
+        id: true,
+        fullName: true,
+        username: true,
+        role: true,
+        phone: true,
+        email: true,
+        companyId: true,
+        company: { select: { name: true, code: true } },
+      },
+      orderBy: [{ role: 'asc' }, { fullName: 'asc' }],
+    }).catch(() => []);
 
-    const totalUsers = await prisma.user.count().catch(() => 0);
-    const totalSubscribers = await prisma.subscriber.count().catch(() => 0);
+    const managersCount = await prisma.user.count({ where: { role: 'MANAGER' } }).catch(() => 0);
+    const staffCount = await prisma.user.count({ where: { role: 'COLLECTION_STAFF' } }).catch(() => 0);
+    const totalUsers = managersCount + staffCount;
 
     return res.json({
       success: true,
       data: {
         admins,
-        companies,
-        chitGroups,
-        customers,
         counts: {
+          managersCount,
+          staffCount,
           totalUsers,
-          totalSubscribers,
-          totalAll: totalUsers + totalSubscribers,
         },
       },
     });
@@ -1523,7 +1498,6 @@ export const sendNotification = async (req: AuthRequest, res: Response) => {
       message,
       targetType,
       targetId,
-      targetFilter,
       channels,
       type,
       priority,
@@ -1537,98 +1511,39 @@ export const sendNotification = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: 'Please specify the target audience (targetType).' });
     }
 
-    let targetName = 'All Platform Users';
+    let targetName = 'All Admins / Managers';
     let recipientCount = 1;
     let recipientsSummary: any = {};
 
-    if (targetType === 'ALL_USERS') {
-      const [userCount, subCount] = await Promise.all([
-        prisma.user.count().catch(() => 0),
-        prisma.subscriber.count().catch(() => 0),
-      ]);
-      recipientCount = userCount + subCount;
-      targetName = 'All Platform Users (Admins, Staff & Customers)';
-      recipientsSummary = { scope: 'ALL_PLATFORM', users: userCount, customers: subCount };
-    } else if (targetType === 'INDIVIDUAL_ADMIN') {
+    if (targetType === 'ALL_MANAGERS' || targetType === 'ALL_ADMINS') {
+      const managers = await prisma.user.findMany({ where: { role: 'MANAGER' } });
+      recipientCount = managers.length;
+      targetName = 'All Admins / Managers';
+      recipientsSummary = { role: 'MANAGER', count: managers.length };
+    } else if (targetType === 'ALL_STAFF') {
+      const staff = await prisma.user.findMany({ where: { role: 'COLLECTION_STAFF' } });
+      recipientCount = staff.length;
+      targetName = 'All Staff';
+      recipientsSummary = { role: 'COLLECTION_STAFF', count: staff.length };
+    } else if (targetType === 'INDIVIDUAL_ADMIN' || targetType === 'INDIVIDUAL_USER') {
       if (!targetId) {
-        return res.status(400).json({ success: false, message: 'Please select an admin or manager recipient.' });
+        return res.status(400).json({ success: false, message: 'Please select an individual admin, manager, or staff member.' });
       }
       const admin = await prisma.user.findUnique({
         where: { id: targetId },
         select: { id: true, fullName: true, username: true, role: true, phone: true, email: true },
       });
       if (!admin) {
-        return res.status(404).json({ success: false, message: 'Selected admin user was not found.' });
+        return res.status(404).json({ success: false, message: 'Selected user was not found.' });
       }
-      targetName = `Admin: ${admin.fullName} (@${admin.username} - ${admin.role})`;
+      targetName = `${admin.fullName} (@${admin.username} - ${admin.role.replace('_', ' ')})`;
       recipientCount = 1;
-      recipientsSummary = { user: admin.fullName, username: admin.username, role: admin.role };
-    } else if (targetType === 'ADMIN_GROUP') {
-      if (targetFilter === 'ALL_MANAGERS') {
-        const managers = await prisma.user.findMany({ where: { role: 'MANAGER' } });
-        recipientCount = managers.length;
-        targetName = 'All Company Managers';
-        recipientsSummary = { role: 'MANAGER', count: managers.length };
-      } else if (targetFilter === 'ALL_STAFF') {
-        const staff = await prisma.user.findMany({ where: { role: 'COLLECTION_STAFF' } });
-        recipientCount = staff.length;
-        targetName = 'All Collection & Field Staff';
-        recipientsSummary = { role: 'COLLECTION_STAFF', count: staff.length };
-      } else if (targetFilter === 'COMPANY_ADMINS' && targetId) {
-        const company = await prisma.company.findUnique({ where: { id: targetId } });
-        const users = await prisma.user.findMany({ where: { companyId: targetId } });
-        recipientCount = users.length;
-        targetName = `Admins & Staff of Company: ${company?.name || targetId}`;
-        recipientsSummary = { companyId: targetId, companyName: company?.name, count: users.length };
-      } else {
-        const allStaff = await prisma.user.findMany({ where: { role: { not: 'SUPER_ADMIN' } } });
-        recipientCount = allStaff.length;
-        targetName = 'All Admins, Managers & Staff';
-        recipientsSummary = { scope: 'ALL_STAFF', count: allStaff.length };
-      }
-    } else if (targetType === 'INDIVIDUAL_CUSTOMER') {
-      if (!targetId) {
-        return res.status(400).json({ success: false, message: 'Please select an individual customer.' });
-      }
-      const customer = await prisma.subscriber.findUnique({
-        where: { id: targetId },
-        select: { id: true, fullName: true, subscriberCode: true, phone: true },
+      recipientsSummary = { user: admin.fullName, username: admin.username, role: admin.role, email: admin.email };
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid target type. Allowed targets: ALL_MANAGERS, ALL_STAFF, INDIVIDUAL_ADMIN',
       });
-      if (!customer) {
-        return res.status(404).json({ success: false, message: 'Selected customer was not found.' });
-      }
-      targetName = `Customer: ${customer.fullName} (${customer.subscriberCode})`;
-      recipientCount = 1;
-      recipientsSummary = { customer: customer.fullName, code: customer.subscriberCode, phone: customer.phone };
-    } else if (targetType === 'CUSTOMER_GROUP') {
-      if (targetFilter === 'CHIT_GROUP_MEMBERS' && targetId) {
-        const chitGroup = await prisma.chitGroup.findUnique({ where: { id: targetId } });
-        const members = await prisma.chitGroupMember.findMany({ where: { groupId: targetId } });
-        recipientCount = members.length;
-        targetName = `Customers of Chit Scheme: ${chitGroup?.name || targetId} (${chitGroup?.groupCode || ''})`;
-        recipientsSummary = { groupId: targetId, groupCode: chitGroup?.groupCode, count: members.length };
-      } else if (targetFilter === 'COMPANY_CUSTOMERS' && targetId) {
-        const company = await prisma.company.findUnique({ where: { id: targetId } });
-        const subs = await prisma.subscriber.findMany({ where: { companyId: targetId } });
-        recipientCount = subs.length;
-        targetName = `All Customers of Company: ${company?.name || targetId}`;
-        recipientsSummary = { companyId: targetId, companyName: company?.name, count: subs.length };
-      } else if (targetFilter === 'VERIFIED_KYC') {
-        const verified = await prisma.subscriber.findMany({ where: { kycStatus: 'VERIFIED' } });
-        recipientCount = verified.length;
-        targetName = 'All KYC-Verified Customers';
-        recipientsSummary = { filter: 'VERIFIED_KYC', count: verified.length };
-      } else if (targetFilter === 'PENDING_KYC') {
-        const pending = await prisma.subscriber.findMany({ where: { kycStatus: 'PENDING' } });
-        recipientCount = pending.length;
-        targetName = 'All Customers with Pending KYC';
-        recipientsSummary = { filter: 'PENDING_KYC', count: pending.length };
-      } else {
-        const allSubs = await prisma.subscriber.count().catch(() => 0);
-        recipientCount = allSubs;
-        targetName = 'All Registered Customers';
-        recipientsSummary = { scope: 'ALL_CUSTOMERS', count: allSubs };
-      }
     }
 
     const channelArray = Array.isArray(channels)
