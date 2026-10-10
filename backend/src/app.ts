@@ -13,6 +13,7 @@ import * as auctionController from './modules/auctions/auction.controller.js';
 import * as payoutController from './modules/payouts/payout.controller.js';
 import * as reconciliationController from './modules/reconciliation/reconciliation.controller.js';
 import * as reportController from './modules/reports/report.controller.js';
+import * as superAdminController from './modules/super-admin/superAdmin.controller.js';
 
 const app = express();
 
@@ -79,6 +80,25 @@ router.patch('/payouts/:id/status', authenticateToken, requireRoles('SUPER_ADMIN
 router.post('/reconciliation/handover', authenticateToken, reconciliationController.submitCashHandover);
 router.get('/reconciliation/handovers', authenticateToken, reconciliationController.listHandovers);
 router.patch('/reconciliation/handovers/:id/verify', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), reconciliationController.verifyHandover);
+
+// Super Admin Module Routes (FR-SA-001 through FR-SA-018)
+router.get('/super-admin/dashboard', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getPlatformDashboard);
+router.get('/super-admin/companies', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listCompanies);
+router.post('/super-admin/companies', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.createCompany);
+router.get('/super-admin/companies/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getCompanyDetails);
+router.patch('/super-admin/companies/:id/status', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateCompanyStatus);
+router.put('/super-admin/companies/:id/settings', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateCompanySettings);
+router.get('/super-admin/subscriptions', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listSubscriptionPlans);
+router.get('/super-admin/audit-logs', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getAuditLogs);
+router.get('/super-admin/system-health', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getSystemHealth);
+router.get('/super-admin/platform-settings', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getPlatformSettings);
+router.put('/super-admin/platform-settings', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updatePlatformSettings);
+router.post('/super-admin/support-access', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.requestSupportAccess);
+
+// Financial Record Immutability Enforcement (FR-SA-018)
+router.delete('/collections/transactions/:id', authenticateToken, superAdminController.rejectFinancialRecordMutation);
+router.put('/collections/transactions/:id', authenticateToken, superAdminController.rejectFinancialRecordMutation);
+router.patch('/collections/transactions/:id', authenticateToken, superAdminController.rejectFinancialRecordMutation);
 
 // Mount router on multiple common paths for seamless local and Vercel serverless routing
 app.use('/api/v1', router);

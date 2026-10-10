@@ -39,11 +39,30 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
         phone: true,
         fullName: true,
         status: true,
+        company: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
       },
     });
 
     if (!user || user.status !== 'ACTIVE') {
       return res.status(403).json({ success: false, message: 'User account is inactive or disabled' });
+    }
+
+    // FR-SA-014: Prohibit suspended companies from performing business write operations while preserving historical read access
+    if (
+      user.role !== 'SUPER_ADMIN' &&
+      user.company &&
+      user.company.status === 'SUSPENDED' &&
+      ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Policy FR-SA-014 Enforced: Company account is currently suspended. Business operations are prohibited while historical records remain accessible.',
+      });
     }
 
     req.user = {
