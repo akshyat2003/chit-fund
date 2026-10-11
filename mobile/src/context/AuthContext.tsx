@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { api, setAuthToken } from '../services/api';
+import { api, setAuthToken, setOnSessionTerminated } from '../services/api';
 
 export interface User {
   id: string;
@@ -31,10 +31,21 @@ const getInitialAuth = () => {
       const storedToken = localStorage.getItem('chitkart_auth_token');
       const storedUser = localStorage.getItem('chitkart_auth_user');
       if (storedToken && storedUser) {
-        setAuthToken(storedToken);
-        return { token: storedToken, user: JSON.parse(storedUser) as User };
+        const parsed = JSON.parse(storedUser);
+        if (parsed && parsed.id && parsed.role) {
+          setAuthToken(storedToken);
+          return { token: storedToken, user: parsed as User };
+        } else {
+          localStorage.removeItem('chitkart_auth_token');
+          localStorage.removeItem('chitkart_auth_user');
+        }
       }
-    } catch (e) {}
+    } catch (e) {
+      try {
+        localStorage.removeItem('chitkart_auth_token');
+        localStorage.removeItem('chitkart_auth_user');
+      } catch (err) {}
+    }
   }
   return { token: null, user: null };
 };
@@ -50,21 +61,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Background verification of persisted session upon browser refresh or app launch
   useEffect(() => {
+    // Listen for session expiration signals from API calls
+    setOnSessionTerminated((msg) => {
+      logout(msg);
+    });
+
     if (token) {
       api.get('/auth/me')
         .then((res) => {
-          if (res.data.success && res.data.data) {
+          if (res.data?.success && res.data?.data?.id && res.data?.data?.role) {
             setUser(res.data.data);
             if (typeof window !== 'undefined' && window.localStorage) {
               try {
                 localStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
               } catch (e) {}
             }
+          } else {
+            logout('Session invalid. Please log in again.');
           }
         })
         .catch((err) => {
-          if (err.response?.status === 401) {
-            // Silently clean up expired token without page reloads or loops
+          const status = err.response?.status;
+          // If token expired (403), unauthorized (401), user deleted (404), or invalid response:
+          // Clean up stored state and bring user cleanly to login screen!
+          if (status === 401 || status === 403 || status === 404) {
             if (typeof window !== 'undefined' && window.localStorage) {
               try {
                 localStorage.removeItem('chitkart_auth_token');

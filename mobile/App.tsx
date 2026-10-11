@@ -42,7 +42,7 @@ function MainApp() {
   >('dashboard');
   const [showProfileModal, setShowProfileModal] = useState(false);
 
-  if (!user) {
+  if (!user || !user.role) {
     return <LoginView onLogin={login} />;
   }
 
@@ -55,7 +55,7 @@ function MainApp() {
           <View style={{ flex: 1, marginRight: 12 }}>
             <Text style={styles.headerTitle} numberOfLines={1}>{user.company?.name?.toUpperCase() || 'CHITKART'}</Text>
             <Text style={styles.headerSubtitle} numberOfLines={1}>
-              {user.role.replace('_', ' ')} • {user.fullName}
+              {(user.role ? user.role.replace('_', ' ') : 'USER')} • {user.fullName || ''}
             </Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
@@ -423,7 +423,7 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
     <SafeAreaView style={styles.refContainer}>
       <StatusBar barStyle="light-content" backgroundColor="#324124" />
 
-      <ScrollView contentContainerStyle={styles.refContentContainer} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.refScrollView} contentContainerStyle={styles.refContentContainer} keyboardShouldPersistTaps="handled">
         {/* Title Section */}
         <View style={styles.refHeader}>
           <Text style={styles.chitKartBrand}>CHITKART</Text>
@@ -458,7 +458,10 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
             <TextInput
               style={styles.pillInput}
               value={username}
-              onChangeText={setUsername}
+              onChangeText={(val) => {
+                if (inactivityMessage) clearInactivityMessage();
+                setUsername(val);
+              }}
               placeholder="Email or Username"
               placeholderTextColor="#9AA0A6"
               autoCapitalize="none"
@@ -471,7 +474,10 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
             <TextInput
               style={[styles.pillInput, { paddingRight: 50 }]}
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(val) => {
+                if (inactivityMessage) clearInactivityMessage();
+                setPassword(val);
+              }}
               placeholder="Password"
               placeholderTextColor="#9AA0A6"
               secureTextEntry={!showPassword}
@@ -4479,11 +4485,59 @@ function ProfileModal({
   );
 }
 
+class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error('App caught render error:', error, errorInfo);
+  }
+
+  resetError = () => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        localStorage.removeItem('chitkart_auth_token');
+        localStorage.removeItem('chitkart_auth_user');
+      } catch (e) {}
+    }
+    this.setState({ hasError: false, error: null });
+    if (typeof window !== 'undefined' && window.location) {
+      window.location.reload();
+    }
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaView style={[styles.refContainer, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+          <Text style={styles.chitKartBrand}>CHITKART</Text>
+          <Text style={[styles.refTitle, { fontSize: 24, marginBottom: 12 }]}>Welcome Back</Text>
+          <Text style={[styles.refSubtitle, { marginBottom: 24 }]}>
+            Click below to return directly to the Login Screen.
+          </Text>
+          <TouchableOpacity style={[styles.limeBtn, { maxWidth: 280 }]} onPress={this.resetError}>
+            <Text style={styles.limeBtnText}>Go to Login Screen</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
+    <AppErrorBoundary>
+      <AuthProvider>
+        <MainApp />
+      </AuthProvider>
+    </AppErrorBoundary>
   );
 }
 
@@ -4928,7 +4982,14 @@ const styles = StyleSheet.create({
   // --- REFERENCE DESIGN STYLES FOR LOGIN ---
   refContainer: {
     flex: 1,
+    width: '100%',
+    height: '100%',
+    minHeight: '100%',
     backgroundColor: '#3E5030',
+  },
+  refScrollView: {
+    flex: 1,
+    width: '100%',
   },
   refContentContainer: {
     flexGrow: 1,
