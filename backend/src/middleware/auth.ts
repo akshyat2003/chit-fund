@@ -29,21 +29,6 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
     const secret = process.env.JWT_SECRET || 'chitfund_super_secure_jwt_secret_key_2026!@#';
     const decoded = jwt.verify(token, secret) as any;
 
-    // Single Active Session / Window Enforcement:
-    // If another window or user logged in with the same credential, the previous sessionId was deleted
-    if (decoded.sessionId) {
-      const activeSession = await prisma.refreshToken.findUnique({
-        where: { id: decoded.sessionId },
-      });
-      if (!activeSession) {
-        return res.status(401).json({
-          success: false,
-          code: 'SESSION_TERMINATED',
-          message: 'Your account was logged in from another window or device. This session has been terminated.',
-        });
-      }
-    }
-
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: {

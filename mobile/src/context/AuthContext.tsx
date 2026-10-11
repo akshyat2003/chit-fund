@@ -151,15 +151,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Listen only for explicit 401 session terminations from API requests (without aggressive 5-min timer)
-  useEffect(() => {
-    if (!user) return;
-
-    setOnSessionTerminated((msg) => {
-      logout(msg);
-    });
-  }, [user]);
-
   return (
     <AuthContext.Provider value={{ user, token, loading, login, logout, refreshUser, inactivityMessage, clearInactivityMessage }}>
       {children}
