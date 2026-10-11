@@ -48,7 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearInactivityMessage = () => setInactivityMessage(null);
 
-  // Background verification of persisted session upon browser refresh
+  // Background verification of persisted session upon browser refresh or app launch
   useEffect(() => {
     if (token) {
       api.get('/auth/me')
@@ -64,8 +64,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         })
         .catch((err) => {
           if (err.response?.status === 401) {
-            console.warn('[Session] Stored session invalid or expired. Logging out.');
-            logout(err.response?.data?.message || 'Session expired. Please sign in again.');
+            // Silently clean up expired token without page reloads or loops
+            if (typeof window !== 'undefined' && window.localStorage) {
+              try {
+                localStorage.removeItem('chitkart_auth_token');
+                localStorage.removeItem('chitkart_auth_user');
+              } catch (e) {}
+            }
+            setUser(null);
+            setToken(null);
+            setAuthToken(null);
           }
         });
     }
@@ -87,24 +95,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             localStorage.setItem('chitkart_auth_token', accessToken);
             localStorage.setItem('chitkart_auth_user', JSON.stringify(loggedUser));
-          } catch (e) {}
-        }
-
-        // Broadcast to other open windows/tabs on the same browser to log them out immediately
-        if (typeof window !== 'undefined') {
-          try {
-            if (typeof BroadcastChannel !== 'undefined') {
-              const channel = new BroadcastChannel('chitkart_auth_session');
-              channel.postMessage({ type: 'CONCURRENT_LOGIN', userId: loggedUser.id, timestamp: Date.now() });
-              channel.close();
-            }
-          } catch (e) {}
-
-          try {
-            localStorage.setItem(
-              'chitkart_session_stamp',
-              JSON.stringify({ userId: loggedUser.id, timestamp: Date.now() })
-            );
           } catch (e) {}
         }
 
@@ -134,7 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     } catch (e) {
-      // Ignore
+      // Ignore background errors
     }
   };
 
@@ -149,6 +139,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         localStorage.removeItem('chitkart_auth_token');
         localStorage.removeItem('chitkart_auth_user');
+        localStorage.removeItem('chitkart_session_stamp');
       } catch (e) {}
     }
 
@@ -160,167 +151,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Single Active Window / Concurrent Session Invalidation Listener
+  // Listen only for explicit 401 session terminations from API requests (without aggressive 5-min timer)
   useEffect(() => {
     if (!user) return;
 
-    // 1. Handle API 401 SESSION_TERMINATED response
     setOnSessionTerminated((msg) => {
       logout(msg);
     });
-
-    // 2. Real-time BroadcastChannel listener across windows/tabs on the same browser
-    let channel: any = null;
-    if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
-      try {
-        channel = new BroadcastChannel('chitkart_auth_session');
-        channel.onmessage = (event: MessageEvent) => {
-          if (event.data?.type === 'CONCURRENT_LOGIN' && event.data?.userId === user.id) {
-            console.warn('[Session] Concurrent login detected on another window. Logging out this window.');
-            logout('You have been automatically logged out because this account was signed in from another window.');
-          }
-        };
-      } catch (e) {}
-    }
-
-    // 3. Storage event listener (fallback for browsers syncing tabs via localStorage)
-    const handleStorageEvent = (e: StorageEvent) => {
-      if (e.key === 'chitkart_session_stamp' && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (parsed.userId === user.id) {
-            console.warn('[Session] Storage sync concurrent login detected. Logging out this window.');
-            logout('You have been automatically logged out because this account was signed in from another window.');
-          }
-        } catch (err) {}
-      }
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('storage', handleStorageEvent);
-    }
-
-    // 4. Periodic heartbeat (every 10s) verifying active session with backend (handles cross-device/cross-browser)
-    const sessionHeartbeat = setInterval(async () => {
-      try {
-        const res = await api.get('/auth/me');
-        if (!res.data.success) {
-          logout('You have been automatically logged out because this account was signed in from another window or device.');
-        }
-      } catch (err: any) {
-        if (err.response?.status === 401) {
-          logout(
-            err.response?.data?.message ||
-              'You have been automatically logged out because this account was signed in from another window or device.'
-          );
-        }
-      }
-    }, 10000);
-
-    return () => {
-      if (channel) channel.close();
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('storage', handleStorageEvent);
-      }
-      clearInterval(sessionHeartbeat);
-    };
-  }, [user]);
-
-  // 5-Minute Inactivity Auto-Logout Tracker (FR-AUTH-010 / SA-01 Session Management)
-  // Automatically logs out when there is no mouse cursor movement or interaction for 5 minutes
-  useEffect(() => {
-    if (!user) return;
-
-    const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes (300,000ms)
-    let lastActivityTime = Date.now();
-    let timeoutId: any = null;
-    let intervalId: any = null;
-
-    const performAutoLogout = () => {
-      console.warn(`[Session] User ${user.username} inactive for 5 minutes without cursor movement. Auto-logging out.`);
-      logout('You have been automatically logged out due to 5 minutes of inactivity (no cursor movement).');
-    };
-
-    const resetTimer = () => {
-      lastActivityTime = Date.now();
-      if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(performAutoLogout, INACTIVITY_TIMEOUT_MS);
-    };
-
-    // Initialize 5-minute timer
-    resetTimer();
-
-    // Periodic 5-second check (handles laptop sleep, background tabs, and throttled timers)
-    intervalId = setInterval(() => {
-      if (Date.now() - lastActivityTime >= INACTIVITY_TIMEOUT_MS) {
-        performAutoLogout();
-      }
-    }, 5000);
-
-    // Listen to mouse cursor movements and user interactions on both window and document
-    if (typeof window !== 'undefined') {
-      let lastThrottleTime = 0;
-      const onUserActivity = () => {
-        const now = Date.now();
-        // Throttle resetting the timer to at most once per second for zero overhead
-        if (now - lastThrottleTime >= 1000) {
-          lastThrottleTime = now;
-          resetTimer();
-        }
-      };
-
-      const interactionEvents = [
-        'mousemove',
-        'pointermove',
-        'mousedown',
-        'mouseup',
-        'keydown',
-        'keyup',
-        'scroll',
-        'wheel',
-        'touchstart',
-        'touchmove',
-        'click',
-      ];
-
-      interactionEvents.forEach((evt) => {
-        window.addEventListener(evt, onUserActivity, { passive: true, capture: true });
-        if (typeof document !== 'undefined' && document.addEventListener) {
-          document.addEventListener(evt, onUserActivity, { passive: true, capture: true });
-        }
-      });
-
-      // Immediate check when browser tab becomes visible again
-      const onVisibilityChange = () => {
-        if (typeof document !== 'undefined' && !document.hidden) {
-          if (Date.now() - lastActivityTime >= INACTIVITY_TIMEOUT_MS) {
-            performAutoLogout();
-          }
-        }
-      };
-      if (typeof document !== 'undefined' && document.addEventListener) {
-        document.addEventListener('visibilitychange', onVisibilityChange);
-      }
-
-      return () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        if (intervalId) clearInterval(intervalId);
-        interactionEvents.forEach((evt) => {
-          window.removeEventListener(evt, onUserActivity, { capture: true } as any);
-          if (typeof document !== 'undefined' && document.removeEventListener) {
-            document.removeEventListener(evt, onUserActivity, { capture: true } as any);
-          }
-        });
-        if (typeof document !== 'undefined' && document.removeEventListener) {
-          document.removeEventListener('visibilitychange', onVisibilityChange);
-        }
-      };
-    }
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (intervalId) clearInterval(intervalId);
-    };
   }, [user]);
 
   return (
