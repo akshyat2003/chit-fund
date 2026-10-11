@@ -191,58 +191,21 @@ function MainApp() {
       {/* Responsive Content Area Centered up to 1280px */}
       <View style={styles.contentArea}>
         <View style={styles.contentInner}>
-          <View style={{ flex: 1, display: activeTab === 'dashboard' ? 'flex' : 'none' }}>
-            <DashboardTab user={user} onNavigateTab={setActiveTab} />
-          </View>
-          {user.role === 'SUPER_ADMIN' && (
-            <>
-              <View style={{ flex: 1, display: activeTab === 'companies' ? 'flex' : 'none' }}>
-                <CompaniesTab user={user} />
-              </View>
-              <View style={{ flex: 1, display: activeTab === 'admins' ? 'flex' : 'none' }}>
-                <SuperAdminsTab user={user} />
-              </View>
-              <View style={{ flex: 1, display: activeTab === 'audits' ? 'flex' : 'none' }}>
-                <AuditsTab user={user} />
-              </View>
-              <View style={{ flex: 1, display: activeTab === 'system' ? 'flex' : 'none' }}>
-                <SystemMonitoringTab user={user} />
-              </View>
-              <View style={{ flex: 1, display: activeTab === 'backups' ? 'flex' : 'none' }}>
-                <BackupsTab user={user} />
-              </View>
-              <View style={{ flex: 1, display: activeTab === 'notifications' ? 'flex' : 'none' }}>
-                <NotificationsTab user={user} />
-              </View>
-            </>
-          )}
-
-          {/* Manager Operations Views */}
-          {(user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && (
-            <>
-              <View style={{ flex: 1, display: activeTab === 'members' ? 'flex' : 'none' }}>
-                <MembersTab user={user} />
-              </View>
-              <View style={{ flex: 1, display: activeTab === 'chit_groups' ? 'flex' : 'none' }}>
-                <ChitGroupsTab user={user} />
-              </View>
-              <View style={{ flex: 1, display: activeTab === 'collections' ? 'flex' : 'none' }}>
-                <CollectionsTab user={user} />
-              </View>
-              <View style={{ flex: 1, display: activeTab === 'accounting' ? 'flex' : 'none' }}>
-                <AccountingTab user={user} />
-              </View>
-              <View style={{ flex: 1, display: activeTab === 'auctions' ? 'flex' : 'none' }}>
-                <AuctionsPayoutsTab user={user} />
-              </View>
-              <View style={{ flex: 1, display: activeTab === 'branches' ? 'flex' : 'none' }}>
-                <BranchGovernanceTab user={user} />
-              </View>
-              <View style={{ flex: 1, display: activeTab === 'compliance' ? 'flex' : 'none' }}>
-                <ComplianceReportsTab user={user} />
-              </View>
-            </>
-          )}
+          {/* Render Active Tab on demand */}
+          {activeTab === 'dashboard' && <DashboardTab user={user} onNavigateTab={setActiveTab} />}
+          {activeTab === 'companies' && user.role === 'SUPER_ADMIN' && <CompaniesTab user={user} />}
+          {activeTab === 'admins' && user.role === 'SUPER_ADMIN' && <SuperAdminsTab user={user} />}
+          {activeTab === 'audits' && user.role === 'SUPER_ADMIN' && <AuditsTab user={user} />}
+          {activeTab === 'system' && user.role === 'SUPER_ADMIN' && <SystemMonitoringTab user={user} />}
+          {activeTab === 'backups' && user.role === 'SUPER_ADMIN' && <BackupsTab user={user} />}
+          {activeTab === 'notifications' && user.role === 'SUPER_ADMIN' && <NotificationsTab user={user} />}
+          {activeTab === 'members' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <MembersTab user={user} />}
+          {activeTab === 'chit_groups' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <ChitGroupsTab user={user} />}
+          {activeTab === 'collections' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <CollectionsTab user={user} />}
+          {activeTab === 'accounting' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <AccountingTab user={user} />}
+          {activeTab === 'auctions' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <AuctionsPayoutsTab user={user} />}
+          {activeTab === 'branches' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <BranchGovernanceTab user={user} />}
+          {activeTab === 'compliance' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <ComplianceReportsTab user={user} />}
         </View>
       </View>
 
@@ -4485,59 +4448,11 @@ function ProfileModal({
   );
 }
 
-class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error('App caught render error:', error, errorInfo);
-  }
-
-  resetError = () => {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        localStorage.removeItem('chitkart_auth_token');
-        localStorage.removeItem('chitkart_auth_user');
-      } catch (e) {}
-    }
-    this.setState({ hasError: false, error: null });
-    if (typeof window !== 'undefined' && window.location) {
-      window.location.reload();
-    }
-  };
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <SafeAreaView style={[styles.refContainer, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
-          <Text style={styles.chitKartBrand}>CHITKART</Text>
-          <Text style={[styles.refTitle, { fontSize: 24, marginBottom: 12 }]}>Welcome Back</Text>
-          <Text style={[styles.refSubtitle, { marginBottom: 24 }]}>
-            Click below to return directly to the Login Screen.
-          </Text>
-          <TouchableOpacity style={[styles.limeBtn, { maxWidth: 280 }]} onPress={this.resetError}>
-            <Text style={styles.limeBtnText}>Go to Login Screen</Text>
-          </TouchableOpacity>
-        </SafeAreaView>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 export default function App() {
   return (
-    <AppErrorBoundary>
-      <AuthProvider>
-        <MainApp />
-      </AuthProvider>
-    </AppErrorBoundary>
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
   );
 }
 

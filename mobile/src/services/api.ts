@@ -40,8 +40,12 @@ api.interceptors.request.use(
   (config) => {
     if (typeof window !== 'undefined' && window.localStorage) {
       const savedToken = localStorage.getItem('chitkart_auth_token');
-      if (savedToken && !config.headers['Authorization']) {
-        config.headers['Authorization'] = `Bearer ${savedToken}`;
+      if (savedToken) {
+        if (config.headers && typeof (config.headers as any).set === 'function') {
+          (config.headers as any).set('Authorization', `Bearer ${savedToken}`);
+        } else if (config.headers) {
+          config.headers['Authorization'] = `Bearer ${savedToken}`;
+        }
       }
     }
     return config;
