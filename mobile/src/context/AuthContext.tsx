@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { api, setAuthToken, setOnSessionTerminated } from '../services/api';
+import { api, setAuthToken } from '../services/api';
 
 export interface User {
   id: string;
@@ -79,6 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  // Login handler
   const login = async (usernameOrPhone: string, password: string) => {
     try {
       setLoading(true);
@@ -90,7 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(loggedUser);
         setAuthToken(accessToken);
 
-        // Persist token and user in localStorage so page refresh doesn't log out
+        // Persist token and user in localStorage
         if (typeof window !== 'undefined' && window.localStorage) {
           try {
             localStorage.setItem('chitkart_auth_token', accessToken);
@@ -102,11 +103,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: true };
       }
       setLoading(false);
-      return { success: false, message: res.data.message || 'Login failed' };
+      return { success: false, message: res.data.message || 'Invalid credentials' };
     } catch (err: any) {
       setLoading(false);
       const msg = !err.response
-        ? 'Network Error: Unable to reach server. Please try again.'
+        ? 'Network Error: Unable to reach server. Please check connection.'
         : err.response?.data?.message || err.message || 'Login failed';
       return { success: false, message: msg };
     }
@@ -128,6 +129,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Logout handler
   const logout = async (reason?: string) => {
     try {
       await api.post('/auth/logout');
@@ -139,7 +141,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         localStorage.removeItem('chitkart_auth_token');
         localStorage.removeItem('chitkart_auth_user');
-        localStorage.removeItem('chitkart_session_stamp');
       } catch (e) {}
     }
 
@@ -150,6 +151,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setInactivityMessage(reason);
     }
   };
+
+  // 5-Minute Inactivity Auto-Logout:
+  // If there is no mouse movement or user interaction for 5 minutes (300,000ms),
+  // automatically log out and return back to the login screen.
+  useEffect(() => {
+    if (!user) return;
+
+    const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+    let lastActivityTime = Date.now();
+    let timeoutId: any = null;
+    let intervalId: any = null;
+
+    const performAutoLogout = () => {
+      logout('You were automatically logged out due to 5 minutes of inactivity (no mouse movement).');
+    };
+
+    const resetTimer = () => {
+      lastActivityTime = Date.now();
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(performAutoLogout, INACTIVITY_TIMEOUT_MS);
+    };
+
+    // Start initial 5-minute timer
+    resetTimer();
+
+    // Check periodically every 5 seconds (handles background tabs or system sleep)
+    intervalId = setInterval(() => {
+      if (Date.now() - lastActivityTime >= INACTIVITY_TIMEOUT_MS) {
+        performAutoLogout();
+      }
+    }, 5000);
+
+    // Listen to mouse movement and user interactions on web
+    if (typeof window !== 'undefined') {
+      let lastThrottle = 0;
+      const onUserActivity = () => {
+        const now = Date.now();
+        // Throttle updates to at most once per second for zero CPU overhead
+        if (now - lastThrottle >= 1000) {
+          lastThrottle = now;
+          resetTimer();
+        }
+      };
+
+      const events = ['mousemove', 'pointermove', 'mousedown', 'keydown', 'scroll', 'click', 'touchstart'];
+
+      events.forEach((evt) => {
+        window.addEventListener(evt, onUserActivity, { passive: true });
+        if (typeof document !== 'undefined' && document.addEventListener) {
+          document.addEventListener(evt, onUserActivity, { passive: true });
+        }
+      });
+
+      return () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (intervalId) clearInterval(intervalId);
+        events.forEach((evt) => {
+          window.removeEventListener(evt, onUserActivity as any);
+          if (typeof document !== 'undefined' && document.removeEventListener) {
+            document.removeEventListener(evt, onUserActivity as any);
+          }
+        });
+      };
+    }
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, token, loading, login, logout, refreshUser, inactivityMessage, clearInactivityMessage }}>
