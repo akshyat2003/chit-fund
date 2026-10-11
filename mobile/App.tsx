@@ -708,16 +708,73 @@ function CompaniesTab({ user }: { user: any }) {
 
   const handleCreateCompany = async () => {
     setFormError('');
-    if (!name.trim() || !code.trim()) {
-      setFormError('Company name and unique company code are required.');
+
+    // Strict validation: every company and admin field must be filled
+    if (!name.trim()) {
+      setFormError('Company Legal Name is required.');
       return;
     }
-    if (!adminFullName.trim() || !adminUsername.trim() || !adminPassword.trim()) {
-      setFormError('Initial Admin Full Name, Username, and Password are required.');
+    if (!code.trim()) {
+      setFormError('Company Code (Unique Acronym) is required.');
       return;
     }
-    if (adminPassword.length < 8 || !/[A-Za-z]/.test(adminPassword) || !/[0-9]/.test(adminPassword)) {
-      setFormError('Admin password must be at least 8 characters and contain both letters and numbers.');
+    if (!stateRegistrationNo.trim()) {
+      setFormError('State Registration Number is required.');
+      return;
+    }
+    if (!phone.trim()) {
+      setFormError('Official Contact Phone number is required.');
+      return;
+    }
+    if (!email.trim()) {
+      setFormError('Official Contact Email is required.');
+      return;
+    }
+    const cleanCompanyEmail = email.trim().toLowerCase();
+    if (!cleanCompanyEmail.includes('@') || !cleanCompanyEmail.includes('.')) {
+      setFormError('Please enter a valid Official Contact Email.');
+      return;
+    }
+    if (!address.trim()) {
+      setFormError('Registered Head Office Address is required.');
+      return;
+    }
+    if (!planId) {
+      setFormError('Subscription Plan Tier must be selected.');
+      return;
+    }
+
+    if (!adminFullName.trim()) {
+      setFormError('Admin Full Name is required.');
+      return;
+    }
+    if (!adminUsername.trim()) {
+      setFormError('Admin Login Username is required.');
+      return;
+    }
+    if (!adminPhone.trim()) {
+      setFormError('Admin Mobile Number is required.');
+      return;
+    }
+    if (!adminEmail.trim()) {
+      setFormError('Admin Gmail / Email Address is required so credentials can be sent.');
+      return;
+    }
+    const cleanAdminEmail = adminEmail.trim().toLowerCase();
+    if (!cleanAdminEmail.includes('@') || !cleanAdminEmail.includes('.')) {
+      setFormError('Please enter a valid Admin Gmail / Email address.');
+      return;
+    }
+    if (!adminPassword.trim()) {
+      setFormError('Initial Password is required.');
+      return;
+    }
+    if (adminPassword.length < 8) {
+      setFormError('Admin password must be at least 8 characters.');
+      return;
+    }
+    if (!/[A-Z]/.test(adminPassword) || !/[a-z]/.test(adminPassword) || !/[0-9]/.test(adminPassword)) {
+      setFormError('Admin password must contain uppercase, lowercase, and numbers.');
       return;
     }
 
@@ -726,22 +783,22 @@ function CompaniesTab({ user }: { user: any }) {
       const payload = {
         code: code.trim().toUpperCase(),
         name: name.trim(),
-        stateRegistrationNo: stateRegistrationNo.trim() || undefined,
-        address: address.trim() || undefined,
-        phone: phone.trim() || undefined,
-        email: email.trim() || undefined,
+        stateRegistrationNo: stateRegistrationNo.trim(),
+        address: address.trim(),
+        phone: phone.trim(),
+        email: cleanCompanyEmail,
         planId,
         initialAdmin: {
           fullName: adminFullName.trim(),
           username: adminUsername.trim(),
           password: adminPassword,
-          phone: adminPhone.trim() || phone.trim() || '0000000000',
-          email: adminEmail.trim() || email.trim() || undefined,
+          phone: adminPhone.trim(),
+          email: cleanAdminEmail,
         },
       };
 
       const res = await api.post('/super-admin/companies', payload);
-      alert(res.data.message || `Company "${res.data.data.company.name}" (${res.data.data.company.code}) and Initial Admin "${adminUsername.trim()}" created successfully!`);
+      alert(res.data.message || `Company "${res.data.data.company.name}" (${res.data.data.company.code}) and Initial Admin created successfully!`);
       setShowAddModal(false);
       // Reset form
       setCode('');
@@ -757,9 +814,25 @@ function CompaniesTab({ user }: { user: any }) {
       setAdminEmail('');
       loadCompanies();
     } catch (err: any) {
-      setFormError(err.response?.data?.message || 'Failed to create company');
+      setFormError(err.response?.data?.message || err.message || 'Failed to create company');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDeleteCompany = async (comp: any) => {
+    const confirmMsg = `Are you sure you want to delete company "${comp.name}" (${comp.code})? This will permanently remove its accounts.`;
+    if (!window.confirm ? !confirm(confirmMsg) : !window.confirm(confirmMsg)) return;
+
+    try {
+      setActionLoading(true);
+      const res = await api.delete(`/super-admin/companies/${comp.id}`);
+      alert(res.data?.message || `Company "${comp.name}" (${comp.code}) deleted successfully.`);
+      loadCompanies();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Failed to delete company');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -857,27 +930,49 @@ function CompaniesTab({ user }: { user: any }) {
                   </Text>
                 </View>
 
-                <TouchableOpacity
-                  style={[
-                    styles.statusToggleBtn,
-                    {
-                      borderColor: c.status === 'ACTIVE' ? '#EF4444' : '#16A34A',
-                      backgroundColor: c.status === 'ACTIVE' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(22, 163, 74, 0.08)',
-                    },
-                  ]}
-                  onPress={() => handleToggleStatus(c)}
-                  disabled={actionLoading}
-                >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: '700',
-                      color: c.status === 'ACTIVE' ? '#EF4444' : '#16A34A',
-                    }}
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.statusToggleBtn,
+                      {
+                        flex: 1,
+                        marginTop: 0,
+                        borderColor: c.status === 'ACTIVE' ? '#F59E0B' : '#16A34A',
+                        backgroundColor: c.status === 'ACTIVE' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(22, 163, 74, 0.08)',
+                      },
+                    ]}
+                    onPress={() => handleToggleStatus(c)}
+                    disabled={actionLoading}
                   >
-                    {c.status === 'ACTIVE' ? 'Suspend Company Account' : 'Reactivate Company Account'}
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: c.status === 'ACTIVE' ? '#B45309' : '#16A34A',
+                      }}
+                    >
+                      {c.status === 'ACTIVE' ? '⏸ Suspend' : '▶ Reactivate'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.statusToggleBtn,
+                      {
+                        flex: 1,
+                        marginTop: 0,
+                        borderColor: '#EF4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                      },
+                    ]}
+                    onPress={() => handleDeleteCompany(c)}
+                    disabled={actionLoading}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626' }}>
+                      🗑️ Delete
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ))}
           </View>
@@ -896,8 +991,8 @@ function CompaniesTab({ user }: { user: any }) {
             </View>
 
             {formError ? (
-              <View style={[styles.errorBadge, { width: '100%', marginBottom: 12 }]}>
-                <Text style={styles.errorBadgeText}>{formError}</Text>
+              <View style={styles.modalErrorBadge}>
+                <Text style={styles.modalErrorBadgeText}>⚠️ {formError}</Text>
               </View>
             ) : null}
 
@@ -923,7 +1018,7 @@ function CompaniesTab({ user }: { user: any }) {
                 placeholder="e.g. APEX"
               />
 
-              <Text style={styles.label}>State Registration Number</Text>
+              <Text style={styles.label}>State Registration Number *</Text>
               <TextInput
                 style={styles.input}
                 value={stateRegistrationNo}
@@ -931,7 +1026,7 @@ function CompaniesTab({ user }: { user: any }) {
                 placeholder="e.g. REG/2026/TN/0987"
               />
 
-              <Text style={styles.label}>Official Contact Phone</Text>
+              <Text style={styles.label}>Official Contact Phone *</Text>
               <TextInput
                 style={styles.input}
                 value={phone}
@@ -940,7 +1035,7 @@ function CompaniesTab({ user }: { user: any }) {
                 placeholder="e.g. 9876543210"
               />
 
-              <Text style={styles.label}>Official Contact Email</Text>
+              <Text style={styles.label}>Official Contact Email *</Text>
               <TextInput
                 style={styles.input}
                 value={email}
@@ -950,7 +1045,7 @@ function CompaniesTab({ user }: { user: any }) {
                 placeholder="e.g. contact@apexchits.com"
               />
 
-              <Text style={styles.label}>Registered Head Office Address</Text>
+              <Text style={styles.label}>Registered Head Office Address *</Text>
               <TextInput
                 style={styles.input}
                 value={address}
@@ -958,7 +1053,7 @@ function CompaniesTab({ user }: { user: any }) {
                 placeholder="e.g. 12 Anna Salai, Chennai, TN"
               />
 
-              <Text style={styles.label}>Subscription Plan Tier</Text>
+              <Text style={styles.label}>Subscription Plan Tier *</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {[
                   { id: 'plan_starter', name: 'Starter (100 Subs)' },
@@ -998,7 +1093,7 @@ function CompaniesTab({ user }: { user: any }) {
                 placeholder="e.g. rajesh.admin or rajesh@apexchits.com"
               />
 
-              <Text style={styles.label}>Admin Mobile Number</Text>
+              <Text style={styles.label}>Admin Mobile Number *</Text>
               <TextInput
                 style={styles.input}
                 value={adminPhone}
@@ -1007,7 +1102,7 @@ function CompaniesTab({ user }: { user: any }) {
                 placeholder="e.g. 9876543210"
               />
 
-              <Text style={styles.label}>Admin Gmail / Email Address (Credentials auto-sent here)</Text>
+              <Text style={styles.label}>Admin Gmail / Email Address (Credentials auto-sent here) *</Text>
               <TextInput
                 style={styles.input}
                 value={adminEmail}
@@ -1022,7 +1117,7 @@ function CompaniesTab({ user }: { user: any }) {
                 </Text>
               </View>
 
-              <Text style={styles.label}>Initial Password * (min. 8 chars, letters & numbers)</Text>
+              <Text style={styles.label}>Initial Password * (min. 8 chars, uppercase, lowercase & numbers)</Text>
               <View style={styles.passwordInputWrapper}>
                 <TextInput
                   style={styles.passwordInput}
@@ -1167,6 +1262,16 @@ function SuperAdminsTab({ user }: { user: any }) {
       return;
     }
 
+    if (modalMode === 'create' && !email.trim()) {
+      setFormError('Gmail / Email address is required so login credentials can be dispatched.');
+      return;
+    }
+
+    if (email.trim() && (!email.includes('@') || !email.includes('.'))) {
+      setFormError('Please enter a valid Gmail / Email address (e.g. user@gmail.com).');
+      return;
+    }
+
     // Password validation
     if (modalMode === 'create' || (modalMode === 'edit' && password.trim())) {
       if (password.length < 8) {
@@ -1197,18 +1302,19 @@ function SuperAdminsTab({ user }: { user: any }) {
 
     try {
       setSubmitting(true);
+      const cleanEmail = email.trim() ? email.trim().toLowerCase() : null;
       if (modalMode === 'create') {
         const payload: any = {
           fullName: fullName.trim(),
           username: username.trim(),
           phone: phone.trim(),
-          email: email.trim() || undefined,
+          email: cleanEmail || undefined,
           role,
           companyId: role === 'SUPER_ADMIN' ? undefined : companyId,
           password,
         };
         const res = await api.post('/auth/users', payload);
-        alert(res.data.message || 'User credential created successfully!');
+        alert(res.data?.message || `User credential created successfully! Login credentials dispatched to ${cleanEmail}.`);
         setModalVisible(false);
         loadData();
       } else {
@@ -1216,7 +1322,7 @@ function SuperAdminsTab({ user }: { user: any }) {
           fullName: fullName.trim(),
           username: username.trim(),
           phone: phone.trim(),
-          email: email.trim() || null,
+          email: cleanEmail,
           role,
           companyId: role === 'SUPER_ADMIN' ? null : companyId || null,
           status: userStatus,
@@ -1225,7 +1331,7 @@ function SuperAdminsTab({ user }: { user: any }) {
           payload.password = password.trim();
         }
         const res = await api.put(`/auth/users/${editingUserId}`, payload);
-        alert(res.data.message || 'User credentials updated successfully!');
+        alert(res.data?.message || 'User credentials updated successfully!');
         setModalVisible(false);
         loadData();
       }
@@ -1336,7 +1442,7 @@ function SuperAdminsTab({ user }: { user: any }) {
         </View>
 
         {/* Company Filter (if companies exist) */}
-        {companies.length > 0 && (
+        {companies.filter((c) => c.status !== 'DELETED' && c.status !== 'DEACTIVATED').length > 0 && (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B', marginRight: 4 }}>Company:</Text>
             <TouchableOpacity
@@ -1345,17 +1451,19 @@ function SuperAdminsTab({ user }: { user: any }) {
             >
               <Text style={companyFilter === 'ALL' ? styles.filterChipTextActive : styles.filterChipText}>All Companies</Text>
             </TouchableOpacity>
-            {companies.map((c) => (
-              <TouchableOpacity
-                key={c.id}
-                style={[styles.filterChip, companyFilter === c.id && styles.filterChipActive]}
-                onPress={() => setCompanyFilter(c.id)}
-              >
-                <Text style={companyFilter === c.id ? styles.filterChipTextActive : styles.filterChipText}>
-                  {c.code || c.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {companies
+              .filter((c) => c.status !== 'DELETED' && c.status !== 'DEACTIVATED')
+              .map((c) => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[styles.filterChip, companyFilter === c.id && styles.filterChipActive]}
+                  onPress={() => setCompanyFilter(c.id)}
+                >
+                  <Text style={companyFilter === c.id ? styles.filterChipTextActive : styles.filterChipText}>
+                    {c.code || c.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
           </View>
         )}
       </View>
@@ -1510,7 +1618,7 @@ function SuperAdminsTab({ user }: { user: any }) {
               />
 
               {/* Email */}
-              <Text style={styles.label}>Admin Gmail / Email Address (Credentials auto-sent here)</Text>
+              <Text style={styles.label}>Gmail / Email Address (Credentials auto-sent here) *</Text>
               <TextInput
                 style={styles.input}
                 value={email}
@@ -1544,21 +1652,23 @@ function SuperAdminsTab({ user }: { user: any }) {
               </View>
 
               {/* Company Selection (Required if not Super Admin) */}
-              {role !== 'SUPER_ADMIN' && companies.length > 0 && (
+              {role !== 'SUPER_ADMIN' && companies.filter((c) => c.status === 'ACTIVE').length > 0 && (
                 <>
                   <Text style={styles.label}>Assigned Company *</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                    {companies.map((c) => (
-                      <TouchableOpacity
-                        key={c.id}
-                        style={[styles.filterChip, companyId === c.id && styles.filterChipActive]}
-                        onPress={() => setCompanyId(c.id)}
-                      >
-                        <Text style={companyId === c.id ? styles.filterChipTextActive : styles.filterChipText}>
-                          {c.name} ({c.code})
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                    {companies
+                      .filter((c) => c.status === 'ACTIVE')
+                      .map((c) => (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={[styles.filterChip, companyId === c.id && styles.filterChipActive]}
+                          onPress={() => setCompanyId(c.id)}
+                        >
+                          <Text style={companyId === c.id ? styles.filterChipTextActive : styles.filterChipText}>
+                            {c.name} ({c.code})
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
                   </View>
                 </>
               )}
@@ -4352,21 +4462,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   errorBadge: {
-    backgroundColor: 'rgba(239, 68, 68, 0.25)',
-    borderWidth: 1,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1.5,
     borderColor: '#EF4444',
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
     marginBottom: 16,
     alignSelf: 'center',
-    maxWidth: 360,
+    width: '100%',
+    maxWidth: 540,
   },
   errorBadgeText: {
-    color: '#FEE2E2',
+    color: '#991B1B',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
+    lineHeight: 18,
   },
   forgotCard: {
     width: '100%',

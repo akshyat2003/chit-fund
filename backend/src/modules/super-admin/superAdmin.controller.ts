@@ -146,6 +146,8 @@ export const listCompanies = async (req: AuthRequest, res: Response) => {
 
     if (status && typeof status === 'string') {
       where.status = status;
+    } else {
+      where.status = { not: 'DELETED' };
     }
 
     if (search && typeof search === 'string') {
@@ -209,6 +211,8 @@ export const listCompanies = async (req: AuthRequest, res: Response) => {
 
 /**
  * FR-SA-002, FR-SA-004, FR-SA-005, FR-SA-017: Create Company & Initial Admin cum Manager
+ * Enforces mandatory validation on every single field.
+ * Uses atomic transaction so that no data is inserted if any error occurs.
  */
 export const createCompany = async (req: AuthRequest, res: Response) => {
   try {
@@ -223,38 +227,121 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
       initialAdmin,
     } = req.body;
 
-    if (!code || !name) {
-      return res.status(400).json({ success: false, message: 'Company code and name are required' });
+    // Strict validation: every company and administrator field must be filled
+    if (
+      !code?.trim() ||
+      !name?.trim() ||
+      !stateRegistrationNo?.trim() ||
+      !address?.trim() ||
+      !phone?.trim() ||
+      !email?.trim() ||
+      !initialAdmin?.fullName?.trim() ||
+      !initialAdmin?.username?.trim() ||
+      !initialAdmin?.phone?.trim() ||
+      !initialAdmin?.email?.trim() ||
+      !initialAdmin?.password?.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'All fields are required. Please ensure all company profile and admin details are filled.',
+      });
     }
 
-    // Check unique company code
-    const existing = await prisma.company.findUnique({ where: { code: code.trim().toUpperCase() } });
-    if (existing) {
-      return res.status(409).json({ success: false, message: 'Company code already exists' });
+    const cleanCode = code.trim().toUpperCase();
+    const cleanCompanyName = name.trim();
+    const cleanStateReg = stateRegistrationNo.trim();
+    const cleanAddress = address.trim();
+    const cleanCompanyPhone = phone.trim();
+    const cleanCompanyEmail = email.trim().toLowerCase();
+
+    const cleanAdminFullName = initialAdmin.fullName.trim();
+    const cleanAdminUsername = initialAdmin.username.trim();
+    const cleanAdminPhone = initialAdmin.phone.trim();
+    const cleanAdminEmail = initialAdmin.email.trim().toLowerCase();
+    const adminPassword = initialAdmin.password;
+
+    // Email format checks
+    if (!cleanCompanyEmail.includes('@') || !cleanCompanyEmail.includes('.')) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid Official Contact Email.' });
+    }
+    if (!cleanAdminEmail.includes('@') || !cleanAdminEmail.includes('.')) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid Admin Gmail/Email address.' });
     }
 
-    const newCompany = await prisma.company.create({
-      data: {
-        code: code.trim().toUpperCase(),
-        name: name.trim(),
-        stateRegistrationNo: stateRegistrationNo || null,
-        address: address || null,
-        phone: phone || null,
-        email: email || null,
-        status: 'ACTIVE',
+    // Password policy check
+    const policy = validatePasswordPolicy(adminPassword);
+    if (!policy.valid) {
+      return res.status(400).json({ success: false, message: `Initial Admin Password: ${policy.message}` });
+    }
+
+    // Check unique company code before inserting anything
+    const existingCompany = await prisma.company.findUnique({ where: { code: cleanCode } });
+    if (existingCompany) {
+      return res.status(409).json({
+        success: false,
+        message: `Company code "${cleanCode}" already exists. Please choose a unique company code.`,
+      });
+    }
+
+    // Check unique admin credentials before inserting anything
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { username: cleanAdminUsername },
+          { phone: cleanAdminPhone },
+          { email: cleanAdminEmail },
+        ],
       },
     });
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: 'Admin username, phone number, or email already registered to another account.',
+      });
+    }
 
-    // Create Main Default Branch
-    const defaultBranch = await prisma.branch.create({
-      data: {
-        companyId: newCompany.id,
-        code: `${newCompany.code}-HQ`,
-        name: 'Head Office',
-        location: address || 'Main Headquarters',
-        phone: phone || null,
-        status: 'ACTIVE',
-      },
+    const passwordHash = await bcrypt.hash(adminPassword, 10);
+
+    // Atomic transaction: Company, Branch, and Admin are created together. If any fails, 0 records are inserted.
+    const { newCompany, defaultBranch, createdAdmin } = await prisma.$transaction(async (tx) => {
+      const comp = await tx.company.create({
+        data: {
+          code: cleanCode,
+          name: cleanCompanyName,
+          stateRegistrationNo: cleanStateReg,
+          address: cleanAddress,
+          phone: cleanCompanyPhone,
+          email: cleanCompanyEmail,
+          status: 'ACTIVE',
+        },
+      });
+
+      const branch = await tx.branch.create({
+        data: {
+          companyId: comp.id,
+          code: `${comp.code}-HQ`,
+          name: 'Head Office',
+          location: cleanAddress,
+          phone: cleanCompanyPhone,
+          status: 'ACTIVE',
+        },
+      });
+
+      const admin = await tx.user.create({
+        data: {
+          companyId: comp.id,
+          branchId: branch.id,
+          username: cleanAdminUsername,
+          fullName: cleanAdminFullName,
+          phone: cleanAdminPhone,
+          email: cleanAdminEmail,
+          passwordHash,
+          role: 'MANAGER',
+          status: 'ACTIVE',
+        },
+      });
+
+      return { newCompany: comp, defaultBranch: branch, createdAdmin: admin };
     });
 
     // Initialize Subscription Limits
@@ -275,49 +362,27 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
       },
     });
 
-    // FR-SA-004: Create or authorize initial Admin cum Manager account
-    let createdAdmin = null;
-    if (initialAdmin && initialAdmin.username && initialAdmin.password) {
-      const policy = validatePasswordPolicy(initialAdmin.password);
-      if (!policy.valid) {
-        return res.status(400).json({ success: false, message: `Initial Admin: ${policy.message}` });
-      }
-
-      const passwordHash = await bcrypt.hash(initialAdmin.password, 10);
-      createdAdmin = await prisma.user.create({
-        data: {
-          companyId: newCompany.id,
-          branchId: defaultBranch.id,
-          username: initialAdmin.username.trim(),
-          fullName: initialAdmin.fullName || `${name} Admin`,
-          phone: initialAdmin.phone || phone || '0000000000',
-          email: initialAdmin.email || email || null,
-          passwordHash,
-          role: 'MANAGER',
-          status: 'ACTIVE',
-        },
-      });
-    }
-
     // Automatically email credentials to desired Gmail / Email
     let credentialsEmailSent = false;
-    const recipientEmail = (initialAdmin?.email || email || '').trim();
-    if (createdAdmin && recipientEmail && recipientEmail.includes('@')) {
-      try {
-        const emailResult = await sendAdminCredentialsEmail({
-          to: recipientEmail,
-          fullName: createdAdmin.fullName,
-          username: createdAdmin.username,
-          password: initialAdmin.password,
-          role: 'Company Administrator (Manager)',
-          companyName: newCompany.name,
-          companyCode: newCompany.code,
-          loginUrl: process.env.PORTAL_URL || 'http://localhost:8081',
-        });
-        credentialsEmailSent = !!emailResult.success;
-      } catch (emailErr: any) {
-        console.error('[createCompany] Failed to send credentials email:', emailErr.message);
+    let emailErrorMessage: string | null = null;
+    try {
+      const emailResult = await sendAdminCredentialsEmail({
+        to: cleanAdminEmail,
+        fullName: createdAdmin.fullName,
+        username: createdAdmin.username,
+        password: adminPassword,
+        role: 'Company Administrator (Manager)',
+        companyName: newCompany.name,
+        companyCode: newCompany.code,
+        loginUrl: process.env.PORTAL_URL || 'https://chit-fund-mobile.vercel.app',
+      });
+      credentialsEmailSent = !!emailResult.success;
+      if (!emailResult.success) {
+        emailErrorMessage = emailResult.error || 'Failed to dispatch email';
       }
+    } catch (emailErr: any) {
+      console.error('[createCompany] Failed to send credentials email:', emailErr.message);
+      emailErrorMessage = emailErr.message;
     }
 
     // FR-SA-017: Record Audit Log
@@ -332,9 +397,10 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
           details: JSON.stringify({
             code: newCompany.code,
             name: newCompany.name,
-            initialAdmin: createdAdmin ? createdAdmin.username : null,
-            adminEmail: recipientEmail || null,
+            initialAdmin: createdAdmin.username,
+            adminEmail: cleanAdminEmail,
             credentialsEmailSent,
+            emailErrorMessage,
           }),
           ipAddress: req.ip || 'unknown',
         },
@@ -344,21 +410,82 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
     return res.status(201).json({
       success: true,
       message: credentialsEmailSent
-        ? `Company created successfully! Login credentials have been automatically dispatched to ${recipientEmail}.`
-        : 'Company created successfully',
+        ? `Company created successfully! Login credentials have been automatically dispatched to ${cleanAdminEmail}.`
+        : `Company created successfully! Notice: Credentials email dispatch pending: ${emailErrorMessage || 'check SMTP configuration'}`,
       data: {
         company: newCompany,
         defaultBranch,
-        initialAdmin: createdAdmin
-          ? {
-              id: createdAdmin.id,
-              username: createdAdmin.username,
-              role: createdAdmin.role,
-              email: createdAdmin.email,
-              credentialsEmailSent,
-            }
-          : null,
+        initialAdmin: {
+          id: createdAdmin.id,
+          username: createdAdmin.username,
+          role: createdAdmin.role,
+          email: createdAdmin.email,
+          credentialsEmailSent,
+        },
       },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * Delete Company Account & Cleanup
+ * Safely removes company and associated accounts or marks DELETED if financial records exist.
+ */
+export const deleteCompany = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const company = await prisma.company.findUnique({ where: { id } });
+    if (!company) {
+      return res.status(404).json({ success: false, message: 'Company not found.' });
+    }
+
+    const txCount = await prisma.paymentTransaction.count({ where: { companyId: id } });
+    if (txCount > 0) {
+      // Retain ledger records for regulatory compliance, mark company DELETED so it is completely hidden
+      await prisma.company.update({
+        where: { id },
+        data: { status: 'DELETED' },
+      });
+      // Revoke sessions of all its users
+      const users = await prisma.user.findMany({ where: { companyId: id }, select: { id: true } });
+      const userIds = users.map((u) => u.id);
+      if (userIds.length > 0) {
+        await prisma.refreshToken.deleteMany({ where: { userId: { in: userIds } } });
+      }
+    } else {
+      // No financial ledger attached: hard delete all branches, users, and company record
+      await prisma.$transaction(async (tx) => {
+        await tx.user.deleteMany({ where: { companyId: id } });
+        await tx.branch.deleteMany({ where: { companyId: id } });
+        await tx.auditLog.deleteMany({ where: { companyId: id } });
+        await tx.company.delete({ where: { id } });
+      });
+    }
+
+    companySettingsStore.delete(id);
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user?.id || null,
+          action: 'COMPANY_DELETED',
+          entity: 'Company',
+          entityId: id,
+          details: JSON.stringify({
+            code: company.code,
+            name: company.name,
+            deletedBy: req.user?.fullName || req.user?.id,
+          }),
+          ipAddress: req.ip || 'unknown',
+        },
+      });
+    } catch (e) {}
+
+    return res.json({
+      success: true,
+      message: `Company "${company.name}" (${company.code}) deleted successfully.`,
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
@@ -1412,7 +1539,7 @@ export const createSuperAdmin = async (req: AuthRequest, res: Response) => {
           password: password,
           role: 'Super Administrator',
           companyName: 'ChitKart Platform (Central Admin)',
-          loginUrl: process.env.PORTAL_URL || 'http://localhost:8081',
+          loginUrl: process.env.PORTAL_URL || 'https://chit-fund-mobile.vercel.app',
         });
         credentialsEmailSent = !!emailResult.success;
       } catch (e: any) {

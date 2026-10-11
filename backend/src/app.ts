@@ -139,6 +139,7 @@ router.get('/super-admin/companies', authenticateToken, requireRoles('SUPER_ADMI
 router.post('/super-admin/companies', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.createCompany);
 router.get('/super-admin/companies/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getCompanyDetails);
 router.patch('/super-admin/companies/:id/status', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateCompanyStatus);
+router.delete('/super-admin/companies/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.deleteCompany);
 router.put('/super-admin/companies/:id/settings', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateCompanySettings);
 router.get('/super-admin/subscriptions', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listSubscriptionPlans);
 router.get('/super-admin/audit-logs', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getAuditLogs);

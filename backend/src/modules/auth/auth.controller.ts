@@ -902,10 +902,16 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: policy.message });
     }
 
+    const trimmedEmail = email ? String(email).trim().toLowerCase() : null;
+
     // Check unique constraints
     const existing = await prisma.user.findFirst({
       where: {
-        OR: [{ username }, { phone }, ...(email ? [{ email }] : [])],
+        OR: [
+          { username: username.trim() },
+          { phone: phone.trim() },
+          ...(trimmedEmail ? [{ email: trimmedEmail }] : []),
+        ],
       },
     });
 
@@ -919,7 +925,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         username: username.trim(),
         fullName: fullName.trim(),
         phone: phone.trim(),
-        email: email ? email.trim() : null,
+        email: trimmedEmail,
         passwordHash,
         role,
         companyId: companyId || req.user?.companyId || null,
@@ -934,7 +940,8 @@ export const createUser = async (req: AuthRequest, res: Response) => {
 
     // Automatically email credentials to desired Gmail / Email
     let credentialsEmailSent = false;
-    const recipientEmail = (email || '').trim();
+    let emailErrorMessage: string | null = null;
+    const recipientEmail = (trimmedEmail || '').trim();
     if (recipientEmail && recipientEmail.includes('@')) {
       try {
         let companyName = newUser.company?.name || undefined;
@@ -961,11 +968,15 @@ export const createUser = async (req: AuthRequest, res: Response) => {
           role: roleTitle,
           companyName: companyName || 'ChitKart Platform',
           companyCode: companyCode,
-          loginUrl: process.env.PORTAL_URL || 'http://localhost:8081',
+          loginUrl: process.env.PORTAL_URL || 'https://chit-fund-mobile.vercel.app',
         });
         credentialsEmailSent = !!emailResult.success;
+        if (!emailResult.success) {
+          emailErrorMessage = emailResult.error || 'Failed to dispatch email';
+        }
       } catch (emailErr: any) {
         console.error('[createUser] Failed to send credentials email:', emailErr.message);
+        emailErrorMessage = emailErr.message;
       }
     }
 
@@ -983,6 +994,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
             role: newUser.role,
             email: recipientEmail || null,
             credentialsEmailSent,
+            emailErrorMessage,
           }),
           ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown',
         },
@@ -993,6 +1005,8 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       success: true,
       message: credentialsEmailSent
         ? `User created successfully! Login credentials have been automatically dispatched to ${recipientEmail}.`
+        : recipientEmail
+        ? `User created successfully! Notice: Credentials email dispatch pending: ${emailErrorMessage || 'Check SMTP configuration'}`
         : 'User created successfully',
       data: {
         id: newUser.id,
@@ -1230,7 +1244,7 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
           role: roleTitle,
           companyName: updatedUser.company?.name || 'ChitKart Platform',
           companyCode: updatedUser.company?.code || undefined,
-          loginUrl: process.env.PORTAL_URL || 'http://localhost:8081',
+          loginUrl: process.env.PORTAL_URL || 'https://chit-fund-mobile.vercel.app',
         });
         credentialsEmailSent = true;
       } catch (e: any) {
