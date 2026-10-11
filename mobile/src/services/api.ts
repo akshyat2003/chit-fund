@@ -59,36 +59,8 @@ if (typeof window !== 'undefined' && window.localStorage) {
   } catch (e) {}
 }
 
-let onSessionTerminatedCallback: ((msg: string) => void) | null = null;
-
-export const setOnSessionTerminated = (cb: (msg: string) => void) => {
-  onSessionTerminatedCallback = cb;
-};
-
-// Response interceptor with graceful session termination
+// Standard response interceptor (no premature auto-logouts on API errors)
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    const status = error.response?.status;
-    const msg = error.response?.data?.message || '';
-    if (
-      status === 401 ||
-      (status === 403 &&
-        (msg.toLowerCase().includes('token') ||
-          msg.toLowerCase().includes('inactive') ||
-          msg.toLowerCase().includes('disabled') ||
-          msg.toLowerCase().includes('session')))
-    ) {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        try {
-          localStorage.removeItem('chitkart_auth_token');
-          localStorage.removeItem('chitkart_auth_user');
-        } catch (e) {}
-      }
-      if (onSessionTerminatedCallback) {
-        onSessionTerminatedCallback(msg || 'Your session has expired. Please log in again.');
-      }
-    }
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
