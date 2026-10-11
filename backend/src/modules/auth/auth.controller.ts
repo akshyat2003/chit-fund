@@ -866,7 +866,7 @@ export const listUsers = async (req: AuthRequest, res: Response) => {
         companyId: true,
         branchId: true,
         createdAt: true,
-        company: { select: { id: true, name: true, code: true } },
+        company: { select: { id: true, name: true, code: true, status: true } },
         branch: { select: { id: true, name: true, code: true } },
       },
       orderBy: { createdAt: 'desc' },

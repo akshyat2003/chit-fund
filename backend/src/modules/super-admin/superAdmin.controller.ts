@@ -144,10 +144,10 @@ export const listCompanies = async (req: AuthRequest, res: Response) => {
     const { status, search } = req.query;
     const where: any = {};
 
-    if (status && typeof status === 'string') {
+    if (status && typeof status === 'string' && status !== 'ALL') {
       where.status = status;
     } else {
-      where.status = { not: 'DELETED' };
+      where.status = { notIn: ['DELETED', 'deleted'] };
     }
 
     if (search && typeof search === 'string') {

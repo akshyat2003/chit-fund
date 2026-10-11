@@ -1960,7 +1960,12 @@ function SuperAdminsTab({ user }: { user: any }) {
                   <Text style={styles.companyMetaText}>📞 Phone: {u.phone || '-'}</Text>
                   <Text style={styles.companyMetaText}>✉️ Email: {u.email || '-'}</Text>
                   <Text style={styles.companyMetaText}>
-                    🏢 Company: {u.company ? `${u.company.name} (${u.company.code})` : 'Platform Level (All Companies)'}
+                    🏢 Company:{' '}
+                    {u.company && u.company.status !== 'DELETED' && u.company.status !== 'deleted'
+                      ? `${u.company.name} (${u.company.code})`
+                      : u.company
+                      ? 'N/A (Company Removed)'
+                      : 'Platform Level (All Companies)'}
                   </Text>
                   {u.branch && <Text style={styles.companyMetaText}>📍 Branch: {u.branch.name}</Text>}
 
