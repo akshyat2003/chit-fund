@@ -385,7 +385,7 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
       emailErrorMessage = emailErr.message;
     }
 
-    // FR-SA-017: Record Audit Log
+    // FR-SA-017: Record Company and Branch Audit Logs
     try {
       await prisma.auditLog.create({
         data: {
@@ -397,10 +397,37 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
           details: JSON.stringify({
             code: newCompany.code,
             name: newCompany.name,
+            stateRegistrationNo: newCompany.stateRegistrationNo,
+            address: newCompany.address,
+            phone: newCompany.phone,
+            email: newCompany.email,
             initialAdmin: createdAdmin.username,
             adminEmail: cleanAdminEmail,
             credentialsEmailSent,
             emailErrorMessage,
+            createdBy: req.user?.fullName || req.user?.phone || req.user?.id,
+          }),
+          ipAddress: req.ip || 'unknown',
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          companyId: newCompany.id,
+          userId: req.user?.id || null,
+          action: 'BRANCH_CREATED',
+          entity: 'Branch',
+          entityId: defaultBranch.id,
+          details: JSON.stringify({
+            companyCode: newCompany.code,
+            companyName: newCompany.name,
+            branchCode: defaultBranch.code,
+            branchName: defaultBranch.name,
+            location: defaultBranch.location,
+            phone: defaultBranch.phone,
+            status: defaultBranch.status,
+            isDefaultHQ: true,
+            createdBy: req.user?.fullName || req.user?.phone || req.user?.id,
           }),
           ipAddress: req.ip || 'unknown',
         },
@@ -553,6 +580,111 @@ export const getCompanyDetails = async (req: AuthRequest, res: Response) => {
 };
 
 /**
+ * Update Company Information (name, code, stateRegistrationNo, phone, email, address)
+ * Records comprehensive change details and diffs in the Audit Log
+ */
+export const updateCompany = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, code, stateRegistrationNo, phone, email, address } = req.body;
+
+    const existingCompany = await prisma.company.findUnique({ where: { id } });
+    if (!existingCompany) {
+      return res.status(404).json({ success: false, message: 'Company not found' });
+    }
+
+    if (code && code.trim().toUpperCase() !== existingCompany.code) {
+      const codeCheck = await prisma.company.findUnique({
+        where: { code: code.trim().toUpperCase() },
+      });
+      if (codeCheck && codeCheck.id !== id) {
+        return res.status(409).json({
+          success: false,
+          message: `Company code "${code.trim().toUpperCase()}" is already in use by another company.`,
+        });
+      }
+    }
+
+    const updated = await prisma.company.update({
+      where: { id },
+      data: {
+        ...(name && { name: name.trim() }),
+        ...(code && { code: code.trim().toUpperCase() }),
+        ...(stateRegistrationNo !== undefined && { stateRegistrationNo: stateRegistrationNo.trim() }),
+        ...(phone !== undefined && { phone: phone.trim() }),
+        ...(email !== undefined && { email: email.trim().toLowerCase() }),
+        ...(address !== undefined && { address: address.trim() }),
+      },
+    });
+
+    const changedFields: Record<string, { previous: any; current: any }> = {};
+    if (name && existingCompany.name !== updated.name) {
+      changedFields.name = { previous: existingCompany.name, current: updated.name };
+    }
+    if (code && existingCompany.code !== updated.code) {
+      changedFields.code = { previous: existingCompany.code, current: updated.code };
+    }
+    if (stateRegistrationNo !== undefined && existingCompany.stateRegistrationNo !== updated.stateRegistrationNo) {
+      changedFields.stateRegistrationNo = { previous: existingCompany.stateRegistrationNo, current: updated.stateRegistrationNo };
+    }
+    if (phone !== undefined && existingCompany.phone !== updated.phone) {
+      changedFields.phone = { previous: existingCompany.phone, current: updated.phone };
+    }
+    if (email !== undefined && existingCompany.email !== updated.email) {
+      changedFields.email = { previous: existingCompany.email, current: updated.email };
+    }
+    if (address !== undefined && existingCompany.address !== updated.address) {
+      changedFields.address = { previous: existingCompany.address, current: updated.address };
+    }
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          companyId: updated.id,
+          userId: req.user?.id || null,
+          action: 'COMPANY_UPDATED',
+          entity: 'Company',
+          entityId: updated.id,
+          details: JSON.stringify({
+            code: updated.code,
+            name: updated.name,
+            changedFields,
+            previous: {
+              name: existingCompany.name,
+              code: existingCompany.code,
+              stateRegistrationNo: existingCompany.stateRegistrationNo,
+              phone: existingCompany.phone,
+              email: existingCompany.email,
+              address: existingCompany.address,
+            },
+            updated: {
+              name: updated.name,
+              code: updated.code,
+              stateRegistrationNo: updated.stateRegistrationNo,
+              phone: updated.phone,
+              email: updated.email,
+              address: updated.address,
+            },
+            updatedBy: req.user?.fullName || req.user?.phone || req.user?.id,
+          }),
+          ipAddress: req.ip || 'unknown',
+        },
+      });
+    } catch (e) {
+      console.error('[updateCompany] Audit log error:', e);
+    }
+
+    return res.json({
+      success: true,
+      message: `Company "${updated.name}" information updated successfully.`,
+      data: updated,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
  * FR-SA-003, FR-SA-012, FR-SA-014, FR-SA-017: Suspend / Reactivate / Deactivate Company
  */
 export const updateCompanyStatus = async (req: AuthRequest, res: Response) => {
@@ -599,10 +731,12 @@ export const updateCompanyStatus = async (req: AuthRequest, res: Response) => {
           entity: 'Company',
           entityId: id,
           details: JSON.stringify({
+            companyCode: targetCompany.code,
+            companyName: targetCompany.name,
             previousStatus: targetCompany.status,
             newStatus: status,
             reason: reason || 'Status updated by Super Admin',
-            updatedBy: req.user?.phone || req.user?.id,
+            updatedBy: req.user?.fullName || req.user?.phone || req.user?.id,
           }),
           ipAddress: req.ip || 'unknown',
         },
@@ -654,7 +788,13 @@ export const updateCompanySettings = async (req: AuthRequest, res: Response) => 
           action: 'COMPANY_SETTINGS_CONFIGURED',
           entity: 'Company',
           entityId: id,
-          details: JSON.stringify(updatedSub),
+          details: JSON.stringify({
+            companyCode: company.code,
+            companyName: company.name,
+            previous: current,
+            updated: updatedSub,
+            updatedBy: req.user?.fullName || req.user?.phone || req.user?.id,
+          }),
           ipAddress: req.ip || 'unknown',
         },
       });
@@ -964,16 +1104,48 @@ export const createBranch = async (req: AuthRequest, res: Response) => {
     if (!companyId || !code || !name) {
       return res.status(400).json({ success: false, message: 'companyId, code, and name are required' });
     }
+
+    const company = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) {
+      return res.status(404).json({ success: false, message: 'Company not found' });
+    }
+
     const branch = await prisma.branch.create({
       data: {
         companyId,
         code: code.trim().toUpperCase(),
         name: name.trim(),
-        location: location || null,
-        phone: phone || null,
+        location: location ? location.trim() : null,
+        phone: phone ? phone.trim() : null,
         status: 'ACTIVE',
       },
     });
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          companyId: branch.companyId,
+          userId: req.user?.id || null,
+          action: 'BRANCH_CREATED',
+          entity: 'Branch',
+          entityId: branch.id,
+          details: JSON.stringify({
+            companyCode: company.code,
+            companyName: company.name,
+            branchCode: branch.code,
+            branchName: branch.name,
+            location: branch.location,
+            phone: branch.phone,
+            status: branch.status,
+            createdBy: req.user?.fullName || req.user?.phone || req.user?.id,
+          }),
+          ipAddress: req.ip || 'unknown',
+        },
+      });
+    } catch (e) {
+      console.error('[createBranch] Audit log error:', e);
+    }
+
     return res.status(201).json({ success: true, message: 'Branch created successfully', data: branch });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
@@ -983,17 +1155,165 @@ export const createBranch = async (req: AuthRequest, res: Response) => {
 export const updateBranch = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, location, phone, status } = req.body;
+    const { name, code, location, phone, status } = req.body;
+
+    const existingBranch = await prisma.branch.findUnique({
+      where: { id },
+      include: { company: true },
+    });
+    if (!existingBranch) {
+      return res.status(404).json({ success: false, message: 'Branch not found' });
+    }
+
     const branch = await prisma.branch.update({
       where: { id },
       data: {
         ...(name && { name: name.trim() }),
-        ...(location !== undefined && { location }),
-        ...(phone !== undefined && { phone }),
+        ...(code && { code: code.trim().toUpperCase() }),
+        ...(location !== undefined && { location: location ? location.trim() : null }),
+        ...(phone !== undefined && { phone: phone ? phone.trim() : null }),
         ...(status && { status }),
       },
     });
+
+    const changedFields: Record<string, { previous: any; current: any }> = {};
+    if (name && existingBranch.name !== branch.name) {
+      changedFields.name = { previous: existingBranch.name, current: branch.name };
+    }
+    if (code && existingBranch.code !== branch.code) {
+      changedFields.code = { previous: existingBranch.code, current: branch.code };
+    }
+    if (location !== undefined && existingBranch.location !== branch.location) {
+      changedFields.location = { previous: existingBranch.location, current: branch.location };
+    }
+    if (phone !== undefined && existingBranch.phone !== branch.phone) {
+      changedFields.phone = { previous: existingBranch.phone, current: branch.phone };
+    }
+    if (status && existingBranch.status !== branch.status) {
+      changedFields.status = { previous: existingBranch.status, current: branch.status };
+    }
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          companyId: branch.companyId,
+          userId: req.user?.id || null,
+          action: 'BRANCH_UPDATED',
+          entity: 'Branch',
+          entityId: branch.id,
+          details: JSON.stringify({
+            companyCode: existingBranch.company?.code,
+            companyName: existingBranch.company?.name,
+            branchCode: branch.code,
+            branchName: branch.name,
+            changedFields,
+            previous: {
+              code: existingBranch.code,
+              name: existingBranch.name,
+              location: existingBranch.location,
+              phone: existingBranch.phone,
+              status: existingBranch.status,
+            },
+            updated: {
+              code: branch.code,
+              name: branch.name,
+              location: branch.location,
+              phone: branch.phone,
+              status: branch.status,
+            },
+            updatedBy: req.user?.fullName || req.user?.phone || req.user?.id,
+          }),
+          ipAddress: req.ip || 'unknown',
+        },
+      });
+    } catch (e) {
+      console.error('[updateBranch] Audit log error:', e);
+    }
+
     return res.json({ success: true, message: 'Branch updated successfully', data: branch });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const deleteBranch = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const branch = await prisma.branch.findUnique({
+      where: { id },
+      include: {
+        company: true,
+        _count: {
+          select: { users: true, subscribers: true, chitGroups: true },
+        },
+      },
+    });
+    if (!branch) {
+      return res.status(404).json({ success: false, message: 'Branch not found' });
+    }
+
+    const hasLinkedData = (branch._count.users || 0) > 0 || (branch._count.subscribers || 0) > 0 || (branch._count.chitGroups || 0) > 0;
+    if (hasLinkedData) {
+      const updated = await prisma.branch.update({
+        where: { id },
+        data: { status: 'INACTIVE' },
+      });
+
+      try {
+        await prisma.auditLog.create({
+          data: {
+            companyId: branch.companyId,
+            userId: req.user?.id || null,
+            action: 'BRANCH_DEACTIVATED',
+            entity: 'Branch',
+            entityId: branch.id,
+            details: JSON.stringify({
+              companyCode: branch.company?.code,
+              companyName: branch.company?.name,
+              branchCode: branch.code,
+              branchName: branch.name,
+              reason: 'Branch has active users, subscribers, or chit groups; set to INACTIVE',
+              activeCounts: branch._count,
+              deactivatedBy: req.user?.fullName || req.user?.phone || req.user?.id,
+            }),
+            ipAddress: req.ip || 'unknown',
+          },
+        });
+      } catch (e) {}
+
+      return res.json({
+        success: true,
+        message: `Branch "${branch.name}" (${branch.code}) has linked records and has been set to INACTIVE.`,
+        data: updated,
+      });
+    }
+
+    await prisma.branch.delete({ where: { id } });
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          companyId: branch.companyId,
+          userId: req.user?.id || null,
+          action: 'BRANCH_DELETED',
+          entity: 'Branch',
+          entityId: branch.id,
+          details: JSON.stringify({
+            companyCode: branch.company?.code,
+            companyName: branch.company?.name,
+            branchCode: branch.code,
+            branchName: branch.name,
+            deletedBy: req.user?.fullName || req.user?.phone || req.user?.id,
+          }),
+          ipAddress: req.ip || 'unknown',
+        },
+      });
+    } catch (e) {}
+
+    return res.json({
+      success: true,
+      message: `Branch "${branch.name}" (${branch.code}) deleted successfully.`,
+    });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }

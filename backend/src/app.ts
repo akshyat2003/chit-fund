@@ -138,6 +138,8 @@ router.get('/super-admin/dashboard', authenticateToken, requireRoles('SUPER_ADMI
 router.get('/super-admin/companies', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listCompanies);
 router.post('/super-admin/companies', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.createCompany);
 router.get('/super-admin/companies/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getCompanyDetails);
+router.put('/super-admin/companies/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateCompany);
+router.patch('/super-admin/companies/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateCompany);
 router.patch('/super-admin/companies/:id/status', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateCompanyStatus);
 router.delete('/super-admin/companies/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.deleteCompany);
 router.put('/super-admin/companies/:id/settings', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateCompanySettings);
@@ -161,7 +163,9 @@ router.post('/super-admin/admins', authenticateToken, requireRoles('SUPER_ADMIN'
 // SA-03: Branch Setup & Management
 router.get('/super-admin/branches', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listBranches);
 router.post('/super-admin/branches', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.createBranch);
+router.put('/super-admin/branches/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateBranch);
 router.patch('/super-admin/branches/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateBranch);
+router.delete('/super-admin/branches/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.deleteBranch);
 router.get('/branches', authenticateToken, superAdminController.listBranches);
 
 // SA-05, SA-06: Role & Permission Management

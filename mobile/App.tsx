@@ -686,6 +686,28 @@ function CompaniesTab({ user }: { user: any }) {
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Edit Company State
+  const [editingCompany, setEditingCompany] = useState<any>(null);
+  const [editName, setEditName] = useState('');
+  const [editCode, setEditCode] = useState('');
+  const [editStateReg, setEditStateReg] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editError, setEditError] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Manage Branches State
+  const [branchCompany, setBranchCompany] = useState<any>(null);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [newBranchCode, setNewBranchCode] = useState('');
+  const [newBranchName, setNewBranchName] = useState('');
+  const [newBranchLocation, setNewBranchLocation] = useState('');
+  const [newBranchPhone, setNewBranchPhone] = useState('');
+  const [branchError, setBranchError] = useState('');
+  const [savingBranch, setSavingBranch] = useState(false);
+
   useEffect(() => {
     loadCompanies();
   }, [search, statusFilter]);
@@ -857,6 +879,123 @@ function CompaniesTab({ user }: { user: any }) {
     }
   };
 
+  const handleOpenEditCompany = (c: any) => {
+    setEditingCompany(c);
+    setEditName(c.name || '');
+    setEditCode(c.code || '');
+    setEditStateReg(c.stateRegistrationNo || '');
+    setEditPhone(c.phone || '');
+    setEditEmail(c.email || '');
+    setEditAddress(c.address || '');
+    setEditError('');
+  };
+
+  const handleSaveCompanyEdit = async () => {
+    if (!editingCompany) return;
+    setEditError('');
+    if (!editName.trim()) {
+      setEditError('Company Legal Name is required.');
+      return;
+    }
+    if (!editCode.trim()) {
+      setEditError('Company Code is required.');
+      return;
+    }
+    try {
+      setSavingEdit(true);
+      await api.put(`/super-admin/companies/${editingCompany.id}`, {
+        name: editName.trim(),
+        code: editCode.trim().toUpperCase(),
+        stateRegistrationNo: editStateReg.trim(),
+        phone: editPhone.trim(),
+        email: editEmail.trim(),
+        address: editAddress.trim(),
+      });
+      alert(`Company "${editName.trim()}" updated successfully! Changes recorded in the Audit Log.`);
+      setEditingCompany(null);
+      loadCompanies();
+    } catch (err: any) {
+      setEditError(err.response?.data?.message || err.message || 'Failed to update company');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleOpenBranches = async (c: any) => {
+    setBranchCompany(c);
+    setBranchError('');
+    setNewBranchCode(`${c.code}-`);
+    setNewBranchName('');
+    setNewBranchLocation(c.address || '');
+    setNewBranchPhone(c.phone || '');
+    await loadBranchesForCompany(c.id);
+  };
+
+  const loadBranchesForCompany = async (companyId: string) => {
+    try {
+      setLoadingBranches(true);
+      const res = await api.get(`/super-admin/branches?companyId=${companyId}`);
+      setBranches(res.data.data || []);
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setLoadingBranches(false);
+    }
+  };
+
+  const handleCreateBranch = async () => {
+    if (!branchCompany) return;
+    setBranchError('');
+    if (!newBranchCode.trim() || !newBranchName.trim()) {
+      setBranchError('Branch Code and Branch Name are required.');
+      return;
+    }
+    try {
+      setSavingBranch(true);
+      await api.post('/super-admin/branches', {
+        companyId: branchCompany.id,
+        code: newBranchCode.trim().toUpperCase(),
+        name: newBranchName.trim(),
+        location: newBranchLocation.trim(),
+        phone: newBranchPhone.trim(),
+      });
+      alert(`Branch "${newBranchName.trim()}" created successfully! Recorded in the Audit Log.`);
+      setNewBranchCode(`${branchCompany.code}-`);
+      setNewBranchName('');
+      setNewBranchLocation('');
+      setNewBranchPhone('');
+      await loadBranchesForCompany(branchCompany.id);
+      loadCompanies();
+    } catch (err: any) {
+      setBranchError(err.response?.data?.message || err.message || 'Failed to create branch');
+    } finally {
+      setSavingBranch(false);
+    }
+  };
+
+  const handleToggleBranchStatus = async (branch: any) => {
+    try {
+      const nextStatus = branch.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+      await api.patch(`/super-admin/branches/${branch.id}`, { status: nextStatus });
+      await loadBranchesForCompany(branchCompany.id);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to update branch status');
+    }
+  };
+
+  const handleDeleteBranch = async (branch: any) => {
+    const confirmMsg = `Are you sure you want to delete branch "${branch.name}" (${branch.code})? This will be recorded in the Audit Log.`;
+    if (!window.confirm ? !confirm(confirmMsg) : !window.confirm(confirmMsg)) return;
+    try {
+      const res = await api.delete(`/super-admin/branches/${branch.id}`);
+      alert(res.data?.message || `Branch "${branch.name}" removed.`);
+      await loadBranchesForCompany(branchCompany.id);
+      loadCompanies();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to delete branch');
+    }
+  };
+
   return (
     <View style={styles.tabContainer}>
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
@@ -931,6 +1070,44 @@ function CompaniesTab({ user }: { user: any }) {
                 </View>
 
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.statusToggleBtn,
+                      {
+                        flex: 1,
+                        marginTop: 0,
+                        borderColor: '#2563EB',
+                        backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                      },
+                    ]}
+                    onPress={() => handleOpenEditCompany(c)}
+                    disabled={actionLoading}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#1D4ED8' }}>
+                      ✏️ Edit Info
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.statusToggleBtn,
+                      {
+                        flex: 1,
+                        marginTop: 0,
+                        borderColor: '#0284C7',
+                        backgroundColor: 'rgba(2, 132, 199, 0.08)',
+                      },
+                    ]}
+                    onPress={() => handleOpenBranches(c)}
+                    disabled={actionLoading}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
+                      🏛️ Branches
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
                   <TouchableOpacity
                     style={[
                       styles.statusToggleBtn,
@@ -1146,6 +1323,279 @@ function CompaniesTab({ user }: { user: any }) {
                   ) : (
                     <Text style={styles.primaryBtnText}>CREATE COMPANY & ADMIN</Text>
                   )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Company Information Modal */}
+      <Modal visible={Boolean(editingCompany)} animationType="slide" transparent onRequestClose={() => setEditingCompany(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: 600 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <View>
+                <Text style={styles.modalTitle}>Edit Company Details</Text>
+                <Text style={{ fontSize: 12, color: '#64748B' }}>
+                  Changes will be permanently recorded in the Audit Log
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setEditingCompany(null)}>
+                <Text style={{ fontSize: 22, color: '#64748B', fontWeight: '700' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {editError ? (
+              <View style={styles.modalErrorBadge}>
+                <Text style={styles.modalErrorBadgeText}>⚠️ {editError}</Text>
+              </View>
+            ) : null}
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.label}>Company Legal Name *</Text>
+              <TextInput
+                style={styles.input}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Company Name"
+              />
+
+              <Text style={styles.label}>Company Code (Unique Acronym) *</Text>
+              <TextInput
+                style={styles.input}
+                value={editCode}
+                onChangeText={(t) => setEditCode(t.toUpperCase())}
+                autoCapitalize="characters"
+                placeholder="Company Code"
+              />
+
+              <Text style={styles.label}>State Registration Number</Text>
+              <TextInput
+                style={styles.input}
+                value={editStateReg}
+                onChangeText={setEditStateReg}
+                placeholder="Registration Number"
+              />
+
+              <Text style={styles.label}>Official Contact Phone</Text>
+              <TextInput
+                style={styles.input}
+                value={editPhone}
+                onChangeText={setEditPhone}
+                keyboardType="phone-pad"
+                placeholder="Contact Phone"
+              />
+
+              <Text style={styles.label}>Official Contact Email</Text>
+              <TextInput
+                style={styles.input}
+                value={editEmail}
+                onChangeText={setEditEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                placeholder="Contact Email"
+              />
+
+              <Text style={styles.label}>Registered Head Office Address</Text>
+              <TextInput
+                style={[styles.input, { height: 64 }]}
+                value={editAddress}
+                onChangeText={setEditAddress}
+                multiline
+                placeholder="Registered Office Address"
+              />
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 18, marginBottom: 10 }}>
+                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setEditingCompany(null)}>
+                  <Text style={styles.cancelBtnText}>CANCEL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { flex: 2, marginTop: 0 }]}
+                  onPress={handleSaveCompanyEdit}
+                  disabled={savingEdit}
+                >
+                  {savingEdit ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>SAVE & AUDIT LOG CHANGES</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Manage Branches Modal */}
+      <Modal visible={Boolean(branchCompany)} animationType="slide" transparent onRequestClose={() => setBranchCompany(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: 680, maxHeight: '90%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <View>
+                <Text style={styles.modalTitle}>🏛️ Branches — {branchCompany?.name}</Text>
+                <Text style={{ fontSize: 12, color: '#64748B' }}>
+                  Branch setup & modifications are tracked in the Audit Log
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setBranchCompany(null)}>
+                <Text style={{ fontSize: 22, color: '#64748B', fontWeight: '700' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {branchError ? (
+              <View style={styles.modalErrorBadge}>
+                <Text style={styles.modalErrorBadgeText}>⚠️ {branchError}</Text>
+              </View>
+            ) : null}
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Add New Branch Section */}
+              <View style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F2F52', marginBottom: 8 }}>
+                  + ADD NEW BRANCH
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Branch Code *</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={newBranchCode}
+                      onChangeText={(t) => setNewBranchCode(t.toUpperCase())}
+                      placeholder="e.g. APEX-CHN"
+                      autoCapitalize="characters"
+                    />
+                  </View>
+                  <View style={{ flex: 2 }}>
+                    <Text style={styles.label}>Branch Name *</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={newBranchName}
+                      onChangeText={setNewBranchName}
+                      placeholder="e.g. Chennai Central"
+                    />
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Location</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={newBranchLocation}
+                      onChangeText={setNewBranchLocation}
+                      placeholder="City / Area"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Phone</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={newBranchPhone}
+                      onChangeText={setNewBranchPhone}
+                      placeholder="Contact Phone"
+                    />
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { marginTop: 6, alignSelf: 'flex-end', paddingHorizontal: 16 }]}
+                  onPress={handleCreateBranch}
+                  disabled={savingBranch}
+                >
+                  {savingBranch ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>+ CREATE & LOG BRANCH</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* Existing Branches List */}
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#1E293B', marginBottom: 8 }}>
+                EXISTING BRANCHES ({branches.length})
+              </Text>
+              {loadingBranches ? (
+                <ActivityIndicator size="small" color="#0A2540" style={{ marginVertical: 12 }} />
+              ) : branches.length === 0 ? (
+                <Text style={{ fontSize: 12, color: '#64748B', fontStyle: 'italic', marginVertical: 8 }}>
+                  No branches configured yet for this company.
+                </Text>
+              ) : (
+                branches.map((b) => (
+                  <View
+                    key={b.id}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      backgroundColor: '#FFF',
+                      padding: 10,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: '#E2E8F0',
+                      marginBottom: 8,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={{ fontWeight: '800', color: '#0F2F52', fontSize: 13 }}>
+                          {b.name}
+                        </Text>
+                        <Text style={[styles.companyCodeBadge, { fontSize: 10, paddingVertical: 1, paddingHorizontal: 6 }]}>
+                          {b.code}
+                        </Text>
+                        <View style={b.status === 'ACTIVE' ? styles.statusBadgeActive : styles.statusBadgeSuspended}>
+                          <Text style={b.status === 'ACTIVE' ? styles.statusTextActive : styles.statusTextSuspended}>
+                            {b.status}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                        {b.location ? `📍 ${b.location}` : 'No location'} {b.phone ? `| 📞 ${b.phone}` : ''}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <TouchableOpacity
+                        style={[
+                          styles.statusToggleBtn,
+                          {
+                            marginTop: 0,
+                            paddingVertical: 4,
+                            paddingHorizontal: 8,
+                            borderColor: b.status === 'ACTIVE' ? '#F59E0B' : '#16A34A',
+                            backgroundColor: b.status === 'ACTIVE' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(22, 163, 74, 0.08)',
+                          },
+                        ]}
+                        onPress={() => handleToggleBranchStatus(b)}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: b.status === 'ACTIVE' ? '#B45309' : '#16A34A' }}>
+                          {b.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.statusToggleBtn,
+                          {
+                            marginTop: 0,
+                            paddingVertical: 4,
+                            paddingHorizontal: 8,
+                            borderColor: '#EF4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                          },
+                        ]}
+                        onPress={() => handleDeleteBranch(b)}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#DC2626' }}>
+                          🗑️
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+
+              <View style={{ marginTop: 12 }}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setBranchCompany(null)}>
+                  <Text style={styles.cancelBtnText}>CLOSE</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -2132,6 +2582,7 @@ function AuditsTab({ user }: { user: any }) {
                 { id: 'LOGIN', label: '🔐 Login & Auth' },
                 { id: 'PASSWORD', label: '🛡️ Credentials' },
                 { id: 'COMPANY', label: '🏢 Company Mgmt' },
+                { id: 'BRANCH', label: '🏛️ Branch Mgmt' },
                 { id: 'EXPORT', label: '📤 Data Exports' },
               ].map((act) => (
                 <TouchableOpacity
