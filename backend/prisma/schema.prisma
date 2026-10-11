@@ -19,6 +19,8 @@ model Company {
   address               String?
   phone                 String?
   email                 String?
+  receiptPrefix         String?  @default("REC")
+  settings              String?  // JSON formatted business settings
   status                String   @default("ACTIVE") // ACTIVE, SUSPENDED, DEACTIVATED
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -29,26 +31,36 @@ model Company {
   chitGroups            ChitGroup[]
   transactions          PaymentTransaction[]
   auditLogs             AuditLog[]
+  accounts              Account[]
+  vouchers              Voucher[]
+  journalEntries        JournalEntry[]
+  refunds               Refund[]
 }
 
 model Branch {
-  id          String   @id @default(uuid())
-  companyId   String
-  code        String   @unique
-  name        String
-  location    String?
-  phone       String?
-  status      String   @default("ACTIVE")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  companyId     String
+  code          String   @unique
+  name          String
+  location      String?
+  phone         String?
+  managerUserId String?
+  closureReason String?
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  users       User[]
-  subscribers Subscriber[]
-  chitGroups  ChitGroup[]
-  transactions PaymentTransaction[]
-  handovers   CashHandover[]
-  expenses    Expense[]
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  users         User[]
+  subscribers   Subscriber[]
+  chitGroups    ChitGroup[]
+  transactions  PaymentTransaction[]
+  handovers     CashHandover[]
+  expenses      Expense[]
+  accounts      Account[]
+  vouchers      Voucher[]
+  journalEntries JournalEntry[]
+  refunds       Refund[]
 }
 
 model User {
@@ -78,25 +90,28 @@ model User {
 }
 
 model Subscriber {
-  id             String   @id @default(uuid())
-  companyId      String
-  branchId       String
-  assignedStaffId String?
-  subscriberCode String   @unique
-  fullName       String
-  phone          String   @unique
-  email          String?
-  address        String?
-  dateOfBirth    String?
-  kycStatus      String   @default("PENDING") // PENDING, VERIFIED, REJECTED
-  idProofType    String?  // AADHAAR, PAN, VOTER_ID, PASSPORT
-  idProofNumber  String?
-  nomineeName    String?
-  nomineeRelation String?
-  nomineePhone   String?
-  status         String   @default("ACTIVE") // ACTIVE, SUSPENDED, DEACTIVATED
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                  String   @id @default(uuid())
+  companyId           String
+  branchId            String
+  assignedStaffId     String?
+  subscriberCode      String   @unique
+  fullName            String
+  phone               String   @unique
+  email               String?
+  address             String?
+  dateOfBirth         String?
+  kycStatus           String   @default("PENDING") // PENDING, VERIFIED, REJECTED
+  kycNotes            String?
+  kycVerifiedAt       DateTime?
+  kycVerifiedByUserId String?
+  idProofType         String?  // AADHAAR, PAN, VOTER_ID, PASSPORT
+  idProofNumber       String?
+  nomineeName         String?
+  nomineeRelation     String?
+  nomineePhone        String?
+  status              String   @default("ACTIVE") // ACTIVE, SUSPENDED, DEACTIVATED
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   branch         Branch   @relation(fields: [branchId], references: [id])
@@ -107,6 +122,7 @@ model Subscriber {
   payouts        Payout[]
   auctionBids    AuctionBid[]
   auctionsWon    Auction[] @relation("AuctionWinner")
+  refunds        Refund[]
 }
 
 model ChitGroup {
@@ -315,3 +331,93 @@ model RefreshToken {
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+model Account {
+  id             String    @id @default(uuid())
+  companyId      String
+  branchId       String?
+  code           String    // e.g. "1001", "1002", "2001", "3001", "4001", "5001"
+  name           String    // e.g. "Cash on Hand", "Bank Account", "Chit Subscriptions", "Salaries"
+  type           String    // ASSET, LIABILITY, EQUITY, INCOME, EXPENSE
+  openingBalance Float     @default(0.0)
+  currentBalance Float     @default(0.0)
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch         Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  lines          JournalEntryLine[]
+
+  @@unique([companyId, code])
+}
+
+model Voucher {
+  id              String    @id @default(uuid())
+  companyId       String
+  branchId        String?
+  voucherNo       String    // e.g. "RV-2026-001", "PV-2026-001", "JV-2026-001"
+  voucherType     String    // RECEIPT, PAYMENT, JOURNAL, CONTRA
+  voucherDate     String    // YYYY-MM-DD
+  amount          Float
+  narration       String
+  referenceNo     String?
+  status          String    @default("POSTED") // DRAFT, POSTED, CANCELLED
+  createdByUserId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch          Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  journalEntries  JournalEntry[]
+}
+
+model JournalEntry {
+  id          String   @id @default(uuid())
+  companyId   String
+  branchId    String?
+  voucherId   String?
+  entryNo     String   @unique
+  date        String   // YYYY-MM-DD
+  narration   String
+  isBalanced  Boolean  @default(true)
+  status      String   @default("POSTED") // DRAFT, POSTED, REVERSED
+  createdAt   DateTime @default(now())
+
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch      Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  voucher     Voucher? @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+  lines       JournalEntryLine[]
+}
+
+model JournalEntryLine {
+  id             String       @id @default(uuid())
+  journalEntryId String
+  accountId      String
+  type           String       // DEBIT, CREDIT
+  amount         Float
+  description    String?
+
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account        Account      @relation(fields: [accountId], references: [id])
+}
+
+model Refund {
+  id                String     @id @default(uuid())
+  companyId         String
+  branchId          String
+  subscriberId      String
+  groupId           String
+  amount            Float
+  reason            String
+  status            String     @default("REQUESTED") // REQUESTED, APPROVED, DISBURSED, REJECTED
+  approvedByUserId  String?
+  approvedAt        DateTime?
+  disbursedAt       DateTime?
+  createdAt         DateTime   @default(now())
+
+  company           Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch            Branch     @relation(fields: [branchId], references: [id])
+  subscriber        Subscriber @relation(fields: [subscriberId], references: [id])
+}
+

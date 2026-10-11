@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "23d28189-83c0-45c9-bc4d-b808bbc344c8"
+      }
+    },
+    "android": {
+      "package": "com.akshyat2003.chitkart"
+    }
+  }
+}

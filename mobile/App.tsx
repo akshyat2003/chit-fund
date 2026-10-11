@@ -13,11 +13,33 @@ import {
 } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { api } from './src/services/api';
+import { MembersTab } from './src/modules/manager/MembersTab';
+import { ChitGroupsTab } from './src/modules/manager/ChitGroupsTab';
+import { CollectionsTab } from './src/modules/manager/CollectionsTab';
+import { AccountingTab } from './src/modules/manager/AccountingTab';
+import { AuctionsPayoutsTab } from './src/modules/manager/AuctionsPayoutsTab';
+import { BranchGovernanceTab } from './src/modules/manager/BranchGovernanceTab';
+import { ComplianceReportsTab } from './src/modules/manager/ComplianceReportsTab';
 
 // --- MAIN APP CONTROLLER ---
 function MainApp() {
   const { user, login, logout, refreshUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'companies' | 'admins' | 'audits' | 'system' | 'backups' | 'notifications'>('dashboard');
+  const [activeTab, setActiveTab] = useState<
+    | 'dashboard'
+    | 'companies'
+    | 'admins'
+    | 'audits'
+    | 'system'
+    | 'backups'
+    | 'notifications'
+    | 'members'
+    | 'chit_groups'
+    | 'collections'
+    | 'accounting'
+    | 'auctions'
+    | 'branches'
+    | 'compliance'
+  >('dashboard');
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   if (!user) {
@@ -108,6 +130,60 @@ function MainApp() {
                 </TouchableOpacity>
               </>
             )}
+
+            {/* Manager cum Accountant Module Tabs (AC-01 through AC-34 & FR-COMP-001 through FR-COMP-011) */}
+            {(user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && (
+              <>
+                <TouchableOpacity
+                  style={[styles.navItem, activeTab === 'members' && styles.navItemActive]}
+                  onPress={() => setActiveTab('members')}
+                >
+                  <Text style={[styles.navText, activeTab === 'members' && styles.navTextActive]}>👥 Members & KYC</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, activeTab === 'chit_groups' && styles.navItemActive]}
+                  onPress={() => setActiveTab('chit_groups')}
+                >
+                  <Text style={[styles.navText, activeTab === 'chit_groups' && styles.navTextActive]}>💰 Chit Groups</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, activeTab === 'collections' && styles.navItemActive]}
+                  onPress={() => setActiveTab('collections')}
+                >
+                  <Text style={[styles.navText, activeTab === 'collections' && styles.navTextActive]}>💳 Collections & Receipts</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, activeTab === 'accounting' && styles.navItemActive]}
+                  onPress={() => setActiveTab('accounting')}
+                >
+                  <Text style={[styles.navText, activeTab === 'accounting' && styles.navTextActive]}>📚 Accounting & Ledgers</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, activeTab === 'auctions' && styles.navItemActive]}
+                  onPress={() => setActiveTab('auctions')}
+                >
+                  <Text style={[styles.navText, activeTab === 'auctions' && styles.navTextActive]}>🎯 Auctions & Payouts</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, activeTab === 'branches' && styles.navItemActive]}
+                  onPress={() => setActiveTab('branches')}
+                >
+                  <Text style={[styles.navText, activeTab === 'branches' && styles.navTextActive]}>🏛️ Branch Governance</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, activeTab === 'compliance' && styles.navItemActive]}
+                  onPress={() => setActiveTab('compliance')}
+                >
+                  <Text style={[styles.navText, activeTab === 'compliance' && styles.navTextActive]}>📑 Compliance & Reports</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </ScrollView>
         </View>
       </View>
@@ -137,6 +213,33 @@ function MainApp() {
               </View>
               <View style={{ flex: 1, display: activeTab === 'notifications' ? 'flex' : 'none' }}>
                 <NotificationsTab user={user} />
+              </View>
+            </>
+          )}
+
+          {/* Manager Operations Views */}
+          {(user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && (
+            <>
+              <View style={{ flex: 1, display: activeTab === 'members' ? 'flex' : 'none' }}>
+                <MembersTab user={user} />
+              </View>
+              <View style={{ flex: 1, display: activeTab === 'chit_groups' ? 'flex' : 'none' }}>
+                <ChitGroupsTab user={user} />
+              </View>
+              <View style={{ flex: 1, display: activeTab === 'collections' ? 'flex' : 'none' }}>
+                <CollectionsTab user={user} />
+              </View>
+              <View style={{ flex: 1, display: activeTab === 'accounting' ? 'flex' : 'none' }}>
+                <AccountingTab user={user} />
+              </View>
+              <View style={{ flex: 1, display: activeTab === 'auctions' ? 'flex' : 'none' }}>
+                <AuctionsPayoutsTab user={user} />
+              </View>
+              <View style={{ flex: 1, display: activeTab === 'branches' ? 'flex' : 'none' }}>
+                <BranchGovernanceTab user={user} />
+              </View>
+              <View style={{ flex: 1, display: activeTab === 'compliance' ? 'flex' : 'none' }}>
+                <ComplianceReportsTab user={user} />
               </View>
             </>
           )}

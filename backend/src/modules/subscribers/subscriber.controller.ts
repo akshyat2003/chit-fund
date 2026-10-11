@@ -148,3 +148,256 @@ export const getSubscriberById = async (req: AuthRequest, res: Response) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
+
+/**
+ * AC-02: KYC Verification
+ */
+export const verifyKyc = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { kycStatus, kycNotes } = req.body;
+
+    if (!['VERIFIED', 'REJECTED', 'PENDING'].includes(kycStatus)) {
+      return res.status(400).json({ success: false, message: 'Valid kycStatus (VERIFIED, REJECTED, PENDING) is required' });
+    }
+
+    const subscriber = await prisma.subscriber.update({
+      where: { id },
+      data: {
+        kycStatus,
+        kycNotes: kycNotes || null,
+        kycVerifiedAt: new Date(),
+        kycVerifiedByUserId: req.user?.id || null,
+      },
+    });
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          companyId: subscriber.companyId,
+          userId: req.user?.id || null,
+          action: `KYC_${kycStatus}`,
+          entity: 'Subscriber',
+          entityId: subscriber.id,
+          details: JSON.stringify({
+            subscriberCode: subscriber.subscriberCode,
+            fullName: subscriber.fullName,
+            kycStatus,
+            notes: kycNotes,
+            verifiedBy: req.user?.fullName || req.user?.phone || req.user?.id,
+          }),
+          ipAddress: req.ip || 'unknown',
+        },
+      });
+    } catch (e) {}
+
+    return res.json({ success: true, message: `Member KYC marked ${kycStatus}`, data: subscriber });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * AC-04: Member Ledger (Installments, payments, credits, debits, arrears, running balance)
+ */
+export const getMemberLedger = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const subscriber = await prisma.subscriber.findUnique({
+      where: { id },
+      include: {
+        memberships: {
+          include: {
+            group: {
+              include: { schedules: { orderBy: { installmentNo: 'asc' } } },
+            },
+          },
+        },
+        transactions: {
+          where: { isReversed: false },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!subscriber) return res.status(404).json({ success: false, message: 'Subscriber not found' });
+
+    // Calculate aggregated ledger lines
+    let totalScheduled = 0;
+    let totalDividends = 0;
+    let totalPaid = 0;
+
+    const groupLedgers = subscriber.memberships.map((m) => {
+      const groupTxns = subscriber.transactions.filter((t) => t.groupId === m.groupId);
+      const paidInGroup = groupTxns.reduce((sum, t) => sum + t.amount, 0);
+
+      const schedules = m.group.schedules.map((sch) => {
+        totalScheduled += sch.scheduledAmount;
+        totalDividends += sch.dividendAmount;
+        const matchingTxns = groupTxns.filter((t) => t.installmentNo === sch.installmentNo);
+        const installmentPaid = matchingTxns.reduce((s, t) => s + t.amount, 0);
+        const outstanding = Math.max(0, sch.netDueAmount - installmentPaid);
+
+        return {
+          installmentNo: sch.installmentNo,
+          dueDate: sch.dueDate,
+          scheduledAmount: sch.scheduledAmount,
+          dividendAmount: sch.dividendAmount,
+          netDueAmount: sch.netDueAmount,
+          paidAmount: installmentPaid,
+          outstanding,
+          status: outstanding === 0 ? 'PAID' : installmentPaid > 0 ? 'PARTIAL' : 'DUE',
+        };
+      });
+
+      totalPaid += paidInGroup;
+
+      return {
+        groupCode: m.group.groupCode,
+        groupName: m.group.name,
+        ticketNumber: m.ticketNumber,
+        chitValue: m.group.chitValue,
+        monthlyInstallment: m.group.monthlyInstallment,
+        totalPaidInGroup: paidInGroup,
+        schedules,
+      };
+    });
+
+    const netScheduledDue = totalScheduled - totalDividends;
+    const totalArrears = Math.max(0, netScheduledDue - totalPaid);
+
+    return res.json({
+      success: true,
+      data: {
+        subscriber: {
+          id: subscriber.id,
+          subscriberCode: subscriber.subscriberCode,
+          fullName: subscriber.fullName,
+          phone: subscriber.phone,
+          kycStatus: subscriber.kycStatus,
+        },
+        summary: {
+          totalScheduled,
+          totalDividends,
+          netScheduledDue,
+          totalPaid,
+          totalArrears,
+        },
+        groups: groupLedgers,
+        transactions: subscriber.transactions,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * AC-29: Member Statement of Account
+ */
+export const getMemberStatement = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const subscriber = await prisma.subscriber.findUnique({
+      where: { id },
+      include: {
+        branch: { select: { name: true, code: true, phone: true } },
+        memberships: {
+          include: { group: { select: { groupCode: true, name: true, chitValue: true, startDate: true } } },
+        },
+        transactions: {
+          where: { isReversed: false },
+          orderBy: { createdAt: 'desc' },
+        },
+        auctionsWon: true,
+        payouts: true,
+      },
+    });
+
+    if (!subscriber) return res.status(404).json({ success: false, message: 'Subscriber not found' });
+
+    const totalPaid = subscriber.transactions.reduce((sum, t) => sum + t.amount, 0);
+
+    return res.json({
+      success: true,
+      data: {
+        generatedAt: new Date().toISOString(),
+        subscriber,
+        totalPaid,
+        activeChitsCount: subscriber.memberships.length,
+        payoutsReceivedCount: subscriber.payouts.filter((p) => p.status === 'DISBURSED').length,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * AC-30: Outstanding & Arrears Management
+ */
+export const getMemberOutstanding = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user?.companyId;
+    const { branchId } = req.query;
+    const where: any = { companyId, status: 'ACTIVE' };
+    if (branchId) where.branchId = String(branchId);
+
+    const subscribers = await prisma.subscriber.findMany({
+      where,
+      include: {
+        branch: { select: { name: true } },
+        memberships: {
+          include: {
+            group: {
+              include: { schedules: true },
+            },
+          },
+        },
+        transactions: {
+          where: { isReversed: false },
+          select: { groupId: true, installmentNo: true, amount: true },
+        },
+      },
+    });
+
+    const outstandingList = subscribers.map((sub) => {
+      let totalDue = 0;
+      let totalPaid = 0;
+
+      for (const m of sub.memberships) {
+        for (const sch of m.group.schedules) {
+          totalDue += sch.netDueAmount;
+        }
+        const groupTxns = sub.transactions.filter((t) => t.groupId === m.groupId);
+        totalPaid += groupTxns.reduce((s, t) => s + t.amount, 0);
+      }
+
+      const arrears = Math.max(0, totalDue - totalPaid);
+      const lateFee = arrears > 0 ? Math.round(arrears * 0.02) : 0; // 2% late charge rule
+
+      return {
+        id: sub.id,
+        subscriberCode: sub.subscriberCode,
+        fullName: sub.fullName,
+        phone: sub.phone,
+        branchName: sub.branch.name,
+        enrolledGroupsCount: sub.memberships.length,
+        totalDue,
+        totalPaid,
+        arrears,
+        lateFee,
+        totalPayable: arrears + lateFee,
+        status: arrears === 0 ? 'CLEAN' : arrears < 10000 ? 'MILD_ARREARS' : 'CRITICAL_ARREARS',
+      };
+    });
+
+    return res.json({
+      success: true,
+      count: outstandingList.length,
+      data: outstandingList.sort((a, b) => b.arrears - a.arrears),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};

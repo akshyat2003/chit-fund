@@ -14,6 +14,7 @@ import * as payoutController from './modules/payouts/payout.controller.js';
 import * as reconciliationController from './modules/reconciliation/reconciliation.controller.js';
 import * as reportController from './modules/reports/report.controller.js';
 import * as superAdminController from './modules/super-admin/superAdmin.controller.js';
+import * as accountingController from './modules/accounting/accounting.controller.js';
 
 const app = express();
 
@@ -104,29 +105,55 @@ router.delete('/super-admin/users/:id', authenticateToken, requireRoles('SUPER_A
 // Dashboard Statistics Route
 router.get('/reports/dashboard', authenticateToken, reportController.getDashboardStats);
 
-// Subscriber Routes
+// Subscriber Routes (AC-01, AC-02, AC-04, AC-29, AC-30)
 router.get('/subscribers', authenticateToken, subscriberController.listSubscribers);
 router.post('/subscribers', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), subscriberController.createSubscriber);
+router.get('/subscribers/outstanding', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), subscriberController.getMemberOutstanding);
 router.get('/subscribers/:id', authenticateToken, subscriberController.getSubscriberById);
+router.patch('/subscribers/:id/kyc', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), subscriberController.verifyKyc);
+router.get('/subscribers/:id/ledger', authenticateToken, subscriberController.getMemberLedger);
+router.get('/subscribers/:id/statement', authenticateToken, subscriberController.getMemberStatement);
 
-// Chit Group Routes
+// Chit Group Routes (AC-03, AC-05, AC-06, AC-07)
 router.get('/chit-groups', authenticateToken, chitGroupController.listChitGroups);
 router.post('/chit-groups', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), chitGroupController.createChitGroup);
 router.post('/chit-groups/enroll', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), chitGroupController.enrollSubscriber);
 router.get('/chit-groups/:id', authenticateToken, chitGroupController.getChitGroupDetails);
 
-// Collection & Payment Routes
+// Collection & Payment Routes (AC-08, AC-09, AC-10, AC-11, AC-12, AC-13)
 router.post('/collections/pay', authenticateToken, collectionController.recordPayment);
 router.get('/collections/transactions', authenticateToken, collectionController.listTransactions);
 router.get('/collections/receipts/:receiptNo', authenticateToken, collectionController.getReceiptDetails);
+router.post('/collections/receipts/:receiptNo/reprint', authenticateToken, collectionController.reprintReceipt);
+router.post('/collections/reconcile', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), collectionController.reconcilePayments);
+router.post('/collections/:id/reverse', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), collectionController.reverseTransaction);
 
-// Auction Routes
+// Auction Routes (AC-23, AC-24, AC-25)
 router.post('/auctions/confirm', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), auctionController.createAuctionResult);
 router.get('/auctions/group/:groupId', authenticateToken, auctionController.getGroupAuctions);
 
-// Payout Routes
+// Payout & Refund Routes (AC-26, AC-27, AC-28)
 router.get('/payouts', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), payoutController.listPayouts);
 router.patch('/payouts/:id/status', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), payoutController.updatePayoutStatus);
+router.get('/refunds', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), payoutController.listRefunds);
+router.post('/refunds', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), payoutController.createRefundRequest);
+router.patch('/refunds/:id/process', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), payoutController.processRefund);
+
+// Accounting & Finance Routes (AC-14, AC-15, AC-16, AC-17, AC-18, AC-19, AC-20, AC-21, AC-22, AC-31)
+router.get('/accounting/accounts', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.listAccounts);
+router.post('/accounting/accounts', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.createAccount);
+router.get('/accounting/cashbook', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.getCashbook);
+router.get('/accounting/bankbook', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.getBankbook);
+router.get('/accounting/journal-entries', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.listJournalEntries);
+router.post('/accounting/journal-entries', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.createJournalEntry);
+router.get('/accounting/expenses', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.listExpenses);
+router.post('/accounting/expenses', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.createExpense);
+router.get('/accounting/vouchers', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.listVouchers);
+router.post('/accounting/vouchers', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.createVoucher);
+router.get('/accounting/general-ledger/:accountId', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.getGeneralLedger);
+router.get('/accounting/trial-balance', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.getTrialBalance);
+router.get('/accounting/financial-statements', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.getFinancialStatements);
+router.post('/accounting/close-period', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.closeFinancialPeriod);
 
 // Reconciliation & Handover Routes
 router.post('/reconciliation/handover', authenticateToken, reconciliationController.submitCashHandover);
