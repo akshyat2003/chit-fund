@@ -454,7 +454,10 @@ export function ChitGroupsTab({ user }: { user: any }) {
       g.name?.toLowerCase().includes(search.toLowerCase()) ||
       g.groupCode?.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || g.status === statusFilter;
-    const matchesScope = assignmentScope === 'ALL' || isGroupAssignedToUser(g);
+    // Staff can ONLY work in their own assigned group(s)
+    const matchesScope = isStaff
+      ? isGroupAssignedToUser(g)
+      : (assignmentScope === 'ALL' || isGroupAssignedToUser(g));
     return matchesSearch && matchesStatus && matchesScope;
   });
 
@@ -466,11 +469,11 @@ export function ChitGroupsTab({ user }: { user: any }) {
       <View style={mStyles.headerRow}>
         <View style={{ flex: 1, marginRight: 12 }}>
           <Text style={mStyles.headerTitle}>
-            {isStaff ? '💰 Assigned Chit Groups & Schemes' : '💰 Chit Groups & Scheme Management'}
+            {isStaff ? '💰 Your Assigned Chit Groups' : '💰 Chit Groups & Scheme Management'}
           </Text>
           <Text style={mStyles.headerSubtitle}>
             {isStaff
-              ? 'View your assigned chit groups, inspect member rosters, check schedules, and enroll new members'
+              ? 'You can only view and manage collections for your assigned chit groups'
               : 'Create schemes, edit configuration parameters, enroll members, assign staff, and manage installment schedules'}
           </Text>
         </View>
@@ -481,69 +484,91 @@ export function ChitGroupsTab({ user }: { user: any }) {
         )}
       </View>
 
-      {/* Staff Assignment Scope Pills (if Collection Staff or Manager wants to toggle) */}
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-        <TouchableOpacity
-          style={[
-            {
+      {/* Staff Assignment Scope Pills (All Groups removed for Staff dashboard) */}
+      {isStaff ? (
+        <View style={{ marginBottom: 14 }}>
+          <View
+            style={{
               paddingHorizontal: 14,
               paddingVertical: 8,
               borderRadius: 20,
-              backgroundColor: assignmentScope === 'ASSIGNED_TO_ME' ? '#0284C7' : '#E2E8F0',
-            },
-          ]}
-          onPress={() => setAssignmentScope('ASSIGNED_TO_ME')}
-        >
-          <Text
-            style={{
-              fontSize: 12,
-              fontWeight: '700',
-              color: assignmentScope === 'ASSIGNED_TO_ME' ? '#FFF' : '#334155',
+              backgroundColor: '#0284C7',
+              alignSelf: 'flex-start',
             }}
           >
-            🏃 Assigned to Me ({myAssignedCount})
-          </Text>
-        </TouchableOpacity>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFF' }}>
+              🏃 Your Assigned Groups ({myAssignedCount})
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+          <TouchableOpacity
+            style={[
+              {
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderRadius: 20,
+                backgroundColor: assignmentScope === 'ALL' ? '#0F2F52' : '#E2E8F0',
+              },
+            ]}
+            onPress={() => setAssignmentScope('ALL')}
+          >
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '700',
+                color: assignmentScope === 'ALL' ? '#FFF' : '#334155',
+              }}
+            >
+              🌐 All Groups ({groups.length})
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[
-            {
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: 20,
-              backgroundColor: assignmentScope === 'ALL' ? '#0F2F52' : '#E2E8F0',
-            },
-          ]}
-          onPress={() => setAssignmentScope('ALL')}
-        >
-          <Text
-            style={{
-              fontSize: 12,
-              fontWeight: '700',
-              color: assignmentScope === 'ALL' ? '#FFF' : '#334155',
-            }}
+          <TouchableOpacity
+            style={[
+              {
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderRadius: 20,
+                backgroundColor: assignmentScope === 'ASSIGNED_TO_ME' ? '#0284C7' : '#E2E8F0',
+              },
+            ]}
+            onPress={() => setAssignmentScope('ASSIGNED_TO_ME')}
           >
-            🌐 All Groups ({groups.length})
-          </Text>
-        </TouchableOpacity>
-      </View>
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '700',
+                color: assignmentScope === 'ASSIGNED_TO_ME' ? '#FFF' : '#334155',
+              }}
+            >
+              🏃 Assigned to Me ({myAssignedCount})
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* KPI Counters */}
       <View style={mStyles.kpiRow}>
         <View style={mStyles.kpiCard}>
-          <Text style={mStyles.kpiLabel}>Total Groups</Text>
-          <Text style={[mStyles.kpiVal, { color: '#0F2F52' }]}>{groups.length}</Text>
+          <Text style={mStyles.kpiLabel}>{isStaff ? 'Assigned Groups' : 'Total Groups'}</Text>
+          <Text style={[mStyles.kpiVal, { color: '#0F2F52' }]}>
+            {isStaff ? myAssignedCount : groups.length}
+          </Text>
         </View>
         <View style={mStyles.kpiCard}>
           <Text style={mStyles.kpiLabel}>Active Groups</Text>
           <Text style={[mStyles.kpiVal, { color: '#16A34A' }]}>
-            {groups.filter((g) => g.status === 'ACTIVE').length}
+            {(isStaff ? groups.filter(isGroupAssignedToUser) : groups).filter((g) => g.status === 'ACTIVE').length}
           </Text>
         </View>
         <View style={mStyles.kpiCard}>
-          <Text style={mStyles.kpiLabel}>Total Scheme Value</Text>
+          <Text style={mStyles.kpiLabel}>{isStaff ? 'Assigned Scheme Value' : 'Total Scheme Value'}</Text>
           <Text style={[mStyles.kpiVal, { color: '#0070BA' }]}>
-            ₹{groups.reduce((acc, g) => acc + (g.chitValue || g.totalChitValue || 0), 0).toLocaleString()}
+            ₹{(isStaff ? groups.filter(isGroupAssignedToUser) : groups)
+              .reduce((acc, g) => acc + (g.chitValue || g.totalChitValue || 0), 0)
+              .toLocaleString()}
           </Text>
         </View>
       </View>
@@ -590,7 +615,11 @@ export function ChitGroupsTab({ user }: { user: any }) {
         <ActivityIndicator size="large" color="#0070BA" style={{ marginVertical: 40 }} />
       ) : filtered.length === 0 ? (
         <View style={[mStyles.card, { alignItems: 'center', paddingVertical: 40 }]}>
-          <Text style={{ color: '#64748B', fontSize: 15 }}>No chit groups found matching your criteria.</Text>
+          <Text style={{ color: '#64748B', fontSize: 15 }}>
+            {isStaff
+              ? 'No chit groups are currently assigned to you. Your manager will assign chit groups to your account.'
+              : 'No chit groups found matching your criteria.'}
+          </Text>
         </View>
       ) : (
         filtered.map((grp) => {

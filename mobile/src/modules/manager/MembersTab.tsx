@@ -239,11 +239,6 @@ export function MembersTab({ user }: { user: any }) {
           </Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-          {isManagerOrAdmin && (
-            <TouchableOpacity style={mStyles.secondaryBtn} onPress={handleOpenOutstanding}>
-              <Text style={mStyles.secondaryBtnText}>⚠️ Arrears & Late Fees (AC-30)</Text>
-            </TouchableOpacity>
-          )}
           <TouchableOpacity style={mStyles.primaryBtn} onPress={() => setShowRegisterModal(true)}>
             <Text style={mStyles.primaryBtnText}>➕ Register Member</Text>
           </TouchableOpacity>
