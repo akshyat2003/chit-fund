@@ -42,9 +42,23 @@ function MainApp() {
   >('dashboard');
   const [showProfileModal, setShowProfileModal] = useState(false);
 
+  // Reset activeTab to dashboard whenever user or role changes
+  useEffect(() => {
+    setActiveTab('dashboard');
+  }, [user?.id, user?.role]);
+
   if (!user || !user.role) {
     return <LoginView onLogin={login} />;
   }
+
+  // Allowed tabs per role with automatic fallback to 'dashboard' to prevent blank screens
+  const allowedTabsByRole: Record<string, string[]> = {
+    SUPER_ADMIN: ['dashboard', 'companies', 'admins', 'audits', 'system', 'backups', 'notifications'],
+    MANAGER: ['dashboard', 'members', 'chit_groups', 'collections', 'accounting', 'auctions', 'branches', 'compliance'],
+    COLLECTION_STAFF: ['dashboard', 'collections', 'members'],
+  };
+  const roleAllowed = allowedTabsByRole[user.role] || ['dashboard'];
+  const effectiveTab = roleAllowed.includes(activeTab) ? activeTab : 'dashboard';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -79,54 +93,54 @@ function MainApp() {
             contentContainerStyle={styles.navContentContainer}
           >
             <TouchableOpacity
-              style={[styles.navItem, activeTab === 'dashboard' && styles.navItemActive]}
+              style={[styles.navItem, effectiveTab === 'dashboard' && styles.navItemActive]}
               onPress={() => setActiveTab('dashboard')}
             >
-              <Text style={[styles.navText, activeTab === 'dashboard' && styles.navTextActive]}>📊 Dashboard</Text>
+              <Text style={[styles.navText, effectiveTab === 'dashboard' && styles.navTextActive]}>📊 Dashboard</Text>
             </TouchableOpacity>
 
             {user.role === 'SUPER_ADMIN' && (
               <>
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'companies' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'companies' && styles.navItemActive]}
                   onPress={() => setActiveTab('companies')}
                 >
-                  <Text style={[styles.navText, activeTab === 'companies' && styles.navTextActive]}>🏢 Companies</Text>
+                  <Text style={[styles.navText, effectiveTab === 'companies' && styles.navTextActive]}>🏢 Companies</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'admins' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'admins' && styles.navItemActive]}
                   onPress={() => setActiveTab('admins')}
                 >
-                  <Text style={[styles.navText, activeTab === 'admins' && styles.navTextActive]}>🛡️ Users & Credentials</Text>
+                  <Text style={[styles.navText, effectiveTab === 'admins' && styles.navTextActive]}>🛡️ Users & Credentials</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'audits' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'audits' && styles.navItemActive]}
                   onPress={() => setActiveTab('audits')}
                 >
-                  <Text style={[styles.navText, activeTab === 'audits' && styles.navTextActive]}>📜 Audits & Logs</Text>
+                  <Text style={[styles.navText, effectiveTab === 'audits' && styles.navTextActive]}>📜 Audits & Logs</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'system' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'system' && styles.navItemActive]}
                   onPress={() => setActiveTab('system')}
                 >
-                  <Text style={[styles.navText, activeTab === 'system' && styles.navTextActive]}>🖥️ System Monitoring</Text>
+                  <Text style={[styles.navText, effectiveTab === 'system' && styles.navTextActive]}>🖥️ System Monitoring</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'backups' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'backups' && styles.navItemActive]}
                   onPress={() => setActiveTab('backups')}
                 >
-                  <Text style={[styles.navText, activeTab === 'backups' && styles.navTextActive]}>💾 Backups & Export</Text>
+                  <Text style={[styles.navText, effectiveTab === 'backups' && styles.navTextActive]}>💾 Backups & Export</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'notifications' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'notifications' && styles.navItemActive]}
                   onPress={() => setActiveTab('notifications')}
                 >
-                  <Text style={[styles.navText, activeTab === 'notifications' && styles.navTextActive]}>🔔 Notification Center</Text>
+                  <Text style={[styles.navText, effectiveTab === 'notifications' && styles.navTextActive]}>🔔 Notification Center</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -135,52 +149,71 @@ function MainApp() {
             {user.role === 'MANAGER' && (
               <>
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'members' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'members' && styles.navItemActive]}
                   onPress={() => setActiveTab('members')}
                 >
-                  <Text style={[styles.navText, activeTab === 'members' && styles.navTextActive]}>👥 Members & KYC</Text>
+                  <Text style={[styles.navText, effectiveTab === 'members' && styles.navTextActive]}>👥 Members & KYC</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'chit_groups' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'chit_groups' && styles.navItemActive]}
                   onPress={() => setActiveTab('chit_groups')}
                 >
-                  <Text style={[styles.navText, activeTab === 'chit_groups' && styles.navTextActive]}>💰 Chit Groups</Text>
+                  <Text style={[styles.navText, effectiveTab === 'chit_groups' && styles.navTextActive]}>💰 Chit Groups</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'collections' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'collections' && styles.navItemActive]}
                   onPress={() => setActiveTab('collections')}
                 >
-                  <Text style={[styles.navText, activeTab === 'collections' && styles.navTextActive]}>💳 Collections & Receipts</Text>
+                  <Text style={[styles.navText, effectiveTab === 'collections' && styles.navTextActive]}>💳 Collections & Receipts</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'accounting' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'accounting' && styles.navItemActive]}
                   onPress={() => setActiveTab('accounting')}
                 >
-                  <Text style={[styles.navText, activeTab === 'accounting' && styles.navTextActive]}>📚 Accounting & Ledgers</Text>
+                  <Text style={[styles.navText, effectiveTab === 'accounting' && styles.navTextActive]}>📚 Accounting & Ledgers</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'auctions' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'auctions' && styles.navItemActive]}
                   onPress={() => setActiveTab('auctions')}
                 >
-                  <Text style={[styles.navText, activeTab === 'auctions' && styles.navTextActive]}>🎯 Auctions & Payouts</Text>
+                  <Text style={[styles.navText, effectiveTab === 'auctions' && styles.navTextActive]}>🎯 Auctions & Payouts</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'branches' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'branches' && styles.navItemActive]}
                   onPress={() => setActiveTab('branches')}
                 >
-                  <Text style={[styles.navText, activeTab === 'branches' && styles.navTextActive]}>🏛️ Branch Governance</Text>
+                  <Text style={[styles.navText, effectiveTab === 'branches' && styles.navTextActive]}>🏛️ Branch Governance</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.navItem, activeTab === 'compliance' && styles.navItemActive]}
+                  style={[styles.navItem, effectiveTab === 'compliance' && styles.navItemActive]}
                   onPress={() => setActiveTab('compliance')}
                 >
-                  <Text style={[styles.navText, activeTab === 'compliance' && styles.navTextActive]}>📑 Compliance & Reports</Text>
+                  <Text style={[styles.navText, effectiveTab === 'compliance' && styles.navTextActive]}>📑 Compliance & Reports</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Collection Staff Module Tabs */}
+            {user.role === 'COLLECTION_STAFF' && (
+              <>
+                <TouchableOpacity
+                  style={[styles.navItem, effectiveTab === 'collections' && styles.navItemActive]}
+                  onPress={() => setActiveTab('collections')}
+                >
+                  <Text style={[styles.navText, effectiveTab === 'collections' && styles.navTextActive]}>💳 Collections & Receipts</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, effectiveTab === 'members' && styles.navItemActive]}
+                  onPress={() => setActiveTab('members')}
+                >
+                  <Text style={[styles.navText, effectiveTab === 'members' && styles.navTextActive]}>👥 Subscribers & KYC</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -191,21 +224,21 @@ function MainApp() {
       {/* Responsive Content Area Centered up to 1280px */}
       <View style={styles.contentArea}>
         <View style={styles.contentInner}>
-          {/* Render Active Tab on demand */}
-          {activeTab === 'dashboard' && <DashboardTab user={user} onNavigateTab={setActiveTab} />}
-          {activeTab === 'companies' && user.role === 'SUPER_ADMIN' && <CompaniesTab user={user} />}
-          {activeTab === 'admins' && user.role === 'SUPER_ADMIN' && <SuperAdminsTab user={user} />}
-          {activeTab === 'audits' && user.role === 'SUPER_ADMIN' && <AuditsTab user={user} />}
-          {activeTab === 'system' && user.role === 'SUPER_ADMIN' && <SystemMonitoringTab user={user} />}
-          {activeTab === 'backups' && user.role === 'SUPER_ADMIN' && <BackupsTab user={user} />}
-          {activeTab === 'notifications' && user.role === 'SUPER_ADMIN' && <NotificationsTab user={user} />}
-          {activeTab === 'members' && user.role === 'MANAGER' && <MembersTab user={user} />}
-          {activeTab === 'chit_groups' && user.role === 'MANAGER' && <ChitGroupsTab user={user} />}
-          {activeTab === 'collections' && user.role === 'MANAGER' && <CollectionsTab user={user} />}
-          {activeTab === 'accounting' && user.role === 'MANAGER' && <AccountingTab user={user} />}
-          {activeTab === 'auctions' && user.role === 'MANAGER' && <AuctionsPayoutsTab user={user} />}
-          {activeTab === 'branches' && user.role === 'MANAGER' && <BranchGovernanceTab user={user} />}
-          {activeTab === 'compliance' && user.role === 'MANAGER' && <ComplianceReportsTab user={user} />}
+          {/* Render Active Tab on demand with role safety */}
+          {effectiveTab === 'dashboard' && <DashboardTab user={user} onNavigateTab={setActiveTab} />}
+          {effectiveTab === 'companies' && user.role === 'SUPER_ADMIN' && <CompaniesTab user={user} />}
+          {effectiveTab === 'admins' && user.role === 'SUPER_ADMIN' && <SuperAdminsTab user={user} />}
+          {effectiveTab === 'audits' && user.role === 'SUPER_ADMIN' && <AuditsTab user={user} />}
+          {effectiveTab === 'system' && user.role === 'SUPER_ADMIN' && <SystemMonitoringTab user={user} />}
+          {effectiveTab === 'backups' && user.role === 'SUPER_ADMIN' && <BackupsTab user={user} />}
+          {effectiveTab === 'notifications' && user.role === 'SUPER_ADMIN' && <NotificationsTab user={user} />}
+          {effectiveTab === 'members' && (user.role === 'MANAGER' || user.role === 'COLLECTION_STAFF') && <MembersTab user={user} />}
+          {effectiveTab === 'chit_groups' && user.role === 'MANAGER' && <ChitGroupsTab user={user} />}
+          {effectiveTab === 'collections' && (user.role === 'MANAGER' || user.role === 'COLLECTION_STAFF') && <CollectionsTab user={user} />}
+          {effectiveTab === 'accounting' && user.role === 'MANAGER' && <AccountingTab user={user} />}
+          {effectiveTab === 'auctions' && user.role === 'MANAGER' && <AuctionsPayoutsTab user={user} />}
+          {effectiveTab === 'branches' && user.role === 'MANAGER' && <BranchGovernanceTab user={user} />}
+          {effectiveTab === 'compliance' && user.role === 'MANAGER' && <ComplianceReportsTab user={user} />}
         </View>
       </View>
 
