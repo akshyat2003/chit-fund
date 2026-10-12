@@ -37,7 +37,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       const whereBranch = branchId ? { branchId } : {};
       const todayStr = new Date().toISOString().split('T')[0];
 
-      const [activeGroups, activeSubscribers, todayTransactions, pendingPayouts] = await Promise.all([
+      const [activeGroups, activeSubscribers, todayTransactions, pendingPayouts, activeStaff, totalStaff] = await Promise.all([
         prisma.chitGroup.count({
           where: { companyId, status: 'ACTIVE', ...whereBranch },
         }),
@@ -57,6 +57,12 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
         prisma.payout.count({
           where: { status: 'PENDING', subscriber: { companyId } },
         }),
+        prisma.user.count({
+          where: { companyId, role: 'COLLECTION_STAFF', status: 'ACTIVE' },
+        }),
+        prisma.user.count({
+          where: { companyId, role: 'COLLECTION_STAFF' },
+        }),
       ]);
 
       const todayTotalCollected = todayTransactions.reduce((acc, t) => acc + t.amount, 0);
@@ -69,6 +75,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
           role,
           activeGroups,
           activeSubscribers,
+          activeStaff,
+          totalStaff,
           todayTotalCollected,
           todayCashCollected,
           todayBankUpiCollected,

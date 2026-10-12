@@ -43,11 +43,22 @@ function MainApp() {
     | 'staff'
   >('dashboard');
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [openStaffCreateOnLoad, setOpenStaffCreateOnLoad] = useState(false);
 
   // Reset activeTab to dashboard whenever user or role changes
   useEffect(() => {
     setActiveTab('dashboard');
+    setOpenStaffCreateOnLoad(false);
   }, [user?.id, user?.role]);
+
+  const handleTabNavigation = (tab: any, action?: string) => {
+    if (action === 'create_staff') {
+      setOpenStaffCreateOnLoad(true);
+    } else {
+      setOpenStaffCreateOnLoad(false);
+    }
+    setActiveTab(tab);
+  };
 
   if (!user || !user.role) {
     return <LoginView onLogin={login} />;
@@ -148,8 +159,19 @@ function MainApp() {
             )}
 
             {/* Manager cum Accountant Module Tabs (AC-01 through AC-34 & FR-COMP-001 through FR-COMP-011) */}
+            {/* Manager cum Accountant Module Tabs (AC-01 through AC-34 & FR-COMP-001 through FR-COMP-011) */}
             {user.role === 'MANAGER' && (
               <>
+                <TouchableOpacity
+                  style={[styles.navItem, effectiveTab === 'staff' && styles.navItemActive]}
+                  onPress={() => {
+                    setOpenStaffCreateOnLoad(false);
+                    setActiveTab('staff');
+                  }}
+                >
+                  <Text style={[styles.navText, effectiveTab === 'staff' && styles.navTextActive]}>🛡️ Staff & Credentials</Text>
+                </TouchableOpacity>
+
                 <TouchableOpacity
                   style={[styles.navItem, effectiveTab === 'members' && styles.navItemActive]}
                   onPress={() => setActiveTab('members')}
@@ -198,13 +220,6 @@ function MainApp() {
                 >
                   <Text style={[styles.navText, effectiveTab === 'compliance' && styles.navTextActive]}>📑 Compliance & Reports</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.navItem, effectiveTab === 'staff' && styles.navItemActive]}
-                  onPress={() => setActiveTab('staff')}
-                >
-                  <Text style={[styles.navText, effectiveTab === 'staff' && styles.navTextActive]}>🛡️ Staff & Credentials</Text>
-                </TouchableOpacity>
               </>
             )}
 
@@ -234,7 +249,7 @@ function MainApp() {
       <View style={styles.contentArea}>
         <View style={styles.contentInner}>
           {/* Render Active Tab on demand with role safety */}
-          {effectiveTab === 'dashboard' && <DashboardTab user={user} onNavigateTab={setActiveTab} />}
+          {effectiveTab === 'dashboard' && <DashboardTab user={user} onNavigateTab={handleTabNavigation} />}
           {effectiveTab === 'companies' && user.role === 'SUPER_ADMIN' && <CompaniesTab user={user} />}
           {effectiveTab === 'admins' && user.role === 'SUPER_ADMIN' && <SuperAdminsTab user={user} />}
           {effectiveTab === 'audits' && user.role === 'SUPER_ADMIN' && <AuditsTab user={user} />}
@@ -248,7 +263,13 @@ function MainApp() {
           {effectiveTab === 'auctions' && user.role === 'MANAGER' && <AuctionsPayoutsTab user={user} />}
           {effectiveTab === 'branches' && user.role === 'MANAGER' && <BranchGovernanceTab user={user} />}
           {effectiveTab === 'compliance' && user.role === 'MANAGER' && <ComplianceReportsTab user={user} />}
-          {effectiveTab === 'staff' && user.role === 'MANAGER' && <StaffTab user={user} />}
+          {effectiveTab === 'staff' && user.role === 'MANAGER' && (
+            <StaffTab
+              user={user}
+              initialOpenCreate={openStaffCreateOnLoad}
+              onModalDismissed={() => setOpenStaffCreateOnLoad(false)}
+            />
+          )}
         </View>
       </View>
 
@@ -703,7 +724,7 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
 }
 
 // --- 2. DASHBOARD TAB ---
-function DashboardTab({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab: any) => void }) {
+function DashboardTab({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab: any, action?: string) => void }) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -741,14 +762,88 @@ function DashboardTab({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab
       )}
 
       {(stats?.role || user.role) === 'MANAGER' && (
-        <View style={styles.gridRow}>
-          <MetricCard title="Today's Collections" value={`₹${(stats?.todayTotalCollected || 0).toLocaleString()}`} color="#27AE60" />
-          <MetricCard title="Cash Collected" value={`₹${(stats?.todayCashCollected || 0).toLocaleString()}`} color="#0070BA" />
-          <MetricCard title="Bank/UPI Collections" value={`₹${(stats?.todayBankUpiCollected || 0).toLocaleString()}`} color="#D35400" />
-          <MetricCard title="Active Chit Groups" value={stats?.activeGroups || 0} color="#8E44AD" />
-          <MetricCard title="Active Subscribers" value={stats?.activeSubscribers || 0} color="#2D3748" />
-          <MetricCard title="Pending Payouts" value={stats?.pendingPayouts || 0} color="#C0392B" />
-        </View>
+        <>
+          {/* Quick Action: Staff Credentials & Organization Access */}
+          <View
+            style={[
+              styles.card,
+              {
+                marginBottom: 16,
+                backgroundColor: '#F8FAFC',
+                borderLeftWidth: 6,
+                borderLeftColor: '#0070BA',
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+                padding: 16,
+              },
+            ]}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+              <View style={{ flex: 1, minWidth: 260 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#0A2540' }}>
+                    🛡️ Staff Credentials & Organization Team
+                  </Text>
+                  {stats?.activeStaff !== undefined && (
+                    <View style={{ backgroundColor: '#E0F2FE', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#0369A1' }}>
+                        {stats.activeStaff} Active Staff
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={{ fontSize: 13, color: '#4A5568', lineHeight: 18 }}>
+                  Create secure login credentials for field collection staff so they can log into their dedicated dashboard, record customer collections, and manage subscribers.
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#0070BA',
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                    elevation: 2,
+                  }}
+                  onPress={() => onNavigateTab?.('staff', 'create_staff')}
+                >
+                  <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>➕ Create Staff Credentials</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: '#CBD5E1',
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                  }}
+                  onPress={() => onNavigateTab?.('staff')}
+                >
+                  <Text style={{ color: '#0A2540', fontWeight: '600', fontSize: 13 }}>
+                    👥 Manage All Staff ({stats?.totalStaff ?? stats?.activeStaff ?? 0})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.gridRow}>
+            <MetricCard title="Today's Collections" value={`₹${(stats?.todayTotalCollected || 0).toLocaleString()}`} color="#27AE60" />
+            <MetricCard title="Cash Collected" value={`₹${(stats?.todayCashCollected || 0).toLocaleString()}`} color="#0070BA" />
+            <MetricCard title="Bank/UPI Collections" value={`₹${(stats?.todayBankUpiCollected || 0).toLocaleString()}`} color="#D35400" />
+            <MetricCard title="Active Chit Groups" value={stats?.activeGroups || 0} color="#8E44AD" />
+            <MetricCard title="Active Subscribers" value={stats?.activeSubscribers || 0} color="#2D3748" />
+            <MetricCard
+              title="Collection Staff"
+              value={stats?.activeStaff !== undefined ? `${stats.activeStaff} Active` : 'Manage'}
+              color="#0070BA"
+            />
+            <MetricCard title="Pending Payouts" value={stats?.pendingPayouts || 0} color="#C0392B" />
+          </View>
+        </>
       )}
 
       {(stats?.role || user.role) === 'COLLECTION_STAFF' && (

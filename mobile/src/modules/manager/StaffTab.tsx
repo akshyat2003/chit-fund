@@ -11,7 +11,15 @@ import {
 import { api } from '../../services/api';
 import { mStyles } from './commonStyles';
 
-export function StaffTab({ user }: { user: any }) {
+export function StaffTab({
+  user,
+  initialOpenCreate = false,
+  onModalDismissed,
+}: {
+  user: any;
+  initialOpenCreate?: boolean;
+  onModalDismissed?: () => void;
+}) {
   const [staffList, setStaffList] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -68,6 +76,17 @@ export function StaffTab({ user }: { user: any }) {
   useEffect(() => {
     fetchStaffData();
   }, []);
+
+  useEffect(() => {
+    if (initialOpenCreate) {
+      openCreateModal();
+    }
+  }, [initialOpenCreate]);
+
+  const closeModal = () => {
+    setModalVisible(false);
+    onModalDismissed?.();
+  };
 
   const openCreateModal = () => {
     setModalMode('create');
@@ -154,7 +173,7 @@ export function StaffTab({ user }: { user: any }) {
         if (res.data.success) {
           setFormSuccess('Staff credentials created successfully! The staff can now log in.');
           setTimeout(() => {
-            setModalVisible(false);
+            closeModal();
             fetchStaffData();
           }, 1200);
         } else {
@@ -177,7 +196,7 @@ export function StaffTab({ user }: { user: any }) {
         if (res.data.success) {
           setFormSuccess('Staff details updated successfully!');
           setTimeout(() => {
-            setModalVisible(false);
+            closeModal();
             fetchStaffData();
           }, 1000);
         } else {
@@ -372,14 +391,14 @@ export function StaffTab({ user }: { user: any }) {
       )}
 
       {/* Create / Edit Staff Modal */}
-      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
+      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeModal}>
         <View style={mStyles.modalBackdrop}>
           <View style={mStyles.modalBox}>
             <View style={mStyles.modalHeader}>
               <Text style={mStyles.modalTitle}>
                 {modalMode === 'create' ? '🏃 Create New Staff Credentials' : '✏️ Edit Staff & Reset Password'}
               </Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <TouchableOpacity onPress={closeModal}>
                 <Text style={mStyles.modalClose}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -520,7 +539,7 @@ export function StaffTab({ user }: { user: any }) {
               <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end', marginTop: 12 }}>
                 <TouchableOpacity
                   style={mStyles.secondaryBtn}
-                  onPress={() => setModalVisible(false)}
+                  onPress={closeModal}
                   disabled={submitting}
                 >
                   <Text style={mStyles.secondaryBtnText}>Cancel</Text>
