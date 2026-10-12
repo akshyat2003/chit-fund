@@ -90,7 +90,7 @@ router.get('/auth/me', authenticateToken, authController.me);
 router.put('/auth/profile', authenticateToken, authController.updateProfile);
 
 // User Account Administration (FR-AUTH-007, FR-AUTH-013, FR-AUTH-014, SA-04)
-router.get('/auth/users', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.listUsers);
+router.get('/auth/users', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER', 'COLLECTION_STAFF'), authController.listUsers);
 router.post('/auth/users', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.createUser);
 router.put('/auth/users/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.updateUser);
 router.patch('/auth/users/:id/status', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.updateUserStatus);
@@ -108,7 +108,7 @@ router.get('/reports/dashboard', authenticateToken, reportController.getDashboar
 
 // Subscriber Routes (AC-01, AC-02, AC-04, AC-29, AC-30)
 router.get('/subscribers', authenticateToken, subscriberController.listSubscribers);
-router.post('/subscribers', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), subscriberController.createSubscriber);
+router.post('/subscribers', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER', 'COLLECTION_STAFF'), subscriberController.createSubscriber);
 router.get('/subscribers/outstanding', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), subscriberController.getMemberOutstanding);
 router.get('/subscribers/:id', authenticateToken, subscriberController.getSubscriberById);
 router.patch('/subscribers/:id/kyc', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), subscriberController.verifyKyc);
@@ -118,7 +118,7 @@ router.get('/subscribers/:id/statement', authenticateToken, subscriberController
 // Chit Group Routes (AC-03, AC-05, AC-06, AC-07)
 router.get('/chit-groups', authenticateToken, chitGroupController.listChitGroups);
 router.post('/chit-groups', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), chitGroupController.createChitGroup);
-router.post('/chit-groups/enroll', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), chitGroupController.enrollSubscriber);
+router.post('/chit-groups/enroll', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER', 'COLLECTION_STAFF'), chitGroupController.enrollSubscriber);
 router.get('/chit-groups/:id', authenticateToken, chitGroupController.getChitGroupDetails);
 router.put('/chit-groups/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), chitGroupController.updateChitGroup);
 router.post('/chit-groups/:id/assign-staff', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), chitGroupController.assignStaffToGroup);

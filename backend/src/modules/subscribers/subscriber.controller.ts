@@ -13,8 +13,8 @@ export const listSubscribers = async (req: AuthRequest, res: Response) => {
     if (kycStatus) where.kycStatus = String(kycStatus);
     if (staffId) where.assignedStaffId = String(staffId);
 
-    // If Collection Staff role, restrict to their assigned subscribers or branch
-    if (req.user?.role === 'COLLECTION_STAFF') {
+    // If Collection Staff role and assignedOnly is requested, filter accordingly
+    if (req.user?.role === 'COLLECTION_STAFF' && req.query.assignedOnly === 'true') {
       where.OR = [
         { assignedStaffId: req.user.id },
         { branchId: req.user.branchId || undefined },
@@ -34,10 +34,11 @@ export const listSubscribers = async (req: AuthRequest, res: Response) => {
       where,
       include: {
         branch: { select: { name: true, code: true } },
-        assignedStaff: { select: { fullName: true, phone: true } },
+        assignedStaff: { select: { id: true, fullName: true, username: true, phone: true } },
+        user: { select: { id: true, username: true, role: true, fullName: true, phone: true } },
         memberships: {
           include: {
-            group: { select: { groupCode: true, name: true, monthlyInstallment: true } },
+            group: { select: { id: true, groupCode: true, name: true, monthlyInstallment: true, status: true } },
           },
         },
       },
@@ -52,7 +53,16 @@ export const listSubscribers = async (req: AuthRequest, res: Response) => {
 
 export const createSubscriber = async (req: AuthRequest, res: Response) => {
   try {
-    const companyId = req.user?.companyId!;
+    let companyId = req.user?.companyId;
+    if (!companyId) {
+      const defaultComp = await prisma.company.findFirst();
+      companyId = defaultComp?.id;
+    }
+
+    if (!companyId) {
+      return res.status(400).json({ success: false, message: 'Valid company reference required' });
+    }
+
     const {
       branchId,
       assignedStaffId,
@@ -60,7 +70,12 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
       phone,
       email,
       address,
+      aadhaarNo,
+      aadhaarNumber,
+      panNo,
+      panNumber,
       dateOfBirth,
+      userId,
       idProofType,
       idProofNumber,
       nomineeName,
@@ -68,9 +83,44 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
       nomineePhone,
     } = req.body;
 
-    if (!fullName || !phone || !branchId) {
-      return res.status(400).json({ success: false, message: 'Full name, phone, and branchId are required' });
+    const cleanName = fullName ? String(fullName).trim() : '';
+    const cleanPhone = phone ? String(phone).trim() : '';
+    const cleanAddress = address ? String(address).trim() : null;
+    const cleanAadhaar = (aadhaarNo || aadhaarNumber) ? String(aadhaarNo || aadhaarNumber).trim() : null;
+    const cleanPan = (panNo || panNumber) ? String(panNo || panNumber).trim().toUpperCase() : null;
+
+    if (!cleanName || !cleanPhone) {
+      return res.status(400).json({ success: false, message: 'Full name and phone number are required' });
     }
+
+    // Check if phone number already registered as a subscriber
+    const existing = await prisma.subscriber.findFirst({
+      where: { phone: cleanPhone },
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: `A member with phone ${cleanPhone} is already registered (${existing.subscriberCode} - ${existing.fullName}). The same member can be enrolled into any chit group!`,
+        data: existing,
+      });
+    }
+
+    // Resolve branch
+    let effectiveBranchId = branchId || req.user?.branchId;
+    if (!effectiveBranchId) {
+      const defaultBranch = await prisma.branch.findFirst({ where: { companyId } });
+      effectiveBranchId = defaultBranch?.id;
+    }
+
+    if (!effectiveBranchId) {
+      return res.status(400).json({ success: false, message: 'Valid branch office is required' });
+    }
+
+    // Effective assigned staff (if Collection Staff is registering, assign to themselves by default)
+    const effectiveStaffId =
+      assignedStaffId ||
+      (req.user?.role === 'COLLECTION_STAFF' ? req.user.id : null);
 
     // Generate Subscriber Code e.g. SUB-1004
     const count = await prisma.subscriber.count({ where: { companyId } });
@@ -79,20 +129,28 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
     const subscriber = await prisma.subscriber.create({
       data: {
         companyId,
-        branchId,
-        assignedStaffId,
+        branchId: effectiveBranchId,
+        assignedStaffId: effectiveStaffId,
+        userId: userId || null,
         subscriberCode,
-        fullName,
-        phone,
-        email,
-        address,
-        dateOfBirth,
-        idProofType,
-        idProofNumber,
-        nomineeName,
-        nomineeRelation,
-        nomineePhone,
+        fullName: cleanName,
+        phone: cleanPhone,
+        email: email ? String(email).trim().toLowerCase() : null,
+        address: cleanAddress,
+        aadhaarNo: cleanAadhaar,
+        panNo: cleanPan,
+        dateOfBirth: dateOfBirth ? String(dateOfBirth).trim() : null,
+        idProofType: idProofType || (cleanAadhaar ? 'AADHAAR' : cleanPan ? 'PAN' : null),
+        idProofNumber: idProofNumber || cleanAadhaar || cleanPan || null,
+        nomineeName: nomineeName ? String(nomineeName).trim() : null,
+        nomineeRelation: nomineeRelation ? String(nomineeRelation).trim() : null,
+        nomineePhone: nomineePhone ? String(nomineePhone).trim() : null,
         kycStatus: 'VERIFIED',
+      },
+      include: {
+        branch: { select: { name: true, code: true } },
+        assignedStaff: { select: { fullName: true, phone: true } },
+        user: { select: { id: true, username: true, role: true } },
       },
     });
 
@@ -103,7 +161,7 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
         action: 'CREATE_SUBSCRIBER',
         entity: 'Subscriber',
         entityId: subscriber.id,
-        details: JSON.stringify({ subscriberCode, fullName, phone }),
+        details: JSON.stringify({ subscriberCode, fullName: cleanName, phone: cleanPhone, isUserLinked: Boolean(userId) }),
       },
     });
 

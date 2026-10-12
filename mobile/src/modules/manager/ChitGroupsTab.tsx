@@ -18,6 +18,9 @@ export function ChitGroupsTab({ user }: { user: any }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'UPCOMING' | 'COMPLETED' | 'CLOSED'>('ALL');
+  const isManagerOrAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'MANAGER';
+  const isStaff = user?.role === 'COLLECTION_STAFF';
+  const [assignmentScope, setAssignmentScope] = useState<'ALL' | 'ASSIGNED_TO_ME'>(isStaff ? 'ASSIGNED_TO_ME' : 'ALL');
 
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -40,6 +43,16 @@ export function ChitGroupsTab({ user }: { user: any }) {
   const [createStaffIds, setCreateStaffIds] = useState<string[]>([]);
   const [editStaffIds, setEditStaffIds] = useState<string[]>([]);
   const [modalStaffIds, setModalStaffIds] = useState<string[]>([]);
+
+  // Quick Member Registration state inside Enroll Modal
+  const [isQuickRegistering, setIsQuickRegistering] = useState(false);
+  const [quickFullName, setQuickFullName] = useState('');
+  const [quickPhone, setQuickPhone] = useState('');
+  const [quickAadhaar, setQuickAadhaar] = useState('');
+  const [quickPan, setQuickPan] = useState('');
+  const [quickAddress, setQuickAddress] = useState('');
+  const [quickRegistering, setQuickRegistering] = useState(false);
+  const [quickError, setQuickError] = useState('');
 
   // Create Group Form (AC-05, AC-06)
   const actualToday = new Date().toISOString().split('T')[0];
@@ -329,26 +342,138 @@ export function ChitGroupsTab({ user }: { user: any }) {
     }
   };
 
+  const isGroupAssignedToUser = (grp: any) => {
+    if (!user?.id) return false;
+    if (grp.assignedStaffId === user.id) return true;
+    if (grp.staffAssignments && Array.isArray(grp.staffAssignments)) {
+      return grp.staffAssignments.some((sa: any) => sa.staffId === user.id || sa.staff?.id === user.id);
+    }
+    return false;
+  };
+
+  const handleQuickRegisterAndEnroll = async () => {
+    if (!selectedGroup) return;
+    setQuickError('');
+    if (!quickFullName.trim() || !quickPhone.trim()) {
+      setQuickError('Full Name and Phone Number are required.');
+      return;
+    }
+    try {
+      setQuickRegistering(true);
+      // 1. Create Subscriber
+      const subRes = await api.post('/subscribers', {
+        fullName: quickFullName.trim(),
+        phone: quickPhone.trim(),
+        address: quickAddress.trim() || undefined,
+        aadhaarNo: quickAadhaar.trim() || undefined,
+        panNo: quickPan.trim().toUpperCase() || undefined,
+        branchId: selectedGroup.branchId || branches[0]?.id || user.branchId || undefined,
+      });
+
+      const newSubscriber = subRes.data?.data;
+      if (!newSubscriber?.id) {
+        throw new Error('Could not retrieve created member record');
+      }
+
+      // 2. Enroll Subscriber into the Chit Group
+      await api.post('/chit-groups/enroll', {
+        groupId: selectedGroup.id,
+        subscriberId: newSubscriber.id,
+        ticketNo: ticketNo ? Number(ticketNo) : undefined,
+      });
+
+      alert(`Member "${newSubscriber.fullName}" (${newSubscriber.subscriberCode}) registered and enrolled into group "${selectedGroup.name}"!`);
+      setShowEnrollModal(false);
+      setIsQuickRegistering(false);
+      setQuickFullName('');
+      setQuickPhone('');
+      setQuickAadhaar('');
+      setQuickPan('');
+      setQuickAddress('');
+      fetchGroups();
+    } catch (e: any) {
+      setQuickError(e.response?.data?.message || e.message || 'Failed to register and enroll member');
+    } finally {
+      setQuickRegistering(false);
+    }
+  };
+
   const filtered = groups.filter((g) => {
     const matchesSearch =
       g.name?.toLowerCase().includes(search.toLowerCase()) ||
       g.groupCode?.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || g.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesScope = assignmentScope === 'ALL' || isGroupAssignedToUser(g);
+    return matchesSearch && matchesStatus && matchesScope;
   });
+
+  const myAssignedCount = groups.filter(isGroupAssignedToUser).length;
 
   return (
     <ScrollView style={mStyles.container}>
       {/* Header */}
       <View style={mStyles.headerRow}>
-        <View>
-          <Text style={mStyles.headerTitle}>💰 Chit Groups & Scheme Management</Text>
+        <View style={{ flex: 1, marginRight: 12 }}>
+          <Text style={mStyles.headerTitle}>
+            {isStaff ? '💰 Assigned Chit Groups & Schemes' : '💰 Chit Groups & Scheme Management'}
+          </Text>
           <Text style={mStyles.headerSubtitle}>
-            Create schemes, edit configuration parameters, enroll members, and manage installment schedules
+            {isStaff
+              ? 'View your assigned chit groups, inspect member rosters, check schedules, and enroll new members'
+              : 'Create schemes, edit configuration parameters, enroll members, assign staff, and manage installment schedules'}
           </Text>
         </View>
-        <TouchableOpacity style={mStyles.primaryBtn} onPress={() => setShowCreateModal(true)}>
-          <Text style={mStyles.primaryBtnText}>➕ Create Chit Group</Text>
+        {isManagerOrAdmin && (
+          <TouchableOpacity style={mStyles.primaryBtn} onPress={() => setShowCreateModal(true)}>
+            <Text style={mStyles.primaryBtnText}>➕ Create Chit Group</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Staff Assignment Scope Pills (if Collection Staff or Manager wants to toggle) */}
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+        <TouchableOpacity
+          style={[
+            {
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 20,
+              backgroundColor: assignmentScope === 'ASSIGNED_TO_ME' ? '#0284C7' : '#E2E8F0',
+            },
+          ]}
+          onPress={() => setAssignmentScope('ASSIGNED_TO_ME')}
+        >
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: '700',
+              color: assignmentScope === 'ASSIGNED_TO_ME' ? '#FFF' : '#334155',
+            }}
+          >
+            🏃 Assigned to Me ({myAssignedCount})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            {
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 20,
+              backgroundColor: assignmentScope === 'ALL' ? '#0F2F52' : '#E2E8F0',
+            },
+          ]}
+          onPress={() => setAssignmentScope('ALL')}
+        >
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: '700',
+              color: assignmentScope === 'ALL' ? '#FFF' : '#334155',
+            }}
+          >
+            🌐 All Groups ({groups.length})
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -433,6 +558,11 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     <Text style={{ color: '#0284C7', fontWeight: '700', fontSize: 13 }}>
                       [{grp.groupCode}]
                     </Text>
+                    {isGroupAssignedToUser(grp) && (
+                      <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: '#86EFAC' }}>
+                        <Text style={{ fontSize: 11, color: '#166534', fontWeight: '800' }}>⭐ Assigned to You</Text>
+                      </View>
+                    )}
                     {grp.branch?.name && (
                       <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
                         <Text style={{ fontSize: 11, color: '#475569', fontWeight: '600' }}>🏛️ {grp.branch.name}</Text>
@@ -513,7 +643,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                 </View>
               </View>
 
-              {/* Action Buttons: Enroll, Schedule, Assign Staff, Edit, Delete */}
+              {/* Action Buttons: Enroll (Staff & Manager), Schedule (Both), Manager Only (Assign Staff, Edit, Delete) */}
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
                 <TouchableOpacity
                   style={[mStyles.primaryBtn, { paddingVertical: 8, paddingHorizontal: 12 }, isFull && { opacity: 0.5 }]}
@@ -521,17 +651,11 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   onPress={() => {
                     setSelectedGroup(grp);
                     setTicketNo(String(enrolledCount + 1));
+                    setIsQuickRegistering(false);
                     setShowEnrollModal(true);
                   }}
                 >
                   <Text style={mStyles.primaryBtnText}>👤 Enroll Member</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[mStyles.secondaryBtn, { paddingVertical: 8, paddingHorizontal: 12, borderColor: '#0284C7', backgroundColor: '#F0F9FF' }]}
-                  onPress={() => handleOpenAssignStaff(grp)}
-                >
-                  <Text style={[mStyles.secondaryBtnText, { color: '#0369A1', fontWeight: '700' }]}>👥 Assign Staff</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -541,19 +665,30 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   <Text style={mStyles.secondaryBtnText}>📅 Schedules</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[mStyles.secondaryBtn, { paddingVertical: 8, paddingHorizontal: 12, borderColor: '#0284C7', backgroundColor: '#F0F9FF' }]}
-                  onPress={() => handleOpenEdit(grp)}
-                >
-                  <Text style={[mStyles.secondaryBtnText, { color: '#0369A1', fontWeight: '700' }]}>✏️ Edit Group</Text>
-                </TouchableOpacity>
+                {isManagerOrAdmin && (
+                  <>
+                    <TouchableOpacity
+                      style={[mStyles.secondaryBtn, { paddingVertical: 8, paddingHorizontal: 12, borderColor: '#0284C7', backgroundColor: '#F0F9FF' }]}
+                      onPress={() => handleOpenAssignStaff(grp)}
+                    >
+                      <Text style={[mStyles.secondaryBtnText, { color: '#0369A1', fontWeight: '700' }]}>👥 Assign Staff</Text>
+                    </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[mStyles.dangerBtn, { paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#FEF2F2', borderColor: '#F87171', borderWidth: 1 }]}
-                  onPress={() => handleOpenDelete(grp)}
-                >
-                  <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 13 }}>🗑️ Delete</Text>
-                </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[mStyles.secondaryBtn, { paddingVertical: 8, paddingHorizontal: 12, borderColor: '#0284C7', backgroundColor: '#F0F9FF' }]}
+                      onPress={() => handleOpenEdit(grp)}
+                    >
+                      <Text style={[mStyles.secondaryBtnText, { color: '#0369A1', fontWeight: '700' }]}>✏️ Edit Group</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[mStyles.dangerBtn, { paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#FEF2F2', borderColor: '#F87171', borderWidth: 1 }]}
+                      onPress={() => handleOpenDelete(grp)}
+                    >
+                      <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 13 }}>🗑️ Delete</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             </View>
           );
@@ -992,60 +1127,205 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     Group: {selectedGroup.name} ({selectedGroup.groupCode})
                   </Text>
                   <Text style={{ fontSize: 12, color: '#64748B' }}>
-                    Chit Value: ₹{(selectedGroup.chitValue ?? selectedGroup.totalChitValue)?.toLocaleString()} • Monthly: ₹{(selectedGroup.monthlyInstallment)?.toLocaleString()}
+                    Chit Value: ₹{(selectedGroup.chitValue ?? selectedGroup.totalChitValue)?.toLocaleString()} • Monthly: ₹{(selectedGroup.monthlyInstallment)?.toLocaleString()} • Enrolled: {(selectedGroup.members?.length ?? selectedGroup.memberships?.length ?? 0)} / {selectedGroup.maxMembers}
                   </Text>
                 </View>
 
-                <Text style={mStyles.label}>Select Eligible Member *</Text>
-                <View style={{ maxHeight: 200, marginBottom: 14 }}>
-                  <ScrollView nestedScrollEnabled style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8 }}>
-                    {subscribers.map((sub) => (
-                      <TouchableOpacity
-                        key={sub.id}
-                        style={{
-                          padding: 10,
-                          borderBottomWidth: 1,
-                          borderBottomColor: '#F1F5F9',
-                          backgroundColor: selectedSubscriberId === sub.id ? '#E0F2FE' : '#FFF',
-                        }}
-                        onPress={() => setSelectedSubscriberId(sub.id)}
-                      >
-                        <Text style={{ fontWeight: selectedSubscriberId === sub.id ? '700' : '400', fontSize: 13, color: '#0F172A' }}>
-                          {sub.fullName} [{sub.subscriberCode}] - {sub.phone}
-                        </Text>
-                        <Text style={{ fontSize: 11, color: '#64748B' }}>
-                          KYC: {sub.kycStatus}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                <Text style={mStyles.label}>Assigned Ticket / Membership Number *</Text>
-                <TextInput
-                  style={mStyles.input}
-                  keyboardType="numeric"
-                  placeholder="e.g. 1, 2, 3..."
-                  value={ticketNo}
-                  onChangeText={setTicketNo}
-                />
-
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
-                  <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowEnrollModal(false)}>
-                    <Text style={mStyles.secondaryBtnText}>Cancel</Text>
-                  </TouchableOpacity>
+                {/* Mode Selector: Choose Existing vs Quick Register New */}
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
                   <TouchableOpacity
-                    style={[mStyles.primaryBtn, submitting && { opacity: 0.7 }]}
-                    disabled={submitting}
-                    onPress={handleEnrollMember}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 9,
+                      borderRadius: 8,
+                      alignItems: 'center',
+                      backgroundColor: !isQuickRegistering ? '#0284C7' : '#F1F5F9',
+                    }}
+                    onPress={() => setIsQuickRegistering(false)}
                   >
-                    {submitting ? (
-                      <ActivityIndicator size="small" color="#FFF" />
-                    ) : (
-                      <Text style={mStyles.primaryBtnText}>✓ Confirm Enrollment</Text>
-                    )}
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: !isQuickRegistering ? '#FFF' : '#475569' }}>
+                      👤 Select Member
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 9,
+                      borderRadius: 8,
+                      alignItems: 'center',
+                      backgroundColor: isQuickRegistering ? '#0284C7' : '#F1F5F9',
+                    }}
+                    onPress={() => setIsQuickRegistering(true)}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: isQuickRegistering ? '#FFF' : '#475569' }}>
+                      ➕ Register & Enroll
+                    </Text>
                   </TouchableOpacity>
                 </View>
+
+                {!isQuickRegistering ? (
+                  <>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={mStyles.label}>Select Registered Member *</Text>
+                      <Text style={{ fontSize: 11, color: '#0284C7', fontStyle: 'italic' }}>
+                        (Members can join multiple chit groups)
+                      </Text>
+                    </View>
+
+                    <View style={{ maxHeight: 220, marginBottom: 14 }}>
+                      <ScrollView nestedScrollEnabled style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8 }}>
+                        {subscribers.map((sub) => {
+                          const isAlreadyEnrolled =
+                            selectedGroup.members?.some((m: any) => m.subscriberId === sub.id) ||
+                            selectedGroup.memberships?.some((m: any) => m.subscriberId === sub.id);
+                          const isSelected = selectedSubscriberId === sub.id;
+
+                          return (
+                            <TouchableOpacity
+                              key={sub.id}
+                              disabled={isAlreadyEnrolled}
+                              style={{
+                                padding: 10,
+                                borderBottomWidth: 1,
+                                borderBottomColor: '#F1F5F9',
+                                backgroundColor: isAlreadyEnrolled ? '#F8FAFC' : isSelected ? '#E0F2FE' : '#FFF',
+                                opacity: isAlreadyEnrolled ? 0.6 : 1,
+                              }}
+                              onPress={() => !isAlreadyEnrolled && setSelectedSubscriberId(sub.id)}
+                            >
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Text style={{ fontWeight: isSelected ? '700' : '500', fontSize: 13, color: isAlreadyEnrolled ? '#94A3B8' : '#0F172A' }}>
+                                  {sub.fullName} [{sub.subscriberCode}]
+                                </Text>
+                                {isAlreadyEnrolled ? (
+                                  <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                    <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '700' }}>ALREADY ENROLLED</Text>
+                                  </View>
+                                ) : (
+                                  <Text style={{ fontSize: 11, color: '#16A34A', fontWeight: '600' }}>
+                                    {sub.memberships?.length ? `In ${sub.memberships.length} other group(s)` : 'Available'}
+                                  </Text>
+                                )}
+                              </View>
+                              <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                                📱 {sub.phone} {sub.address ? `• 📍 ${sub.address}` : ''}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+
+                    <Text style={mStyles.label}>Assigned Ticket / Membership Number *</Text>
+                    <TextInput
+                      style={mStyles.input}
+                      keyboardType="numeric"
+                      placeholder="e.g. 1, 2, 3..."
+                      value={ticketNo}
+                      onChangeText={setTicketNo}
+                    />
+
+                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
+                      <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowEnrollModal(false)}>
+                        <Text style={mStyles.secondaryBtnText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[mStyles.primaryBtn, submitting && { opacity: 0.7 }]}
+                        disabled={submitting}
+                        onPress={handleEnrollMember}
+                      >
+                        {submitting ? (
+                          <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                          <Text style={mStyles.primaryBtnText}>✓ Confirm Enrollment</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    {quickError ? (
+                      <View style={{ backgroundColor: '#FEF2F2', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FCA5A5', marginBottom: 12 }}>
+                        <Text style={{ fontSize: 12, color: '#B91C1C', fontWeight: '600' }}>⚠️ {quickError}</Text>
+                      </View>
+                    ) : null}
+
+                    <Text style={mStyles.label}>Full Legal Name *</Text>
+                    <TextInput
+                      style={mStyles.input}
+                      placeholder="e.g. Anand Verma"
+                      value={quickFullName}
+                      onChangeText={setQuickFullName}
+                    />
+
+                    <Text style={mStyles.label}>Mobile Phone Number *</Text>
+                    <TextInput
+                      style={mStyles.input}
+                      keyboardType="phone-pad"
+                      placeholder="10-digit mobile number"
+                      value={quickPhone}
+                      onChangeText={setQuickPhone}
+                    />
+
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={mStyles.label}>Aadhaar Card No</Text>
+                        <TextInput
+                          style={mStyles.input}
+                          keyboardType="numeric"
+                          placeholder="12-digit Aadhaar"
+                          value={quickAadhaar}
+                          onChangeText={setQuickAadhaar}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={mStyles.label}>PAN Card No</Text>
+                        <TextInput
+                          style={mStyles.input}
+                          autoCapitalize="characters"
+                          placeholder="10-char PAN"
+                          value={quickPan}
+                          onChangeText={(t) => setQuickPan(t.toUpperCase())}
+                        />
+                      </View>
+                    </View>
+
+                    <Text style={mStyles.label}>Residential Address</Text>
+                    <TextInput
+                      style={mStyles.input}
+                      placeholder="House / Street, City, State, PIN"
+                      value={quickAddress}
+                      onChangeText={setQuickAddress}
+                    />
+
+                    <Text style={mStyles.label}>Assigned Ticket / Membership Number</Text>
+                    <TextInput
+                      style={mStyles.input}
+                      keyboardType="numeric"
+                      placeholder="e.g. 1, 2, 3..."
+                      value={ticketNo}
+                      onChangeText={setTicketNo}
+                    />
+
+                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
+                      <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowEnrollModal(false)}>
+                        <Text style={mStyles.secondaryBtnText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[mStyles.primaryBtn, quickRegistering && { opacity: 0.7 }]}
+                        disabled={quickRegistering}
+                        onPress={handleQuickRegisterAndEnroll}
+                      >
+                        {quickRegistering ? (
+                          <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                          <Text style={mStyles.primaryBtnText}>✓ Register & Enroll</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
               </ScrollView>
             )}
           </View>

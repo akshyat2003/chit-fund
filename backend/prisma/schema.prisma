@@ -94,6 +94,7 @@ model User {
   verifiedHandovers   CashHandover[] @relation("ManagerVerification")
   auditLogs           AuditLog[]
   refreshTokens       RefreshToken[]
+  linkedSubscribers   Subscriber[] @relation("UserSubscriber")
 }
 
 model Subscriber {
@@ -101,11 +102,14 @@ model Subscriber {
   companyId           String
   branchId            String
   assignedStaffId     String?
+  userId              String?
   subscriberCode      String   @unique
   fullName            String
   phone               String   @unique
   email               String?
   address             String?
+  aadhaarNo           String?
+  panNo               String?
   dateOfBirth         String?
   kycStatus           String   @default("PENDING") // PENDING, VERIFIED, REJECTED
   kycNotes            String?
@@ -123,6 +127,7 @@ model Subscriber {
   company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   branch         Branch   @relation(fields: [branchId], references: [id])
   assignedStaff  User?    @relation("AssignedStaff", fields: [assignedStaffId], references: [id])
+  user           User?    @relation("UserSubscriber", fields: [userId], references: [id], onDelete: SetNull)
 
   memberships    ChitGroupMember[]
   transactions   PaymentTransaction[]

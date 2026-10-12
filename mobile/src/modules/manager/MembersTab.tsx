@@ -34,6 +34,10 @@ export function MembersTab({ user }: { user: any }) {
   const [modalLoading, setModalLoading] = useState(false);
 
   // Form states for Registration (AC-01)
+  const [platformUsers, setPlatformUsers] = useState<any[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [showUserPicker, setShowUserPicker] = useState(false);
+
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -52,9 +56,10 @@ export function MembersTab({ user }: { user: any }) {
   const fetchSubscribers = async () => {
     try {
       setLoading(true);
-      const [subRes, branchRes] = await Promise.all([
+      const [subRes, branchRes, usersRes] = await Promise.all([
         api.get('/subscribers'),
-        api.get('/branches'),
+        api.get('/branches').catch(() => ({ data: { data: [] } })),
+        api.get('/auth/users').catch(() => ({ data: { data: [] } })),
       ]);
       if (subRes.data.success) {
         setSubscribers(subRes.data.data || []);
@@ -64,6 +69,9 @@ export function MembersTab({ user }: { user: any }) {
         if (branchRes.data.data.length > 0 && !branchId) {
           setBranchId(branchRes.data.data[0].id);
         }
+      }
+      if (usersRes.data.success) {
+        setPlatformUsers(usersRes.data.data || []);
       }
     } catch (e) {
       console.error(e);
@@ -76,10 +84,21 @@ export function MembersTab({ user }: { user: any }) {
     fetchSubscribers();
   }, []);
 
-  // AC-01: Member Registration
+  const handleSelectUser = (u: any) => {
+    setSelectedUserId(u.id);
+    setFullName(u.fullName || '');
+    setPhone(u.phone || '');
+    setEmail(u.email || '');
+    setAddress(u.address || '');
+    setAadhaarNumber(u.aadhaarNo || '');
+    setPanNumber(u.panNo || '');
+    setShowUserPicker(false);
+  };
+
+  // AC-01: Member Registration (both staff & manager)
   const handleRegisterMember = async () => {
-    if (!fullName.trim() || !phone.trim() || !address.trim() || !branchId) {
-      alert('Please fill all mandatory fields: Full Name, Phone, Address, and Branch');
+    if (!fullName.trim() || !phone.trim() || !address.trim()) {
+      alert('Please fill mandatory fields: Full Name, Phone, and Residential Address');
       return;
     }
     try {
@@ -89,17 +108,19 @@ export function MembersTab({ user }: { user: any }) {
         phone: phone.trim(),
         email: email.trim() || undefined,
         address: address.trim(),
-        aadhaarNumber: aadhaarNumber.trim() || undefined,
-        panNumber: panNumber.trim() || undefined,
+        aadhaarNo: aadhaarNumber.trim() || undefined,
+        panNo: panNumber.trim().toUpperCase() || undefined,
         nomineeName: nomineeName.trim() || undefined,
         nomineeRelation: nomineeRelation.trim() || undefined,
-        branchId,
+        branchId: branchId || user.branchId || branches[0]?.id || undefined,
+        userId: selectedUserId || undefined,
       });
 
       if (res.data.success) {
         alert('Member registered successfully with Member Code: ' + res.data.data.subscriberCode);
         setShowRegisterModal(false);
         // Reset form
+        setSelectedUserId(null);
         setFullName('');
         setPhone('');
         setEmail('');
@@ -189,13 +210,23 @@ export function MembersTab({ user }: { user: any }) {
   };
 
   const filtered = subscribers.filter((s) => {
+    const q = search.toLowerCase();
     const matchesSearch =
-      s.fullName?.toLowerCase().includes(search.toLowerCase()) ||
-      s.subscriberCode?.toLowerCase().includes(search.toLowerCase()) ||
-      s.phone?.includes(search);
+      s.fullName?.toLowerCase().includes(q) ||
+      s.subscriberCode?.toLowerCase().includes(q) ||
+      s.phone?.includes(q) ||
+      (s.address && s.address.toLowerCase().includes(q)) ||
+      (s.aadhaarNo && s.aadhaarNo.includes(q)) ||
+      (s.aadhaarNumber && s.aadhaarNumber.includes(q)) ||
+      (s.panNo && s.panNo.toLowerCase().includes(q)) ||
+      (s.panNumber && s.panNumber.toLowerCase().includes(q)) ||
+      (s.user && s.user.username?.toLowerCase().includes(q)) ||
+      (s.memberships && s.memberships.some((m: any) => m.group?.name?.toLowerCase().includes(q) || m.group?.groupCode?.toLowerCase().includes(q)));
     const matchesKyc = kycFilter === 'ALL' || s.kycStatus === kycFilter;
     return matchesSearch && matchesKyc;
   });
+
+  const isManagerOrAdmin = user.role === 'SUPER_ADMIN' || user.role === 'MANAGER';
 
   return (
     <ScrollView style={mStyles.container}>
@@ -204,15 +235,17 @@ export function MembersTab({ user }: { user: any }) {
         <View>
           <Text style={mStyles.headerTitle}>👥 Members & KYC Verification</Text>
           <Text style={mStyles.headerSubtitle}>
-            AC-01 Member Registry, AC-02 KYC Workflow, AC-04 Ledgers, AC-29 Statements & AC-30 Arrears
+            Member Registry (Name, Phone, Aadhaar, PAN, Address), Multi-Group Enrollment & User Accounts
           </Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-          <TouchableOpacity style={mStyles.secondaryBtn} onPress={handleOpenOutstanding}>
-            <Text style={mStyles.secondaryBtnText}>⚠️ Arrears & Late Fees (AC-30)</Text>
-          </TouchableOpacity>
+          {isManagerOrAdmin && (
+            <TouchableOpacity style={mStyles.secondaryBtn} onPress={handleOpenOutstanding}>
+              <Text style={mStyles.secondaryBtnText}>⚠️ Arrears & Late Fees (AC-30)</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={mStyles.primaryBtn} onPress={() => setShowRegisterModal(true)}>
-            <Text style={mStyles.primaryBtnText}>➕ Register Member (AC-01)</Text>
+            <Text style={mStyles.primaryBtnText}>➕ Register Member</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -236,7 +269,7 @@ export function MembersTab({ user }: { user: any }) {
           </Text>
         </View>
         <View style={mStyles.kpiCard}>
-          <Text style={mStyles.kpiLabel}>Enrolled In Groups</Text>
+          <Text style={mStyles.kpiLabel}>Total Group Enrollments</Text>
           <Text style={[mStyles.kpiVal, { color: '#2563EB' }]}>
             {subscribers.reduce((acc, s) => acc + (s.memberships?.length || 0), 0)}
           </Text>
@@ -247,7 +280,7 @@ export function MembersTab({ user }: { user: any }) {
       <View style={mStyles.filterRow}>
         <TextInput
           style={mStyles.searchBar}
-          placeholder="Search by name, member code or phone..."
+          placeholder="Search by name, code, phone, aadhaar, PAN, or group..."
           placeholderTextColor="#94A3B8"
           value={search}
           onChangeText={setSearch}
@@ -307,34 +340,99 @@ export function MembersTab({ user }: { user: any }) {
                       KYC: {member.kycStatus}
                     </Text>
                   </View>
+
+                  {/* Linked User Account Badge */}
+                  {member.user && (
+                    <View style={[mStyles.badge, { backgroundColor: '#EDE9FE' }]}>
+                      <Text style={[mStyles.badgeText, { color: '#6D28D9' }]}>
+                        👤 User Account: @{member.user.username} ({member.user.role?.replace('_', ' ')})
+                      </Text>
+                    </View>
+                  )}
                 </View>
+
                 <Text style={mStyles.cardSubtitle}>
-                  📞 {member.phone} • ✉️ {member.email || 'N/A'} • 🏛️ {member.branch?.name || 'Branch Main'}
+                  📞 {member.phone} • ✉️ {member.email || 'N/A'} • 🏛️ {member.branch?.name || 'Main Branch'}
                 </Text>
-                <Text style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>
-                  📍 {member.address} • Aadhaar: {member.aadhaarNumber || 'Pending'} • PAN: {member.panNumber || 'Pending'}
-                </Text>
-                {member.nomineeName && (
-                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
-                    Nominee: {member.nomineeName} ({member.nomineeRelation || 'Relation N/A'})
+
+                {/* Address, Aadhaar & PAN details */}
+                <View style={{ backgroundColor: '#F8FAFC', padding: 8, borderRadius: 6, marginTop: 6, borderWidth: 1, borderColor: '#F1F5F9' }}>
+                  <Text style={{ fontSize: 12, color: '#334155' }}>
+                    📍 <Text style={{ fontWeight: '600' }}>Address:</Text> {member.address || 'Address not provided'}
                   </Text>
-                )}
+                  <View style={{ flexDirection: 'row', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
+                    <Text style={{ fontSize: 12, color: '#475569' }}>
+                      🪪 <Text style={{ fontWeight: '600' }}>Aadhaar:</Text> {member.aadhaarNo || member.aadhaarNumber || 'Not provided'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#475569' }}>
+                      💳 <Text style={{ fontWeight: '600' }}>PAN:</Text> {member.panNo || member.panNumber || 'Not provided'}
+                    </Text>
+                    {member.nomineeName && (
+                      <Text style={{ fontSize: 12, color: '#475569' }}>
+                        👥 <Text style={{ fontWeight: '600' }}>Nominee:</Text> {member.nomineeName} ({member.nomineeRelation || 'N/A'})
+                      </Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* Multi-Group Enrollment Status */}
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569', marginBottom: 4 }}>
+                    💰 ENROLLED CHIT GROUPS ({member.memberships?.length || 0}):
+                  </Text>
+                  {(!member.memberships || member.memberships.length === 0) ? (
+                    <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>
+                      Not enrolled in any chit groups yet. Member can be enrolled in any active group.
+                    </Text>
+                  ) : (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {member.memberships.map((m: any) => (
+                        <View
+                          key={m.id || m.groupId}
+                          style={{
+                            backgroundColor: '#EFF6FF',
+                            borderColor: '#BFDBFE',
+                            borderWidth: 1,
+                            borderRadius: 6,
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 5,
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#1D4ED8' }}>
+                            {m.group?.groupCode || 'GRP'}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: '#1E40AF' }}>
+                            {m.group?.name}
+                          </Text>
+                          <Text style={{ fontSize: 10, color: '#6B7280' }}>
+                            (₹{(m.group?.monthlyInstallment || 0).toLocaleString('en-IN')}/mo)
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
               </View>
             </View>
 
             {/* Action Bar */}
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              <TouchableOpacity
-                style={mStyles.secondaryBtn}
-                onPress={() => {
-                  setSelectedMember(member);
-                  setKycStatus(member.kycStatus === 'VERIFIED' ? 'VERIFIED' : 'VERIFIED');
-                  setKycNotes(member.kycNotes || '');
-                  setShowKycModal(true);
-                }}
-              >
-                <Text style={mStyles.secondaryBtnText}>🔍 KYC Review (AC-02)</Text>
-              </TouchableOpacity>
+              {isManagerOrAdmin && (
+                <TouchableOpacity
+                  style={mStyles.secondaryBtn}
+                  onPress={() => {
+                    setSelectedMember(member);
+                    setKycStatus(member.kycStatus === 'VERIFIED' ? 'VERIFIED' : 'VERIFIED');
+                    setKycNotes(member.kycNotes || '');
+                    setShowKycModal(true);
+                  }}
+                >
+                  <Text style={mStyles.secondaryBtnText}>🔍 KYC Review</Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={mStyles.secondaryBtn}
@@ -359,13 +457,44 @@ export function MembersTab({ user }: { user: any }) {
         <View style={mStyles.modalBackdrop}>
           <View style={mStyles.modalBox}>
             <View style={mStyles.modalHeader}>
-              <Text style={mStyles.modalTitle}>➕ Register New Member (AC-01)</Text>
+              <Text style={mStyles.modalTitle}>➕ Register New Member</Text>
               <TouchableOpacity onPress={() => setShowRegisterModal(false)}>
                 <Text style={mStyles.modalClose}>✕</Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Option to link an existing user */}
+              <View style={{ backgroundColor: '#F0F9FF', borderColor: '#BAE6FD', borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0369A1' }}>
+                    👤 Link from Existing User Account?
+                  </Text>
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#0284C7', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 }}
+                    onPress={() => setShowUserPicker(true)}
+                  >
+                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '600' }}>
+                      {selectedUserId ? '🔄 Change User' : '🔍 Select User'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {selectedUserId ? (
+                  <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFF', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#BAE6FD' }}>
+                    <Text style={{ fontSize: 12, color: '#0369A1' }}>
+                      ✓ Linked: <Text style={{ fontWeight: '700' }}>{fullName}</Text> (@{platformUsers.find(u => u.id === selectedUserId)?.username})
+                    </Text>
+                    <TouchableOpacity onPress={() => setSelectedUserId(null)}>
+                      <Text style={{ fontSize: 11, color: '#EF4444', fontWeight: '700' }}>✕ Unlink</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <Text style={{ fontSize: 11, color: '#0284C7', marginTop: 4 }}>
+                    Any staff, manager, or existing user account can also be registered as a chit fund member.
+                  </Text>
+                )}
+              </View>
+
               <Text style={mStyles.label}>Full Legal Name *</Text>
               <TextInput
                 style={mStyles.input}
@@ -400,14 +529,14 @@ export function MembersTab({ user }: { user: any }) {
               <Text style={mStyles.label}>Residential Address *</Text>
               <TextInput
                 style={mStyles.input}
-                placeholder="Full address with pincode"
+                placeholder="Full address with street, city, pincode"
                 value={address}
                 onChangeText={setAddress}
               />
 
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={mStyles.label}>Aadhaar Number</Text>
+                  <Text style={mStyles.label}>Aadhaar Number (12 digits)</Text>
                   <TextInput
                     style={mStyles.input}
                     placeholder="12-digit Aadhaar"
@@ -416,7 +545,7 @@ export function MembersTab({ user }: { user: any }) {
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={mStyles.label}>PAN Card</Text>
+                  <Text style={mStyles.label}>PAN Card (10 characters)</Text>
                   <TextInput
                     style={mStyles.input}
                     placeholder="10-digit PAN"
@@ -478,6 +607,65 @@ export function MembersTab({ user }: { user: any }) {
                   )}
                 </TouchableOpacity>
               </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- MODAL FOR SELECTING EXISTING PLATFORM USER --- */}
+      <Modal visible={showUserPicker} transparent animationType="fade">
+        <View style={mStyles.modalBackdrop}>
+          <View style={[mStyles.modalBox, { maxHeight: '80%' }]}>
+            <View style={mStyles.modalHeader}>
+              <Text style={mStyles.modalTitle}>👤 Select Existing Platform User</Text>
+              <TouchableOpacity onPress={() => setShowUserPicker(false)}>
+                <Text style={mStyles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
+              Choose a platform user (Staff, Manager, Client) to register as a chit group member:
+            </Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {platformUsers.length === 0 ? (
+                <Text style={{ color: '#94A3B8', textAlign: 'center', marginVertical: 20 }}>No users found.</Text>
+              ) : (
+                platformUsers.map((u) => (
+                  <TouchableOpacity
+                    key={u.id}
+                    style={{
+                      padding: 12,
+                      borderBottomWidth: 1,
+                      borderBottomColor: '#F1F5F9',
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => handleSelectUser(u)}
+                  >
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text style={{ fontWeight: '700', fontSize: 14, color: '#0F172A' }}>
+                        {u.fullName || u.username}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: '#64748B' }}>
+                        @{u.username} • {u.role?.replace('_', ' ')} • 📞 {u.phone || 'No phone'}
+                      </Text>
+                      {u.address && (
+                        <Text style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>
+                          📍 {u.address}
+                        </Text>
+                      )}
+                      {(u.aadhaarNo || u.panNo) && (
+                        <Text style={{ fontSize: 11, color: '#475569' }}>
+                          🪪 Aadhaar: {u.aadhaarNo || '—'} • 💳 PAN: {u.panNo || '—'}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={[mStyles.badge, { backgroundColor: '#E0F2FE' }]}>
+                      <Text style={[mStyles.badgeText, { color: '#0369A1' }]}>Select ➔</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
             </ScrollView>
           </View>
         </View>

@@ -23,7 +23,7 @@ export const listChitGroups = async (req: AuthRequest, res: Response) => {
         },
         members: {
           include: {
-            subscriber: { select: { fullName: true, subscriberCode: true, phone: true } },
+            subscriber: { select: { id: true, fullName: true, subscriberCode: true, phone: true } },
           },
         },
         schedules: { orderBy: { installmentNo: 'asc' } },

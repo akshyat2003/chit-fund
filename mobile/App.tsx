@@ -68,7 +68,7 @@ function MainApp() {
   const allowedTabsByRole: Record<string, string[]> = {
     SUPER_ADMIN: ['dashboard', 'companies', 'admins', 'audits', 'system', 'backups', 'notifications'],
     MANAGER: ['dashboard', 'members', 'chit_groups', 'collections', 'accounting', 'auctions', 'branches', 'compliance', 'staff'],
-    COLLECTION_STAFF: ['dashboard', 'collections', 'members'],
+    COLLECTION_STAFF: ['dashboard', 'chit_groups', 'collections', 'members'],
   };
   const roleAllowed = allowedTabsByRole[user.role] || ['dashboard'];
   const effectiveTab = roleAllowed.includes(activeTab) ? activeTab : 'dashboard';
@@ -227,6 +227,13 @@ function MainApp() {
             {user.role === 'COLLECTION_STAFF' && (
               <>
                 <TouchableOpacity
+                  style={[styles.navItem, effectiveTab === 'chit_groups' && styles.navItemActive]}
+                  onPress={() => setActiveTab('chit_groups')}
+                >
+                  <Text style={[styles.navText, effectiveTab === 'chit_groups' && styles.navTextActive]}>💰 Assigned Chit Groups</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   style={[styles.navItem, effectiveTab === 'collections' && styles.navItemActive]}
                   onPress={() => setActiveTab('collections')}
                 >
@@ -237,7 +244,7 @@ function MainApp() {
                   style={[styles.navItem, effectiveTab === 'members' && styles.navItemActive]}
                   onPress={() => setActiveTab('members')}
                 >
-                  <Text style={[styles.navText, effectiveTab === 'members' && styles.navTextActive]}>👥 Subscribers & KYC</Text>
+                  <Text style={[styles.navText, effectiveTab === 'members' && styles.navTextActive]}>👥 Subscribers & Members</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -275,7 +282,7 @@ function MainApp() {
           {effectiveTab === 'backups' && user.role === 'SUPER_ADMIN' && <BackupsTab user={user} />}
           {effectiveTab === 'notifications' && user.role === 'SUPER_ADMIN' && <NotificationsTab user={user} />}
           {effectiveTab === 'members' && (user.role === 'MANAGER' || user.role === 'COLLECTION_STAFF') && <MembersTab user={user} />}
-          {effectiveTab === 'chit_groups' && user.role === 'MANAGER' && <ChitGroupsTab user={user} />}
+          {effectiveTab === 'chit_groups' && (user.role === 'MANAGER' || user.role === 'COLLECTION_STAFF') && <ChitGroupsTab user={user} />}
           {effectiveTab === 'collections' && (user.role === 'MANAGER' || user.role === 'COLLECTION_STAFF') && <CollectionsTab user={user} />}
           {effectiveTab === 'accounting' && user.role === 'MANAGER' && <AccountingTab user={user} />}
           {effectiveTab === 'auctions' && user.role === 'MANAGER' && <AuctionsPayoutsTab user={user} />}
