@@ -86,6 +86,18 @@ export function ChitGroupsTab({ user }: { user: any }) {
     }
   };
 
+  // Helper: Format commencement date to Indian standard (DD-MM-YYYY)
+  const formatCommencementDate = (dateStr?: string): string => {
+    if (!dateStr) return '13-10-2026';
+    if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) return dateStr;
+    const parts = dateStr.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      const [y, m, d] = parts;
+      return `${d}-${m}-${y}`;
+    }
+    return dateStr;
+  };
+
   // Create Group Form (AC-05, AC-06)
   const actualToday = getActualTodayDate();
   const [groupName, setGroupName] = useState('');
@@ -119,7 +131,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
         api.get('/chit-groups'),
         api.get('/subscribers'),
         api.get('/branches').catch(() => ({ data: { data: [] } })),
-        api.get('/auth/users?role=COLLECTION_STAFF').catch(() => ({ data: { data: [] } })),
+        api.get('/auth/users').catch(() => ({ data: { data: [] } })),
       ]);
       if (gRes.data.success) {
         setGroups(gRes.data.data || []);
@@ -137,7 +149,14 @@ export function ChitGroupsTab({ user }: { user: any }) {
         }
       }
       if (staffRes.data.success) {
-        setStaffMembers(staffRes.data.data || []);
+        const allUsers = staffRes.data.data || [];
+        const eligible = allUsers.filter(
+          (u: any) => u.role === 'COLLECTION_STAFF' || u.role === 'MANAGER' || u.role === 'SUPER_ADMIN'
+        );
+        if (user && !eligible.some((u: any) => u.id === user.id)) {
+          eligible.unshift(user);
+        }
+        setStaffMembers(eligible);
       }
     } catch (e) {
       console.error('Error fetching chit group data:', e);
@@ -629,7 +648,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     Chit Value: ₹{poolValue.toLocaleString()} • Monthly: ₹{monthly.toLocaleString()} • Duration: {duration} Months
                   </Text>
                   <Text style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>
-                    👥 Enrolled: {enrolledCount} / {grp.maxMembers} Members {isFull ? '(FULL CAPACITY)' : ''} • 🔒 Commencement Date: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{grp.startDate}</Text> (Actual Inception) • Commission: {grp.foremanCommissionPct ?? grp.foremanCommissionRate ?? 5}%
+                    👥 Enrolled: {enrolledCount} / {grp.maxMembers} Members {isFull ? '(FULL CAPACITY)' : ''} • 🔒 Commencement Date: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{formatCommencementDate(grp.startDate)}</Text> (Actual Date) • Commission: {grp.foremanCommissionPct ?? grp.foremanCommissionRate ?? 5}%
                   </Text>
                   {grp.createdAt ? (
                     <Text style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>
@@ -838,19 +857,19 @@ export function ChitGroupsTab({ user }: { user: any }) {
                 </View>
                 <View style={[mStyles.input, { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1', justifyContent: 'center' }]}>
                   <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: 14 }}>
-                    📅 {actualToday}
+                    📅 {formatCommencementDate(actualToday)} (Actual Date)
                   </Text>
                 </View>
                 <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
-                  The commencement date is automatically locked to the actual inception date ({actualToday}) and cannot be changed.
+                  The commencement date is automatically locked to the actual inception date ({formatCommencementDate(actualToday)}) and cannot be edited.
                 </Text>
               </View>
 
               {/* Staff Assignment on Create */}
               <View style={{ marginBottom: 14 }}>
-                <Text style={mStyles.label}>Assign Staff to this Chit Group</Text>
+                <Text style={mStyles.label}>Assign Staff / Manager to this Chit Group</Text>
                 <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>
-                  Select one or more collection staff. A single staff member can manage multiple chit groups.
+                  Select staff members or yourself. Multiple staff can be assigned to this group, and a single staff can manage multiple chit groups.
                 </Text>
                 {staffMembers.length === 0 ? (
                   <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>No staff members available. You can assign staff later.</Text>
@@ -858,6 +877,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {staffMembers.map((stf) => {
                       const isSelected = createStaffIds.includes(stf.id);
+                      const isSelf = stf.id === user?.id;
                       return (
                         <TouchableOpacity
                           key={stf.id}
@@ -879,7 +899,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                           }}
                         >
                           <Text style={{ fontSize: 12, fontWeight: '700', color: isSelected ? '#0369A1' : '#475569' }}>
-                            {isSelected ? '✓ ' : '+ '} {stf.fullName || stf.username} (@{stf.username})
+                            {isSelected ? '✓ ' : '+ '} {isSelf ? `👑 ${stf.fullName || stf.username} (You - Manager)` : `${stf.fullName || stf.username} (@${stf.username})`}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -1014,7 +1034,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   </View>
                   <View style={[mStyles.input, { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1', justifyContent: 'center' }]}>
                     <Text style={{ color: '#475569', fontWeight: '700', fontSize: 13 }}>
-                      📅 {editStartDate || actualToday} (Cannot be changed)
+                      📅 {formatCommencementDate(editStartDate || actualToday)} (Locked - Cannot be edited)
                     </Text>
                   </View>
                 </View>
@@ -1022,9 +1042,9 @@ export function ChitGroupsTab({ user }: { user: any }) {
 
               {/* Staff Assignment on Edit */}
               <View style={{ marginBottom: 14 }}>
-                <Text style={mStyles.label}>Assigned Staff Members</Text>
+                <Text style={mStyles.label}>Assigned Staff / Manager Members</Text>
                 <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>
-                  Select staff members to handle collections for this group (single staff can be assigned to multiple groups).
+                  Select staff members or yourself to handle collections for this group (single staff/manager can be assigned to multiple groups).
                 </Text>
                 {staffMembers.length === 0 ? (
                   <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>No staff members available.</Text>
@@ -1032,6 +1052,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {staffMembers.map((stf) => {
                       const isSelected = editStaffIds.includes(stf.id);
+                      const isSelf = stf.id === user?.id;
                       return (
                         <TouchableOpacity
                           key={stf.id}
@@ -1053,7 +1074,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                           }}
                         >
                           <Text style={{ fontSize: 12, fontWeight: '700', color: isSelected ? '#0369A1' : '#475569' }}>
-                            {isSelected ? '✓ ' : '+ '} {stf.fullName || stf.username} (@{stf.username})
+                            {isSelected ? '✓ ' : '+ '} {isSelf ? `👑 ${stf.fullName || stf.username} (You - Manager)` : `${stf.fullName || stf.username} (@${stf.username})`}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -1479,15 +1500,15 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     {assignGroup.name} [{assignGroup.groupCode}]
                   </Text>
                   <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
-                    Chit Value: ₹{(assignGroup.chitValue ?? assignGroup.totalChitValue)?.toLocaleString()} • Commencement: {assignGroup.startDate} (Fixed)
+                    Chit Value: ₹{(assignGroup.chitValue ?? assignGroup.totalChitValue)?.toLocaleString()} • Commencement: {formatCommencementDate(assignGroup.startDate)} (Actual Date)
                   </Text>
                 </View>
 
                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 4 }}>
-                  Select Staff Members ({modalStaffIds.length} Selected)
+                  Select Staff / Manager Members ({modalStaffIds.length} Selected)
                 </Text>
                 <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
-                  Click on staff names to assign or remove. Note: A single staff member can be assigned to multiple chit groups simultaneously.
+                  Click on staff names or yourself to assign or remove. Note: Managers and single staff members can be assigned to multiple chit groups simultaneously.
                 </Text>
 
                 {staffMembers.length === 0 ? (
@@ -1498,6 +1519,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   <View style={{ gap: 8, marginBottom: 18 }}>
                     {staffMembers.map((stf) => {
                       const isAssigned = modalStaffIds.includes(stf.id);
+                      const isSelf = stf.id === user?.id;
                       const otherGroupsCount = groups.filter((g) => {
                         if (assignGroup && g.id === assignGroup.id) return false;
                         if (g.assignedStaffId === stf.id) return true;
@@ -1527,11 +1549,18 @@ export function ChitGroupsTab({ user }: { user: any }) {
                           }}
                         >
                           <View style={{ flex: 1, marginRight: 10 }}>
-                            <Text style={{ fontWeight: '700', fontSize: 14, color: isAssigned ? '#0369A1' : '#0F172A' }}>
-                              {stf.fullName || stf.username}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <Text style={{ fontWeight: '700', fontSize: 14, color: isAssigned ? '#0369A1' : '#0F172A' }}>
+                                {stf.fullName || stf.username}
+                              </Text>
+                              {isSelf && (
+                                <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 }}>
+                                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#B45309' }}>👑 YOU (MANAGER)</Text>
+                                </View>
+                              )}
+                            </View>
                             <Text style={{ fontSize: 12, color: '#64748B' }}>
-                              @{stf.username} • 📱 {stf.phone || '-'}
+                              @{stf.username} • {stf.role?.replace('_', ' ')} • 📱 {stf.phone || '-'}
                             </Text>
                             {stf.address ? (
                               <Text style={{ fontSize: 11, color: '#475569', marginTop: 2 }} numberOfLines={1}>

@@ -44,6 +44,17 @@ function MainApp() {
   >('dashboard');
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [openStaffCreateOnLoad, setOpenStaffCreateOnLoad] = useState(false);
+  const [kycDismissed, setKycDismissed] = useState(false);
+
+  useEffect(() => {
+    if (user?.id && typeof window !== 'undefined') {
+      try {
+        if (window.localStorage?.getItem(`staff_kyc_completed_${user.id}`) === 'true') {
+          setKycDismissed(true);
+        }
+      } catch (e) {}
+    }
+  }, [user?.id]);
 
   // Reset activeTab to dashboard whenever user or role changes
   useEffect(() => {
@@ -255,23 +266,48 @@ function MainApp() {
       {/* Responsive Content Area Centered up to 1280px */}
       <View style={styles.contentArea}>
         <View style={styles.contentInner}>
-          {/* Staff KYC Action Prompt Banner */}
-          {user.role === 'COLLECTION_STAFF' && (!user.aadhaarNo || !user.panNo) && (
-            <View style={styles.kycPromptBanner}>
-              <View style={{ flex: 1, marginRight: 12 }}>
-                <Text style={styles.kycPromptTitle}>⚠️ Action Required: Complete Your Staff Profile & KYC</Text>
-                <Text style={styles.kycPromptSubtitle}>
-                  Please provide your Aadhaar Number, PAN Card, and Residential Address so manager and administrators can verify your staff profile.
-                </Text>
+          {/* Staff KYC Action Prompt Banner: Once completed or dismissed, never shows */}
+          {(() => {
+            const hasKyc = Boolean(
+              ((user.aadhaarNo && user.aadhaarNo.trim()) ||
+              (user.panNo && user.panNo.trim()) ||
+              (user.address && user.address.trim())) ||
+              kycDismissed
+            );
+            if (user.role !== 'COLLECTION_STAFF' || hasKyc) return null;
+
+            return (
+              <View style={styles.kycPromptBanner}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={styles.kycPromptTitle}>⚠️ Action Required: Complete Your Staff Profile & KYC</Text>
+                  <Text style={styles.kycPromptSubtitle}>
+                    Please provide your Aadhaar Number, PAN Card, and Residential Address so manager and administrators can verify your staff profile.
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <TouchableOpacity
+                    style={styles.kycPromptBtn}
+                    onPress={() => setShowProfileModal(true)}
+                  >
+                    <Text style={styles.kycPromptBtnText}>Complete Profile Now ➔</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ paddingVertical: 8, paddingHorizontal: 10, borderRadius: 6, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A' }}
+                    onPress={() => {
+                      setKycDismissed(true);
+                      if (typeof window !== 'undefined' && user?.id) {
+                        try {
+                          window.localStorage?.setItem(`staff_kyc_completed_${user.id}`, 'true');
+                        } catch (e) {}
+                      }
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: '#B45309', fontWeight: '700' }}>✕ Dismiss</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <TouchableOpacity
-                style={styles.kycPromptBtn}
-                onPress={() => setShowProfileModal(true)}
-              >
-                <Text style={styles.kycPromptBtnText}>Complete Profile Now ➔</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+            );
+          })()}
 
           {/* Render Active Tab on demand with role safety */}
           {effectiveTab === 'dashboard' && <DashboardTab user={user} onNavigateTab={handleTabNavigation} />}
@@ -4629,6 +4665,11 @@ function ProfileModal({
       });
 
       setProfileSuccess(res.data?.message || 'Profile & KYC details saved successfully!');
+      if (typeof window !== 'undefined' && user?.id) {
+        try {
+          window.localStorage?.setItem(`staff_kyc_completed_${user.id}`, 'true');
+        } catch (e) {}
+      }
       if (onRefreshUser) await onRefreshUser();
     } catch (err: any) {
       setProfileError(err.response?.data?.message || err.message || 'Failed to update profile details');
