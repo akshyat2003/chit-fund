@@ -38,11 +38,11 @@ export function ChitGroupsTab({ user }: { user: any }) {
   const [submitting, setSubmitting] = useState(false);
   const [assigning, setAssigning] = useState(false);
 
-  // Available staff members for assignment
+  // Available staff members for assignment (at most 1 staff per chit group)
   const [staffMembers, setStaffMembers] = useState<any[]>([]);
-  const [createStaffIds, setCreateStaffIds] = useState<string[]>([]);
-  const [editStaffIds, setEditStaffIds] = useState<string[]>([]);
-  const [modalStaffIds, setModalStaffIds] = useState<string[]>([]);
+  const [createStaffId, setCreateStaffId] = useState<string | null>(null);
+  const [editStaffId, setEditStaffId] = useState<string | null>(null);
+  const [modalStaffId, setModalStaffId] = useState<string | null>(null);
 
   // Quick Member Registration state inside Enroll Modal
   const [isQuickRegistering, setIsQuickRegistering] = useState(false);
@@ -207,15 +207,15 @@ export function ChitGroupsTab({ user }: { user: any }) {
         foremanCommissionPct: Number(foremanCommissionRate),
         startDate: actualToday, // Fixed to current actual date - cannot be changed
         branchId: selectedBranchId || branches[0]?.id || user.branchId || undefined,
-        assignedStaffIds: createStaffIds,
-        assignedStaffId: createStaffIds[0] || null,
+        assignedStaffId: createStaffId || null,
+        assignedStaffIds: createStaffId ? [createStaffId] : [],
       });
 
       if (res.data.success) {
         alert('Chit group created successfully: ' + res.data.data.name);
         setShowCreateModal(false);
         setGroupName('');
-        setCreateStaffIds([]);
+        setCreateStaffId(null);
         fetchGroups();
       }
     } catch (e: any) {
@@ -238,18 +238,14 @@ export function ChitGroupsTab({ user }: { user: any }) {
     setEditStatus(grp.status || 'ACTIVE');
     setEditBranchId(grp.branchId || branches[0]?.id || '');
 
-    // Collect currently assigned staff IDs
-    const assignedIds: string[] = [];
-    if (grp.staffAssignments && Array.isArray(grp.staffAssignments)) {
-      grp.staffAssignments.forEach((sa: any) => {
-        if (sa.staffId && !assignedIds.includes(sa.staffId)) assignedIds.push(sa.staffId);
-        else if (sa.staff?.id && !assignedIds.includes(sa.staff.id)) assignedIds.push(sa.staff.id);
-      });
-    }
-    if (grp.assignedStaffId && !assignedIds.includes(grp.assignedStaffId)) {
-      assignedIds.push(grp.assignedStaffId);
-    }
-    setEditStaffIds(assignedIds);
+    // Current assigned staff ID (at most 1 staff per chit group)
+    const currentAssignedId =
+      grp.assignedStaffId ||
+      grp.assignedStaff?.id ||
+      grp.staffAssignments?.[0]?.staffId ||
+      grp.staffAssignments?.[0]?.staff?.id ||
+      null;
+    setEditStaffId(currentAssignedId);
     setShowEditModal(true);
   };
 
@@ -270,8 +266,8 @@ export function ChitGroupsTab({ user }: { user: any }) {
         foremanCommissionPct: Number(editForemanCommissionRate),
         status: editStatus,
         branchId: editBranchId || undefined,
-        assignedStaffIds: editStaffIds,
-        assignedStaffId: editStaffIds[0] || null,
+        assignedStaffId: editStaffId || null,
+        assignedStaffIds: editStaffId ? [editStaffId] : [],
       });
 
       if (res.data.success) {
@@ -289,17 +285,13 @@ export function ChitGroupsTab({ user }: { user: any }) {
   // Open Quick Staff Assignment Modal
   const handleOpenAssignStaff = (grp: any) => {
     setAssignGroup(grp);
-    const assignedIds: string[] = [];
-    if (grp.staffAssignments && Array.isArray(grp.staffAssignments)) {
-      grp.staffAssignments.forEach((sa: any) => {
-        if (sa.staffId && !assignedIds.includes(sa.staffId)) assignedIds.push(sa.staffId);
-        else if (sa.staff?.id && !assignedIds.includes(sa.staff.id)) assignedIds.push(sa.staff.id);
-      });
-    }
-    if (grp.assignedStaffId && !assignedIds.includes(grp.assignedStaffId)) {
-      assignedIds.push(grp.assignedStaffId);
-    }
-    setModalStaffIds(assignedIds);
+    const currentAssignedId =
+      grp.assignedStaffId ||
+      grp.assignedStaff?.id ||
+      grp.staffAssignments?.[0]?.staffId ||
+      grp.staffAssignments?.[0]?.staff?.id ||
+      null;
+    setModalStaffId(currentAssignedId);
     setShowAssignModal(true);
   };
 
@@ -309,7 +301,8 @@ export function ChitGroupsTab({ user }: { user: any }) {
     try {
       setAssigning(true);
       const res = await api.post(`/chit-groups/${assignGroup.id}/assign-staff`, {
-        staffIds: modalStaffIds,
+        assignedStaffId: modalStaffId || null,
+        staffIds: modalStaffId ? [modalStaffId] : [],
       });
       if (res.data.success) {
         alert(res.data.message || `Staff assignment updated successfully for group "${assignGroup.name}".`);
@@ -685,46 +678,39 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     </Text>
                   ) : null}
 
-                  {/* Assigned Collection Staff Display */}
+                  {/* Assigned Collection Staff Display (Single Staff In-Charge) */}
                   {(() => {
-                    const assignedList: any[] = [];
-                    if (grp.staffAssignments && Array.isArray(grp.staffAssignments)) {
-                      grp.staffAssignments.forEach((sa: any) => {
-                        if (sa.staff && !assignedList.some((s) => s.id === sa.staff.id)) {
-                          assignedList.push(sa.staff);
-                        }
-                      });
-                    }
-                    if (grp.assignedStaff && !assignedList.some((s) => s.id === grp.assignedStaff.id)) {
-                      assignedList.push(grp.assignedStaff);
-                    }
+                    const assigned =
+                      grp.assignedStaff ||
+                      grp.staffAssignments?.[0]?.staff ||
+                      null;
 
                     return (
                       <View style={{ marginTop: 8, padding: 8, backgroundColor: '#F0F9FF', borderRadius: 8, borderWidth: 1, borderColor: '#BAE6FD' }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                           <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
-                            🏃 Assigned Staff ({assignedList.length}):
+                            🏃 Assigned Staff (In-Charge):
                           </Text>
                           {isManagerOrAdmin && (
                             <TouchableOpacity
                               onPress={() => handleOpenAssignStaff(grp)}
                               style={{ backgroundColor: '#0284C7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 }}
                             >
-                              <Text style={{ fontSize: 11, color: '#FFF', fontWeight: '700' }}>👥 Assign Staff</Text>
+                              <Text style={{ fontSize: 11, color: '#FFF', fontWeight: '700' }}>
+                                {assigned ? '🔄 Change Staff' : '👥 Assign Staff'}
+                              </Text>
                             </TouchableOpacity>
                           )}
                         </View>
-                        {assignedList.length === 0 ? (
-                          <Text style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>⚠️ No staff currently assigned. Click "👥 Assign Staff" below to assign.</Text>
+                        {!assigned ? (
+                          <Text style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>
+                            ⚠️ No staff currently assigned. Click "👥 Assign Staff" to assign.
+                          </Text>
                         ) : (
-                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                            {assignedList.map((stf: any) => (
-                              <View key={stf.id} style={{ backgroundColor: '#E0F2FE', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, flexDirection: 'row', alignItems: 'center' }}>
-                                <Text style={{ fontSize: 11, fontWeight: '700', color: '#0369A1' }}>
-                                  👤 {stf.fullName || stf.username} (@{stf.username})
-                                </Text>
-                              </View>
-                            ))}
+                          <View style={{ backgroundColor: '#E0F2FE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
+                              👤 {assigned.fullName || assigned.username} (@{assigned.username})
+                            </Text>
                           </View>
                         )}
                       </View>
@@ -898,14 +884,14 @@ export function ChitGroupsTab({ user }: { user: any }) {
               <View style={{ marginBottom: 14 }}>
                 <Text style={mStyles.label}>Assign Staff / Manager to this Chit Group</Text>
                 <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>
-                  Select staff members or yourself. Multiple staff can be assigned to this group, and a single staff can manage multiple chit groups.
+                  Select a staff member or yourself (in-charge). Only one staff can be assigned per chit group. (A staff member can manage multiple chit groups).
                 </Text>
                 {staffMembers.length === 0 ? (
                   <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>No staff members available. You can assign staff later.</Text>
                 ) : (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {staffMembers.map((stf) => {
-                      const isSelected = createStaffIds.includes(stf.id);
+                      const isSelected = createStaffId === stf.id;
                       const isSelf = stf.id === user?.id;
                       return (
                         <TouchableOpacity
@@ -922,9 +908,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                             gap: 4,
                           }}
                           onPress={() => {
-                            setCreateStaffIds((prev) =>
-                              prev.includes(stf.id) ? prev.filter((id) => id !== stf.id) : [...prev, stf.id]
-                            );
+                            setCreateStaffId((prev) => (prev === stf.id ? null : stf.id));
                           }}
                         >
                           <Text style={{ fontSize: 12, fontWeight: '700', color: isSelected ? '#0369A1' : '#475569' }}>
@@ -1071,16 +1055,16 @@ export function ChitGroupsTab({ user }: { user: any }) {
 
               {/* Staff Assignment on Edit */}
               <View style={{ marginBottom: 14 }}>
-                <Text style={mStyles.label}>Assigned Staff / Manager Members</Text>
+                <Text style={mStyles.label}>Assigned Staff / Manager Member</Text>
                 <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>
-                  Select staff members or yourself to handle collections for this group (single staff/manager can be assigned to multiple groups).
+                  Select the staff member or yourself to handle this group. Only one staff can be assigned per chit group.
                 </Text>
                 {staffMembers.length === 0 ? (
                   <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>No staff members available.</Text>
                 ) : (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {staffMembers.map((stf) => {
-                      const isSelected = editStaffIds.includes(stf.id);
+                      const isSelected = editStaffId === stf.id;
                       const isSelf = stf.id === user?.id;
                       return (
                         <TouchableOpacity
@@ -1097,9 +1081,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                             gap: 4,
                           }}
                           onPress={() => {
-                            setEditStaffIds((prev) =>
-                              prev.includes(stf.id) ? prev.filter((id) => id !== stf.id) : [...prev, stf.id]
-                            );
+                            setEditStaffId((prev) => (prev === stf.id ? null : stf.id));
                           }}
                         >
                           <Text style={{ fontSize: 12, fontWeight: '700', color: isSelected ? '#0369A1' : '#475569' }}>
@@ -1534,10 +1516,10 @@ export function ChitGroupsTab({ user }: { user: any }) {
                 </View>
 
                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 4 }}>
-                  Select Staff / Manager Members ({modalStaffIds.length} Selected)
+                  Select Staff / Manager Member ({modalStaffId ? '1' : '0'} Selected)
                 </Text>
                 <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
-                  Click on staff names or yourself to assign or remove. Note: Managers and single staff members can be assigned to multiple chit groups simultaneously.
+                  Multiple staff cannot be assigned to a single chit group (only 1 staff in-charge per group). Click on a staff name or yourself to select or change. A single staff member can manage multiple chit groups.
                 </Text>
 
                 {staffMembers.length === 0 ? (
@@ -1547,7 +1529,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                 ) : (
                   <View style={{ gap: 8, marginBottom: 18 }}>
                     {staffMembers.map((stf) => {
-                      const isAssigned = modalStaffIds.includes(stf.id);
+                      const isAssigned = modalStaffId === stf.id;
                       const isSelf = stf.id === user?.id;
                       const otherGroupsCount = groups.filter((g) => {
                         if (assignGroup && g.id === assignGroup.id) return false;
@@ -1572,9 +1554,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                             alignItems: 'center',
                           }}
                           onPress={() => {
-                            setModalStaffIds((prev) =>
-                              prev.includes(stf.id) ? prev.filter((id) => id !== stf.id) : [...prev, stf.id]
-                            );
+                            setModalStaffId((prev) => (prev === stf.id ? null : stf.id));
                           }}
                         >
                           <View style={{ flex: 1, marginRight: 10 }}>
@@ -1609,7 +1589,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                             }}
                           >
                             <Text style={{ fontSize: 12, fontWeight: '700', color: isAssigned ? '#FFF' : '#64748B' }}>
-                              {isAssigned ? '✓ Assigned' : '+ Assign'}
+                              {isAssigned ? '✓ Selected' : '+ Select'}
                             </Text>
                           </View>
                         </TouchableOpacity>

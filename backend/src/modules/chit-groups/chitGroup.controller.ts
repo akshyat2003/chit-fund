@@ -94,11 +94,8 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
     const count = await prisma.chitGroup.count({ where: { companyId } });
     const groupCode = `CG-${2026 + count + 1}`;
 
-    const allStaffIds: string[] = Array.from(new Set([
-      ...(Array.isArray(assignedStaffIds) ? assignedStaffIds : []),
-      ...(Array.isArray(staffIds) ? staffIds : []),
-      ...(assignedStaffId ? [assignedStaffId] : []),
-    ])).filter(Boolean);
+    // Each chit group can have at most ONE assigned staff member
+    const singleStaffId = assignedStaffId || (Array.isArray(assignedStaffIds) ? assignedStaffIds[0] : null) || (Array.isArray(staffIds) ? staffIds[0] : null) || null;
 
     const group = await prisma.chitGroup.create({
       data: {
@@ -113,7 +110,7 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
         foremanCommissionPct: effectiveCommission,
         startDate: effectiveStartDate,
         status: 'ACTIVE',
-        assignedStaffId: allStaffIds[0] || null,
+        assignedStaffId: singleStaffId,
       },
       include: {
         branch: { select: { name: true, code: true } },
@@ -121,11 +118,10 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
       },
     });
 
-    // Create staff assignments if staff member(s) are selected
-    if (allStaffIds.length > 0) {
-      await prisma.chitGroupStaff.createMany({
-        data: allStaffIds.map((sId) => ({ groupId: group.id, staffId: sId })),
-        skipDuplicates: true,
+    // Create single staff assignment if staff member is selected
+    if (singleStaffId) {
+      await prisma.chitGroupStaff.create({
+        data: { groupId: group.id, staffId: singleStaffId },
       });
     }
 
@@ -315,19 +311,16 @@ export const updateChitGroup = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Handle staff assignments (single staff can also be assigned to multiple chit groups)
-    const allStaffIds: string[] = Array.from(new Set([
-      ...(Array.isArray(assignedStaffIds) ? assignedStaffIds : []),
-      ...(Array.isArray(staffIds) ? staffIds : []),
-      ...(assignedStaffId ? [assignedStaffId] : []),
-    ])).filter(Boolean);
+    // Handle staff assignment (each chit group can have at most ONE assigned staff member)
+    const singleStaffId = assignedStaffId !== undefined
+      ? (assignedStaffId || null)
+      : (Array.isArray(assignedStaffIds) ? (assignedStaffIds[0] || null) : (Array.isArray(staffIds) ? (staffIds[0] || null) : undefined));
 
     if (assignedStaffIds !== undefined || staffIds !== undefined || assignedStaffId !== undefined) {
       await prisma.chitGroupStaff.deleteMany({ where: { groupId: id } });
-      if (allStaffIds.length > 0) {
-        await prisma.chitGroupStaff.createMany({
-          data: allStaffIds.map((sId) => ({ groupId: id, staffId: sId })),
-          skipDuplicates: true,
+      if (singleStaffId) {
+        await prisma.chitGroupStaff.create({
+          data: { groupId: id, staffId: singleStaffId },
         });
       }
     }
@@ -345,8 +338,8 @@ export const updateChitGroup = async (req: AuthRequest, res: Response) => {
         endDate: endDate !== undefined ? endDate : existingGroup.endDate,
         status: status || existingGroup.status,
         branchId: branchId || existingGroup.branchId,
-        ...(assignedStaffIds !== undefined || staffIds !== undefined || assignedStaffId !== undefined
-          ? { assignedStaffId: allStaffIds[0] || null }
+        ...(singleStaffId !== undefined
+          ? { assignedStaffId: singleStaffId || null }
           : {}),
       },
       include: {
@@ -405,8 +398,9 @@ export const updateChitGroup = async (req: AuthRequest, res: Response) => {
 };
 
 /**
- * Dedicated Endpoint: Assign Staff Member(s) to a Chit Group
- * Single staff can be assigned to multiple chit groups
+ * Dedicated Endpoint: Assign Staff Member to a Chit Group
+ * Multiple staff cannot be assigned to a single chit group (only 1 staff per group).
+ * A single staff can still be assigned to multiple chit groups.
  */
 export const assignStaffToGroup = async (req: AuthRequest, res: Response) => {
   try {
@@ -418,23 +412,21 @@ export const assignStaffToGroup = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: 'Chit group not found' });
     }
 
-    const allStaffIds: string[] = Array.from(new Set([
-      ...(Array.isArray(staffIds) ? staffIds : []),
-      ...(Array.isArray(assignedStaffIds) ? assignedStaffIds : []),
-      ...(assignedStaffId ? [assignedStaffId] : []),
-    ])).filter(Boolean);
+    // Multiple staff cannot assign to a single chit group: enforce at most one staff
+    const singleStaffId = assignedStaffId !== undefined
+      ? (assignedStaffId || null)
+      : (Array.isArray(assignedStaffIds) ? (assignedStaffIds[0] || null) : (Array.isArray(staffIds) ? (staffIds[0] || null) : null));
 
     await prisma.chitGroupStaff.deleteMany({ where: { groupId: id } });
-    if (allStaffIds.length > 0) {
-      await prisma.chitGroupStaff.createMany({
-        data: allStaffIds.map((sId) => ({ groupId: id, staffId: sId })),
-        skipDuplicates: true,
+    if (singleStaffId) {
+      await prisma.chitGroupStaff.create({
+        data: { groupId: id, staffId: singleStaffId },
       });
     }
 
     const updated = await prisma.chitGroup.update({
       where: { id },
-      data: { assignedStaffId: allStaffIds[0] || null },
+      data: { assignedStaffId: singleStaffId || null },
       include: {
         branch: { select: { name: true, code: true } },
         assignedStaff: { select: { id: true, fullName: true, username: true, phone: true } },
