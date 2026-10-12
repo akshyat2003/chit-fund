@@ -13,21 +13,44 @@ export const listSubscribers = async (req: AuthRequest, res: Response) => {
     if (kycStatus) where.kycStatus = String(kycStatus);
     if (staffId) where.assignedStaffId = String(staffId);
 
-    // If Collection Staff role and assignedOnly is requested, filter accordingly
-    if (req.user?.role === 'COLLECTION_STAFF' && req.query.assignedOnly === 'true') {
-      where.OR = [
-        { assignedStaffId: req.user.id },
-        { branchId: req.user.branchId || undefined },
-      ];
+    const andConditions: any[] = [];
+
+    // If Collection Staff, restrict to members belonging to their assigned chit groups or assigned to them
+    if (req.user?.role === 'COLLECTION_STAFF') {
+      const staffUserId = req.user.id;
+      const staffGroups = await prisma.chitGroup.findMany({
+        where: {
+          ...(companyId ? { companyId } : {}),
+          OR: [
+            { assignedStaffId: staffUserId },
+            { staffAssignments: { some: { staffId: staffUserId } } },
+          ],
+        },
+        select: { id: true },
+      });
+      const staffGroupIds = staffGroups.map((g) => g.id);
+
+      andConditions.push({
+        OR: [
+          { assignedStaffId: req.user.id },
+          { memberships: { some: { groupId: { in: staffGroupIds } } } },
+        ],
+      });
     }
 
     if (search) {
       const q = String(search);
-      where.OR = [
-        { fullName: { contains: q } },
-        { subscriberCode: { contains: q } },
-        { phone: { contains: q } },
-      ];
+      andConditions.push({
+        OR: [
+          { fullName: { contains: q } },
+          { subscriberCode: { contains: q } },
+          { phone: { contains: q } },
+        ],
+      });
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
 
     const subscribers = await prisma.subscriber.findMany({
@@ -81,6 +104,7 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
       nomineeName,
       nomineeRelation,
       nomineePhone,
+      groupId, // Optional: chit group to assign this member into
     } = req.body;
 
     const cleanName = fullName ? String(fullName).trim() : '';
@@ -91,6 +115,38 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
 
     if (!cleanName || !cleanPhone) {
       return res.status(400).json({ success: false, message: 'Full name and phone number are required' });
+    }
+
+    // If a group assignment was specified, validate assignment permissions
+    if (groupId) {
+      const targetGroup = await prisma.chitGroup.findUnique({
+        where: { id: groupId },
+        include: { members: true, staffAssignments: true },
+      });
+      if (!targetGroup) {
+        return res.status(404).json({ success: false, message: 'Specified chit group not found' });
+      }
+
+      // Staff can ONLY add and assign member to their own assigned chit group
+      if (req.user?.role === 'COLLECTION_STAFF') {
+        const staffUserId = req.user.id;
+        const isAssigned =
+          targetGroup.assignedStaffId === staffUserId ||
+          targetGroup.staffAssignments.some((sa) => sa.staffId === staffUserId);
+        if (!isAssigned) {
+          return res.status(403).json({
+            success: false,
+            message: 'Forbidden: Staff can only add and assign members to their own assigned chit group.',
+          });
+        }
+      }
+
+      if (targetGroup.members.length >= targetGroup.maxMembers) {
+        return res.status(400).json({
+          success: false,
+          message: `Chit group ${targetGroup.name} has reached maximum member capacity (${targetGroup.maxMembers}).`,
+        });
+      }
     }
 
     // Check if phone number already registered as a subscriber
@@ -154,6 +210,39 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
       },
     });
 
+    // If groupId was specified, enroll the new member into that group immediately
+    if (groupId) {
+      const targetGroup = await prisma.chitGroup.findUnique({
+        where: { id: groupId },
+        include: { members: true },
+      });
+      if (targetGroup) {
+        const ticketNumber = targetGroup.members.length + 1;
+        await prisma.chitGroupMember.create({
+          data: {
+            groupId,
+            subscriberId: subscriber.id,
+            ticketNumber,
+          },
+        });
+      }
+    }
+
+    // Refetch subscriber with memberships
+    const freshSubscriber = await prisma.subscriber.findUnique({
+      where: { id: subscriber.id },
+      include: {
+        branch: { select: { name: true, code: true } },
+        assignedStaff: { select: { fullName: true, phone: true } },
+        user: { select: { id: true, username: true, role: true } },
+        memberships: {
+          include: {
+            group: { select: { id: true, groupCode: true, name: true, monthlyInstallment: true, status: true } },
+          },
+        },
+      },
+    });
+
     await prisma.auditLog.create({
       data: {
         companyId,
@@ -161,11 +250,17 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
         action: 'CREATE_SUBSCRIBER',
         entity: 'Subscriber',
         entityId: subscriber.id,
-        details: JSON.stringify({ subscriberCode, fullName: cleanName, phone: cleanPhone, isUserLinked: Boolean(userId) }),
+        details: JSON.stringify({
+          subscriberCode,
+          fullName: cleanName,
+          phone: cleanPhone,
+          groupId: groupId || null,
+          createdByRole: req.user?.role,
+        }),
       },
     });
 
-    return res.status(201).json({ success: true, data: subscriber });
+    return res.status(201).json({ success: true, data: freshSubscriber });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -454,6 +549,183 @@ export const getMemberOutstanding = async (req: AuthRequest, res: Response) => {
       success: true,
       count: outstandingList.length,
       data: outstandingList.sort((a, b) => b.arrears - a.arrears),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * Update Member (Manager: globally; Staff: only for their assigned chit group)
+ */
+export const updateSubscriber = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      fullName,
+      phone,
+      email,
+      address,
+      aadhaarNo,
+      aadhaarNumber,
+      panNo,
+      panNumber,
+      nomineeName,
+      nomineeRelation,
+      nomineePhone,
+      branchId,
+      dateOfBirth,
+    } = req.body;
+
+    const subscriber = await prisma.subscriber.findUnique({
+      where: { id },
+      include: { memberships: true },
+    });
+
+    if (!subscriber) {
+      return res.status(404).json({ success: false, message: 'Member not found' });
+    }
+
+    // Role check: Staff can only update members belonging to their assigned chit group
+    if (req.user?.role === 'COLLECTION_STAFF') {
+      const staffUserId = req.user.id;
+      const staffGroups = await prisma.chitGroup.findMany({
+        where: {
+          companyId: subscriber.companyId,
+          OR: [
+            { assignedStaffId: staffUserId },
+            { staffAssignments: { some: { staffId: staffUserId } } },
+          ],
+        },
+        select: { id: true },
+      });
+      const staffGroupIds = staffGroups.map((g) => g.id);
+      const isMemberOfStaffGroup = subscriber.memberships.some((m) =>
+        staffGroupIds.includes(m.groupId)
+      );
+
+      if (subscriber.assignedStaffId !== staffUserId && !isMemberOfStaffGroup) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden: Staff can only update members belonging to their assigned chit group.',
+        });
+      }
+    }
+
+    const cleanAadhaar = (aadhaarNo || aadhaarNumber) !== undefined ? String(aadhaarNo || aadhaarNumber).trim() : undefined;
+    const cleanPan = (panNo || panNumber) !== undefined ? String(panNo || panNumber).trim().toUpperCase() : undefined;
+
+    const updated = await prisma.subscriber.update({
+      where: { id },
+      data: {
+        ...(fullName ? { fullName: String(fullName).trim() } : {}),
+        ...(phone ? { phone: String(phone).trim() } : {}),
+        ...(email !== undefined ? { email: email ? String(email).trim().toLowerCase() : null } : {}),
+        ...(address !== undefined ? { address: address ? String(address).trim() : null } : {}),
+        ...(cleanAadhaar !== undefined ? { aadhaarNo: cleanAadhaar || null } : {}),
+        ...(cleanPan !== undefined ? { panNo: cleanPan || null } : {}),
+        ...(nomineeName !== undefined ? { nomineeName: nomineeName ? String(nomineeName).trim() : null } : {}),
+        ...(nomineeRelation !== undefined ? { nomineeRelation: nomineeRelation ? String(nomineeRelation).trim() : null } : {}),
+        ...(nomineePhone !== undefined ? { nomineePhone: nomineePhone ? String(nomineePhone).trim() : null } : {}),
+        ...(branchId ? { branchId } : {}),
+        ...(dateOfBirth !== undefined ? { dateOfBirth: dateOfBirth ? String(dateOfBirth).trim() : null } : {}),
+      },
+      include: {
+        branch: { select: { name: true, code: true } },
+        assignedStaff: { select: { fullName: true, phone: true } },
+        user: { select: { id: true, username: true, role: true } },
+        memberships: {
+          include: {
+            group: { select: { id: true, groupCode: true, name: true, monthlyInstallment: true, status: true } },
+          },
+        },
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        companyId: subscriber.companyId,
+        userId: req.user?.id,
+        action: 'UPDATE_SUBSCRIBER',
+        entity: 'Subscriber',
+        entityId: id,
+        details: JSON.stringify({
+          fullName: updated.fullName,
+          phone: updated.phone,
+          updatedByRole: req.user?.role,
+        }),
+      },
+    });
+
+    return res.json({ success: true, message: 'Member details updated successfully', data: updated });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * Delete Member (Manager/Super Admin ONLY; Staff is NOT permitted)
+ */
+export const deleteSubscriber = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (req.user?.role === 'COLLECTION_STAFF') {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: Staff cannot delete members. Only managers can delete members.',
+      });
+    }
+
+    const subscriber = await prisma.subscriber.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            transactions: true,
+            auctionsWon: true,
+            payouts: true,
+          },
+        },
+      },
+    });
+
+    if (!subscriber) {
+      return res.status(404).json({ success: false, message: 'Member not found' });
+    }
+
+    if (subscriber._count.transactions > 0 || subscriber._count.auctionsWon > 0 || subscriber._count.payouts > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete member ${subscriber.fullName} (${subscriber.subscriberCode}) because they have active financial transactions, auction wins, or payouts.`,
+      });
+    }
+
+    // Delete group memberships first
+    await prisma.chitGroupMember.deleteMany({ where: { subscriberId: id } });
+
+    // Delete subscriber
+    await prisma.subscriber.delete({ where: { id } });
+
+    await prisma.auditLog.create({
+      data: {
+        companyId: subscriber.companyId,
+        userId: req.user?.id,
+        action: 'DELETE_SUBSCRIBER',
+        entity: 'Subscriber',
+        entityId: id,
+        details: JSON.stringify({
+          subscriberCode: subscriber.subscriberCode,
+          fullName: subscriber.fullName,
+          phone: subscriber.phone,
+          deletedBy: req.user?.fullName || req.user?.phone || req.user?.id,
+        }),
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: `Member ${subscriber.fullName} (${subscriber.subscriberCode}) deleted successfully.`,
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });

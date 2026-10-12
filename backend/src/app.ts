@@ -109,6 +109,8 @@ router.get('/reports/dashboard', authenticateToken, reportController.getDashboar
 // Subscriber Routes (AC-01, AC-02, AC-04, AC-29, AC-30)
 router.get('/subscribers', authenticateToken, subscriberController.listSubscribers);
 router.post('/subscribers', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER', 'COLLECTION_STAFF'), subscriberController.createSubscriber);
+router.put('/subscribers/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER', 'COLLECTION_STAFF'), subscriberController.updateSubscriber);
+router.delete('/subscribers/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), subscriberController.deleteSubscriber);
 router.get('/subscribers/outstanding', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), subscriberController.getMemberOutstanding);
 router.get('/subscribers/:id', authenticateToken, subscriberController.getSubscriberById);
 router.patch('/subscribers/:id/kyc', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), subscriberController.verifyKyc);

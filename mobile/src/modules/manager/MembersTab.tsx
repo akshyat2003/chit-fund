@@ -19,8 +19,15 @@ export function MembersTab({ user }: { user: any }) {
   const [search, setSearch] = useState('');
   const [kycFilter, setKycFilter] = useState<'ALL' | 'VERIFIED' | 'PENDING' | 'REJECTED'>('ALL');
 
+  const [groups, setGroups] = useState<any[]>([]);
+  const isManagerOrAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'MANAGER';
+  const isStaff = user?.role === 'COLLECTION_STAFF';
+
   // Modals
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showAssignGroupModal, setShowAssignGroupModal] = useState(false);
   const [showKycModal, setShowKycModal] = useState(false);
   const [showLedgerModal, setShowLedgerModal] = useState(false);
   const [showStatementModal, setShowStatementModal] = useState(false);
@@ -28,6 +35,10 @@ export function MembersTab({ user }: { user: any }) {
 
   // Selected Member Context
   const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [memberToDelete, setMemberToDelete] = useState<any>(null);
+  const [assigningMember, setAssigningMember] = useState<any>(null);
+  const [selectedAssignGroupId, setSelectedAssignGroupId] = useState('');
+  const [assigningToGroup, setAssigningToGroup] = useState(false);
   const [ledgerData, setLedgerData] = useState<any>(null);
   const [statementData, setStatementData] = useState<any>(null);
   const [outstandingData, setOutstandingData] = useState<any[]>([]);
@@ -47,7 +58,20 @@ export function MembersTab({ user }: { user: any }) {
   const [nomineeName, setNomineeName] = useState('');
   const [nomineeRelation, setNomineeRelation] = useState('');
   const [branchId, setBranchId] = useState('');
+  const [registerGroupId, setRegisterGroupId] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Form states for Edit Member
+  const [editMemberId, setEditMemberId] = useState<string | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editAadhaarNumber, setEditAadhaarNumber] = useState('');
+  const [editPanNumber, setEditPanNumber] = useState('');
+  const [editNomineeName, setEditNomineeName] = useState('');
+  const [editNomineeRelation, setEditNomineeRelation] = useState('');
+  const [editBranchId, setEditBranchId] = useState('');
 
   // Form states for KYC Review (AC-02)
   const [kycStatus, setKycStatus] = useState<'VERIFIED' | 'REJECTED' | 'PENDING'>('VERIFIED');
@@ -56,10 +80,11 @@ export function MembersTab({ user }: { user: any }) {
   const fetchSubscribers = async () => {
     try {
       setLoading(true);
-      const [subRes, branchRes, usersRes] = await Promise.all([
+      const [subRes, branchRes, usersRes, groupsRes] = await Promise.all([
         api.get('/subscribers'),
         api.get('/branches').catch(() => ({ data: { data: [] } })),
         api.get('/auth/users').catch(() => ({ data: { data: [] } })),
+        api.get('/chit-groups').catch(() => ({ data: { data: [] } })),
       ]);
       if (subRes.data.success) {
         setSubscribers(subRes.data.data || []);
@@ -73,6 +98,9 @@ export function MembersTab({ user }: { user: any }) {
       if (usersRes.data.success) {
         setPlatformUsers(usersRes.data.data || []);
       }
+      if (groupsRes.data.success) {
+        setGroups(groupsRes.data.data || []);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -83,6 +111,32 @@ export function MembersTab({ user }: { user: any }) {
   useEffect(() => {
     fetchSubscribers();
   }, []);
+
+  // Filter groups assigned to this staff member
+  const staffAssignedGroups = groups.filter((g) => {
+    if (isManagerOrAdmin) return true;
+    if (g.assignedStaffId === user?.id) return true;
+    if (g.staffAssignments && Array.isArray(g.staffAssignments)) {
+      return g.staffAssignments.some((sa: any) => sa.staffId === user?.id || sa.staff?.id === user?.id);
+    }
+    return false;
+  });
+
+  const staffAssignedGroupIds = staffAssignedGroups.map((g) => g.id);
+
+  // Check if current user can edit a member
+  const canEditMember = (member: any) => {
+    if (isManagerOrAdmin) return true;
+    if (isStaff) {
+      if (member.assignedStaffId === user?.id) return true;
+      if (member.memberships && Array.isArray(member.memberships)) {
+        return member.memberships.some((m: any) =>
+          staffAssignedGroupIds.includes(m.groupId || m.group?.id)
+        );
+      }
+    }
+    return false;
+  };
 
   const handleSelectUser = (u: any) => {
     setSelectedUserId(u.id);
@@ -101,6 +155,12 @@ export function MembersTab({ user }: { user: any }) {
       alert('Please fill mandatory fields: Full Name, Phone, and Residential Address');
       return;
     }
+
+    if (isStaff && !registerGroupId && staffAssignedGroups.length > 0) {
+      alert('Please select one of your assigned chit groups to add this member to.');
+      return;
+    }
+
     try {
       setSubmitting(true);
       const res = await api.post('/subscribers', {
@@ -114,6 +174,7 @@ export function MembersTab({ user }: { user: any }) {
         nomineeRelation: nomineeRelation.trim() || undefined,
         branchId: branchId || user.branchId || branches[0]?.id || undefined,
         userId: selectedUserId || undefined,
+        groupId: registerGroupId || undefined,
       });
 
       if (res.data.success) {
@@ -129,12 +190,120 @@ export function MembersTab({ user }: { user: any }) {
         setPanNumber('');
         setNomineeName('');
         setNomineeRelation('');
+        setRegisterGroupId('');
         fetchSubscribers();
       }
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to register member');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Open Edit Member Modal
+  const handleOpenEdit = (member: any) => {
+    setEditMemberId(member.id);
+    setEditFullName(member.fullName || '');
+    setEditPhone(member.phone || '');
+    setEditEmail(member.email || '');
+    setEditAddress(member.address || '');
+    setEditAadhaarNumber(member.aadhaarNo || member.aadhaarNumber || '');
+    setEditPanNumber(member.panNo || member.panNumber || '');
+    setEditNomineeName(member.nomineeName || '');
+    setEditNomineeRelation(member.nomineeRelation || '');
+    setEditBranchId(member.branchId || branches[0]?.id || '');
+    setShowEditModal(true);
+  };
+
+  // Save Edit Member
+  const handleUpdateMember = async () => {
+    if (!editMemberId || !editFullName.trim() || !editPhone.trim()) {
+      alert('Full Name and Phone Number are required.');
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const res = await api.put(`/subscribers/${editMemberId}`, {
+        fullName: editFullName.trim(),
+        phone: editPhone.trim(),
+        email: editEmail.trim() || undefined,
+        address: editAddress.trim() || undefined,
+        aadhaarNo: editAadhaarNumber.trim() || undefined,
+        panNo: editPanNumber.trim().toUpperCase() || undefined,
+        nomineeName: editNomineeName.trim() || undefined,
+        nomineeRelation: editNomineeRelation.trim() || undefined,
+        branchId: editBranchId || undefined,
+      });
+      if (res.data.success) {
+        alert('Member details updated successfully!');
+        setShowEditModal(false);
+        setEditMemberId(null);
+        fetchSubscribers();
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to update member');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Open Delete Member Confirmation
+  const handleOpenDelete = (member: any) => {
+    setMemberToDelete(member);
+    setShowDeleteModal(true);
+  };
+
+  // Confirm Delete Member (Managers only)
+  const handleConfirmDelete = async () => {
+    if (!memberToDelete) return;
+    try {
+      setSubmitting(true);
+      const res = await api.delete(`/subscribers/${memberToDelete.id}`);
+      if (res.data.success) {
+        alert(res.data.message || `Member ${memberToDelete.fullName} deleted successfully.`);
+        setShowDeleteModal(false);
+        setMemberToDelete(null);
+        fetchSubscribers();
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to delete member');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Open Assign to Chit Group Modal
+  const handleOpenAssignGroup = (member: any) => {
+    setAssigningMember(member);
+    const available = isManagerOrAdmin ? groups : staffAssignedGroups;
+    if (available.length > 0) {
+      setSelectedAssignGroupId(available[0].id);
+    }
+    setShowAssignGroupModal(true);
+  };
+
+  // Confirm Assign to Chit Group
+  const handleConfirmAssignGroup = async () => {
+    if (!assigningMember || !selectedAssignGroupId) {
+      alert('Please select a chit group to assign this member.');
+      return;
+    }
+    try {
+      setAssigningToGroup(true);
+      const res = await api.post('/chit-groups/enroll', {
+        groupId: selectedAssignGroupId,
+        subscriberId: assigningMember.id,
+      });
+      if (res.data.success) {
+        alert(res.data.message || 'Member assigned successfully to chit group!');
+        setShowAssignGroupModal(false);
+        setAssigningMember(null);
+        fetchSubscribers();
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to assign member to chit group');
+    } finally {
+      setAssigningToGroup(false);
     }
   };
 
@@ -226,20 +395,30 @@ export function MembersTab({ user }: { user: any }) {
     return matchesSearch && matchesKyc;
   });
 
-  const isManagerOrAdmin = user.role === 'SUPER_ADMIN' || user.role === 'MANAGER';
-
   return (
     <ScrollView style={mStyles.container}>
       {/* Header */}
       <View style={mStyles.headerRow}>
         <View>
-          <Text style={mStyles.headerTitle}>👥 Members & KYC Verification</Text>
+          <Text style={mStyles.headerTitle}>👥 {isStaff ? 'My Assigned Chit Members' : 'Members & KYC Verification'}</Text>
           <Text style={mStyles.headerSubtitle}>
-            Member Registry (Name, Phone, Aadhaar, PAN, Address), Multi-Group Enrollment & User Accounts
+            {isStaff
+              ? 'Collection Staff: Add and update members for your assigned chit groups.'
+              : 'Manager Portal: Create, update, delete members globally and assign them to any chit group.'}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-          <TouchableOpacity style={mStyles.primaryBtn} onPress={() => setShowRegisterModal(true)}>
+          <TouchableOpacity
+            style={mStyles.primaryBtn}
+            onPress={() => {
+              if (isStaff && staffAssignedGroups.length > 0) {
+                setRegisterGroupId(staffAssignedGroups[0].id);
+              } else {
+                setRegisterGroupId('');
+              }
+              setShowRegisterModal(true);
+            }}
+          >
             <Text style={mStyles.primaryBtnText}>➕ Register Member</Text>
           </TouchableOpacity>
         </View>
@@ -415,6 +594,34 @@ export function MembersTab({ user }: { user: any }) {
 
             {/* Action Bar */}
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              {/* Edit Member: Manager globally; Staff only if in their assigned group */}
+              {canEditMember(member) && (
+                <TouchableOpacity
+                  style={[mStyles.secondaryBtn, { borderColor: '#0284C7' }]}
+                  onPress={() => handleOpenEdit(member)}
+                >
+                  <Text style={[mStyles.secondaryBtnText, { color: '#0284C7', fontWeight: '700' }]}>✏️ Edit Member</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Assign to Chit Group: Manager can assign to any group; Staff can assign to their assigned groups */}
+              <TouchableOpacity
+                style={[mStyles.secondaryBtn, { borderColor: '#059669' }]}
+                onPress={() => handleOpenAssignGroup(member)}
+              >
+                <Text style={[mStyles.secondaryBtnText, { color: '#059669', fontWeight: '700' }]}>➕ Assign to Group</Text>
+              </TouchableOpacity>
+
+              {/* Delete Member: Only Manager / Super Admin */}
+              {isManagerOrAdmin && (
+                <TouchableOpacity
+                  style={[mStyles.secondaryBtn, { borderColor: '#DC2626' }]}
+                  onPress={() => handleOpenDelete(member)}
+                >
+                  <Text style={[mStyles.secondaryBtnText, { color: '#DC2626', fontWeight: '700' }]}>🗑️ Delete</Text>
+                </TouchableOpacity>
+              )}
+
               {isManagerOrAdmin && (
                 <TouchableOpacity
                   style={mStyles.secondaryBtn}
@@ -570,6 +777,47 @@ export function MembersTab({ user }: { user: any }) {
                   />
                 </View>
               </View>
+
+              {/* Chit Group Enrollment Picker */}
+              <Text style={mStyles.label}>
+                {isStaff ? 'Assign to Your Assigned Chit Group *' : 'Assign to Chit Group (Optional)'}
+              </Text>
+              <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>
+                {isStaff
+                  ? 'As collection staff, you can only add members directly to your assigned chit group.'
+                  : 'Enroll member into an active chit group now, or assign them later from the member registry.'}
+              </Text>
+              {isStaff && staffAssignedGroups.length === 0 ? (
+                <View style={{ backgroundColor: '#FEF3C7', padding: 10, borderRadius: 8, marginBottom: 12 }}>
+                  <Text style={{ fontSize: 12, color: '#B45309', fontWeight: '700' }}>
+                    ⚠️ You do not have any chit groups assigned yet. Ask a manager to assign a chit group to you before adding members.
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                  {isManagerOrAdmin && (
+                    <TouchableOpacity
+                      style={[mStyles.chip, !registerGroupId && mStyles.chipActive]}
+                      onPress={() => setRegisterGroupId('')}
+                    >
+                      <Text style={[mStyles.chipText, !registerGroupId && mStyles.chipTextActive]}>
+                        🌐 None (Assign Later)
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {(isStaff ? staffAssignedGroups : groups).map((g) => (
+                    <TouchableOpacity
+                      key={g.id}
+                      style={[mStyles.chip, registerGroupId === g.id && mStyles.chipActive]}
+                      onPress={() => setRegisterGroupId(g.id)}
+                    >
+                      <Text style={[mStyles.chipText, registerGroupId === g.id && mStyles.chipTextActive]}>
+                        💰 {g.name} [{g.groupCode}]
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
               <Text style={mStyles.label}>Assigned Branch *</Text>
               <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -977,6 +1225,301 @@ export function MembersTab({ user }: { user: any }) {
                       </View>
                     ))
                   )}
+                </View>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+      {/* --- MODAL 6: EDIT MEMBER --- */}
+      <Modal visible={showEditModal} transparent animationType="slide">
+        <View style={mStyles.modalBackdrop}>
+          <View style={[mStyles.modalBox, { maxHeight: '90%' }]}>
+            <View style={mStyles.modalHeader}>
+              <Text style={mStyles.modalTitle}>✏️ Edit Member Details</Text>
+              <TouchableOpacity onPress={() => setShowEditModal(false)}>
+                <Text style={mStyles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
+                {isManagerOrAdmin
+                  ? 'Update member profile details globally.'
+                  : 'Update member profile details for your assigned chit group.'}
+              </Text>
+
+              <Text style={mStyles.label}>Full Name *</Text>
+              <TextInput
+                style={mStyles.input}
+                placeholder="Full Legal Name"
+                value={editFullName}
+                onChangeText={setEditFullName}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={mStyles.label}>Phone Number *</Text>
+                  <TextInput
+                    style={mStyles.input}
+                    placeholder="10-digit mobile"
+                    keyboardType="phone-pad"
+                    value={editPhone}
+                    onChangeText={setEditPhone}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={mStyles.label}>Email Address</Text>
+                  <TextInput
+                    style={mStyles.input}
+                    placeholder="name@example.com"
+                    keyboardType="email-address"
+                    value={editEmail}
+                    onChangeText={setEditEmail}
+                  />
+                </View>
+              </View>
+
+              <Text style={mStyles.label}>Residential Address *</Text>
+              <TextInput
+                style={mStyles.input}
+                placeholder="Full residential address"
+                value={editAddress}
+                onChangeText={setEditAddress}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={mStyles.label}>Aadhaar Number (12 digits)</Text>
+                  <TextInput
+                    style={mStyles.input}
+                    placeholder="12-digit Aadhaar"
+                    value={editAadhaarNumber}
+                    onChangeText={setEditAadhaarNumber}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={mStyles.label}>PAN Card (10 characters)</Text>
+                  <TextInput
+                    style={mStyles.input}
+                    placeholder="10-digit PAN"
+                    value={editPanNumber}
+                    onChangeText={setEditPanNumber}
+                  />
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={mStyles.label}>Nominee Name</Text>
+                  <TextInput
+                    style={mStyles.input}
+                    placeholder="Nominee full name"
+                    value={editNomineeName}
+                    onChangeText={setEditNomineeName}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={mStyles.label}>Nominee Relationship</Text>
+                  <TextInput
+                    style={mStyles.input}
+                    placeholder="e.g. Spouse / Son"
+                    value={editNomineeRelation}
+                    onChangeText={setEditNomineeRelation}
+                  />
+                </View>
+              </View>
+
+              <Text style={mStyles.label}>Assigned Branch</Text>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                {branches.map((b) => (
+                  <TouchableOpacity
+                    key={b.id}
+                    style={[mStyles.chip, editBranchId === b.id && mStyles.chipActive]}
+                    onPress={() => setEditBranchId(b.id)}
+                  >
+                    <Text style={[mStyles.chipText, editBranchId === b.id && mStyles.chipTextActive]}>
+                      🏛️ {b.name} ({b.code})
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowEditModal(false)}>
+                  <Text style={mStyles.secondaryBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[mStyles.primaryBtn, submitting && { opacity: 0.7 }]}
+                  disabled={submitting}
+                  onPress={handleUpdateMember}
+                >
+                  {submitting ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Text style={mStyles.primaryBtnText}>✓ Save Changes</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- MODAL 7: DELETE MEMBER CONFIRMATION (MANAGERS ONLY) --- */}
+      <Modal visible={showDeleteModal} transparent animationType="fade">
+        <View style={mStyles.modalBackdrop}>
+          <View style={[mStyles.modalBox, { maxWidth: 500 }]}>
+            <View style={mStyles.modalHeader}>
+              <Text style={[mStyles.modalTitle, { color: '#DC2626' }]}>🗑️ Delete Member</Text>
+              <TouchableOpacity onPress={() => setShowDeleteModal(false)}>
+                <Text style={mStyles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {memberToDelete && (
+              <View>
+                <Text style={{ fontSize: 14, color: '#334155', marginBottom: 12 }}>
+                  Are you sure you want to permanently delete member{' '}
+                  <Text style={{ fontWeight: '800', color: '#0F172A' }}>
+                    {memberToDelete.fullName} [{memberToDelete.subscriberCode}]
+                  </Text>
+                  ?
+                </Text>
+                <View style={{ backgroundColor: '#FEF2F2', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#FECACA', marginBottom: 16 }}>
+                  <Text style={{ color: '#991B1B', fontSize: 12, fontWeight: '600' }}>
+                    ⚠️ Note: Only managers can delete members. Members with active financial transactions or won auctions cannot be deleted.
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
+                  <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowDeleteModal(false)}>
+                    <Text style={mStyles.secondaryBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[mStyles.dangerBtn, submitting && { opacity: 0.7 }]}
+                    disabled={submitting}
+                    onPress={handleConfirmDelete}
+                  >
+                    {submitting ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Text style={mStyles.dangerBtnText}>Yes, Delete Member</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- MODAL 8: ASSIGN MEMBER TO CHIT GROUP --- */}
+      <Modal visible={showAssignGroupModal} transparent animationType="fade">
+        <View style={mStyles.modalBackdrop}>
+          <View style={[mStyles.modalBox, { maxWidth: 550 }]}>
+            <View style={mStyles.modalHeader}>
+              <Text style={mStyles.modalTitle}>➕ Assign Member to Chit Group</Text>
+              <TouchableOpacity onPress={() => setShowAssignGroupModal(false)}>
+                <Text style={mStyles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {assigningMember && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={{ backgroundColor: '#F0F9FF', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#BAE6FD', marginBottom: 14 }}>
+                  <Text style={{ fontWeight: '800', fontSize: 14, color: '#0369A1' }}>
+                    {assigningMember.fullName} [{assigningMember.subscriberCode}]
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+                    Phone: {assigningMember.phone} • Enrolled in {assigningMember.memberships?.length || 0} chit groups
+                  </Text>
+                </View>
+
+                <Text style={mStyles.label}>
+                  {isStaff ? 'Select From Your Assigned Chit Groups *' : 'Select Chit Group to Assign *'}
+                </Text>
+                <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 8 }}>
+                  {isStaff
+                    ? 'Staff can only assign members to their own assigned chit groups.'
+                    : 'Managers can assign members to any active chit group globally.'}
+                </Text>
+
+                {(isStaff ? staffAssignedGroups : groups).length === 0 ? (
+                  <View style={{ backgroundColor: '#FEF3C7', padding: 12, borderRadius: 8, marginBottom: 14 }}>
+                    <Text style={{ color: '#B45309', fontSize: 12, fontWeight: '700' }}>
+                      ⚠️ No available chit groups to assign.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 8, marginBottom: 16 }}>
+                    {(isStaff ? staffAssignedGroups : groups).map((grp) => {
+                      const isSelected = selectedAssignGroupId === grp.id;
+                      const isAlreadyEnrolled = assigningMember.memberships?.some(
+                        (m: any) => m.groupId === grp.id || m.group?.id === grp.id
+                      );
+
+                      return (
+                        <TouchableOpacity
+                          key={grp.id}
+                          style={{
+                            padding: 12,
+                            borderRadius: 8,
+                            borderWidth: 1.5,
+                            borderColor: isSelected ? '#0284C7' : '#E2E8F0',
+                            backgroundColor: isSelected ? '#F0F9FF' : '#FFF',
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                          onPress={() => setSelectedAssignGroupId(grp.id)}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontWeight: '700', fontSize: 14, color: isSelected ? '#0369A1' : '#0F172A' }}>
+                              {grp.name} [{grp.groupCode}]
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#64748B' }}>
+                              Chit Value: ₹{(grp.chitValue ?? grp.totalChitValue)?.toLocaleString()} • Monthly: ₹{(grp.monthlyInstallment)?.toLocaleString()} • Capacity: {grp._count?.members ?? grp.members?.length ?? 0}/{grp.maxMembers}
+                            </Text>
+                            {isAlreadyEnrolled && (
+                              <Text style={{ fontSize: 11, color: '#D97706', fontWeight: '700', marginTop: 2 }}>
+                                ⚠️ Already enrolled in this group
+                              </Text>
+                            )}
+                          </View>
+                          <View
+                            style={{
+                              paddingHorizontal: 10,
+                              paddingVertical: 4,
+                              borderRadius: 14,
+                              backgroundColor: isSelected ? '#0284C7' : '#F1F5F9',
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#FFF' : '#64748B' }}>
+                              {isSelected ? '✓ Selected' : 'Select'}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+                  <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowAssignGroupModal(false)}>
+                    <Text style={mStyles.secondaryBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[mStyles.primaryBtn, assigningToGroup && { opacity: 0.7 }]}
+                    disabled={assigningToGroup || (isStaff ? staffAssignedGroups : groups).length === 0}
+                    onPress={handleConfirmAssignGroup}
+                  >
+                    {assigningToGroup ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Text style={mStyles.primaryBtnText}>✓ Assign to Group</Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
               </ScrollView>
             )}

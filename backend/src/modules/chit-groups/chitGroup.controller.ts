@@ -175,11 +175,34 @@ export const enrollSubscriber = async (req: AuthRequest, res: Response) => {
 
     const group = await prisma.chitGroup.findUnique({
       where: { id: groupId },
-      include: { members: true },
+      include: { members: true, staffAssignments: true },
     });
 
     if (!group) {
       return res.status(404).json({ success: false, message: 'Chit group not found' });
+    }
+
+    // Role check: Staff can only enroll/assign members to their own assigned chit group
+    if (req.user?.role === 'COLLECTION_STAFF') {
+      const staffUserId = req.user.id;
+      const isAssigned =
+        group.assignedStaffId === staffUserId ||
+        group.staffAssignments.some((sa) => sa.staffId === staffUserId);
+      if (!isAssigned) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden: Staff can only enroll members into their own assigned chit group.',
+        });
+      }
+    }
+
+    // Prevent duplicate enrollment in the same group
+    const alreadyEnrolled = group.members.some((m) => m.subscriberId === subscriberId);
+    if (alreadyEnrolled) {
+      return res.status(400).json({
+        success: false,
+        message: 'Member is already enrolled in this chit group.',
+      });
     }
 
     if (group.members.length >= group.maxMembers) {
@@ -194,9 +217,13 @@ export const enrollSubscriber = async (req: AuthRequest, res: Response) => {
         subscriberId,
         ticketNumber,
       },
+      include: {
+        group: { select: { id: true, groupCode: true, name: true } },
+        subscriber: { select: { id: true, fullName: true, subscriberCode: true } },
+      },
     });
 
-    return res.status(201).json({ success: true, data: membership });
+    return res.status(201).json({ success: true, message: `Member assigned successfully to group ${group.name}`, data: membership });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }
