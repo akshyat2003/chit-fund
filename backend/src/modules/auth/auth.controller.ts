@@ -199,21 +199,8 @@ export const login = async (req: AuthRequest, res: Response) => {
       },
     });
 
-    // Set HTTP-Only Session Cookies
-    const isProd = process.env.NODE_ENV === 'production';
-    res.cookie('token', accessToken, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      maxAge: 24 * 60 * 60 * 1000, // 1 day
-    });
-
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    // Note: Tokens are returned in JSON response and stored in tab-isolated sessionStorage
+    // No browser-wide cookies are set to prevent cross-tab session collisions
 
     // Record successful login audit log (FR-AUTH-012)
     try {
@@ -276,25 +263,32 @@ export const login = async (req: AuthRequest, res: Response) => {
  */
 export const logout = async (req: AuthRequest, res: Response) => {
   try {
-    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+    const userId = req.user?.id;
+    const sessionId = req.user?.sessionId;
 
-    if (refreshToken) {
+    // Invalidate ONLY this specific session belonging to this authenticated user
+    // Never delete or touch other users' sessions
+    if (sessionId && userId) {
       await prisma.refreshToken.deleteMany({
-        where: { token: refreshToken },
+        where: { id: sessionId, userId: userId },
+      });
+    } else if (userId) {
+      await prisma.refreshToken.deleteMany({
+        where: { userId: userId },
       });
     }
 
-    if (req.user?.id) {
+    if (userId) {
       try {
         await prisma.auditLog.create({
           data: {
-            companyId: req.user.companyId || null,
-            userId: req.user.id,
+            companyId: req.user?.companyId || null,
+            userId: userId,
             action: 'USER_LOGOUT',
             entity: 'User',
-            entityId: req.user.id,
+            entityId: userId,
             details: JSON.stringify({
-              sessionId: (req.user as any)?.sessionId || `sess_${req.user.id.slice(0, 8)}`,
+              sessionId: sessionId || `sess_${userId.slice(0, 8)}`,
               sessionStatus: 'TERMINATED',
               logoutTime: new Date().toISOString(),
             }),
@@ -304,13 +298,9 @@ export const logout = async (req: AuthRequest, res: Response) => {
       } catch (e) {}
     }
 
-    // Clear authentication cookies
-    res.clearCookie('token', { httpOnly: true, sameSite: 'lax' });
-    res.clearCookie('refreshToken', { httpOnly: true, sameSite: 'lax' });
-
     return res.json({
       success: true,
-      message: 'Logged out successfully. Session revoked and cookies cleared.',
+      message: 'Logged out successfully.',
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });

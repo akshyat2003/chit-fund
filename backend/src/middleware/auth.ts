@@ -10,6 +10,7 @@ export interface AuthRequest extends Request {
     role: string;
     phone: string;
     fullName: string;
+    sessionId?: string;
   };
 }
 
@@ -83,6 +84,7 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
       role: user.role,
       phone: user.phone,
       fullName: user.fullName,
+      sessionId: decoded.sessionId,
     };
 
     next();
