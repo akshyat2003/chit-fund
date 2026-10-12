@@ -14,12 +14,12 @@ export interface AuthRequest extends Request {
 }
 
 export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
-  // Support both HTTP-only Cookies and Bearer Authorization Header
-  const tokenFromCookie = req.cookies?.token;
+  // Prioritize Bearer Authorization Header to isolate sessions per browser tab/screen
   const authHeader = req.headers['authorization'];
   const tokenFromHeader = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : authHeader;
+  const tokenFromCookie = req.cookies?.token;
 
-  const token = tokenFromCookie || tokenFromHeader;
+  const token = tokenFromHeader || tokenFromCookie;
 
   if (!token) {
     return res.status(401).json({ success: false, message: 'Authentication token required' });
@@ -28,6 +28,20 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
   try {
     const secret = process.env.JWT_SECRET || 'chitfund_super_secure_jwt_secret_key_2026!@#';
     const decoded = jwt.verify(token, secret) as any;
+
+    // Single active screen check: verify that this specific session has not been superseded by a new login
+    if (decoded.sessionId) {
+      const activeSession = await prisma.refreshToken.findUnique({
+        where: { id: decoded.sessionId },
+      });
+      if (!activeSession) {
+        return res.status(401).json({
+          success: false,
+          code: 'SESSION_TERMINATED',
+          message: 'This account was logged in from another screen. You have been logged out.',
+        });
+      }
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },

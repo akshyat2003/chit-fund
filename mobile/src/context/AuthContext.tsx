@@ -26,10 +26,16 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 const getInitialAuth = () => {
-  if (typeof window !== 'undefined' && window.localStorage) {
+  if (typeof window !== 'undefined') {
     try {
-      const storedToken = localStorage.getItem('chitkart_auth_token');
-      const storedUser = localStorage.getItem('chitkart_auth_user');
+      // Check tab-isolated sessionStorage first, fallback to localStorage
+      const storedToken =
+        (window.sessionStorage && window.sessionStorage.getItem('chitkart_auth_token')) ||
+        (window.localStorage && window.localStorage.getItem('chitkart_auth_token'));
+      const storedUser =
+        (window.sessionStorage && window.sessionStorage.getItem('chitkart_auth_user')) ||
+        (window.localStorage && window.localStorage.getItem('chitkart_auth_user'));
+
       if (storedToken && storedUser) {
         const parsed = JSON.parse(storedUser);
         if (parsed && parsed.id) {
@@ -51,6 +57,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearInactivityMessage = () => setInactivityMessage(null);
 
+  // Connect global session termination handler (triggered when this screen was superseded by a newer login with the same credentials)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__chitkart_session_terminated_handler = (msg: string) => {
+        logout(msg);
+      };
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete (window as any).__chitkart_session_terminated_handler;
+      }
+    };
+  }, []);
+
+  // Periodic heartbeat session monitor: verifies that this account has not been logged into from another screen
+  useEffect(() => {
+    if (!token || !user) return;
+    const interval = setInterval(() => {
+      api.get('/auth/me').catch((err) => {
+        if (err.response?.status === 401 && err.response?.data?.code === 'SESSION_TERMINATED') {
+          logout(
+            err.response?.data?.message ||
+              'This account was logged in on another screen/device. You have been logged out.'
+          );
+        }
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [token, user?.id]);
+
   // Background profile sync upon launch without kicking out the user
   useEffect(() => {
     if (token) {
@@ -58,15 +94,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .then((res) => {
           if (res.data?.success && res.data?.data) {
             setUser(res.data.data);
-            if (typeof window !== 'undefined' && window.localStorage) {
+            if (typeof window !== 'undefined') {
               try {
-                localStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
+                if (window.sessionStorage) {
+                  window.sessionStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
+                }
+                if (window.localStorage) {
+                  window.localStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
+                }
               } catch (e) {}
             }
           }
         })
-        .catch(() => {
-          // Keep existing session; do not force logout on background profile sync
+        .catch((err) => {
+          if (err.response?.status === 401 && err.response?.data?.code === 'SESSION_TERMINATED') {
+            logout(
+              err.response?.data?.message ||
+                'This account was logged in on another screen/device. You have been logged out.'
+            );
+          }
         });
     }
   }, []);
@@ -83,11 +129,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(loggedUser);
         setAuthToken(accessToken);
 
-        // Persist token and user in localStorage
-        if (typeof window !== 'undefined' && window.localStorage) {
+        // Store in both sessionStorage (isolated per tab) and localStorage
+        if (typeof window !== 'undefined') {
           try {
-            localStorage.setItem('chitkart_auth_token', accessToken);
-            localStorage.setItem('chitkart_auth_user', JSON.stringify(loggedUser));
+            if (window.sessionStorage) {
+              window.sessionStorage.setItem('chitkart_auth_token', accessToken);
+              window.sessionStorage.setItem('chitkart_auth_user', JSON.stringify(loggedUser));
+            }
+            if (window.localStorage) {
+              window.localStorage.setItem('chitkart_auth_token', accessToken);
+              window.localStorage.setItem('chitkart_auth_user', JSON.stringify(loggedUser));
+            }
           } catch (e) {}
         }
 
@@ -110,9 +162,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await api.get('/auth/me');
       if (res.data.success && res.data.data) {
         setUser(res.data.data);
-        if (typeof window !== 'undefined' && window.localStorage) {
+        if (typeof window !== 'undefined') {
           try {
-            localStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
+            if (window.sessionStorage) {
+              window.sessionStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
+            }
+            if (window.localStorage) {
+              window.localStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
+            }
           } catch (e) {}
         }
       }
@@ -129,10 +186,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Ignore network errors on logout
     }
 
-    if (typeof window !== 'undefined' && window.localStorage) {
+    if (typeof window !== 'undefined') {
       try {
-        localStorage.removeItem('chitkart_auth_token');
-        localStorage.removeItem('chitkart_auth_user');
+        if (window.sessionStorage) {
+          window.sessionStorage.removeItem('chitkart_auth_token');
+          window.sessionStorage.removeItem('chitkart_auth_user');
+        }
+        if (window.localStorage) {
+          window.localStorage.removeItem('chitkart_auth_token');
+          window.localStorage.removeItem('chitkart_auth_user');
+        }
       } catch (e) {}
     }
 

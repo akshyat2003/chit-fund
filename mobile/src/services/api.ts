@@ -35,17 +35,29 @@ export const setAuthToken = (token: string | null) => {
   }
 };
 
-// Ensure EVERY outgoing request carries the Bearer token from localStorage
+// Helper to retrieve tab-isolated token (sessionStorage first for multi-tab isolation, then localStorage)
+export const getStoredAuthToken = (): string | null => {
+  if (typeof window !== 'undefined') {
+    if (window.sessionStorage) {
+      const sess = window.sessionStorage.getItem('chitkart_auth_token');
+      if (sess) return sess;
+    }
+    if (window.localStorage) {
+      return window.localStorage.getItem('chitkart_auth_token');
+    }
+  }
+  return null;
+};
+
+// Ensure EVERY outgoing request carries the tab-specific Bearer token
 api.interceptors.request.use(
   (config) => {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const savedToken = localStorage.getItem('chitkart_auth_token');
-      if (savedToken) {
-        if (config.headers && typeof (config.headers as any).set === 'function') {
-          (config.headers as any).set('Authorization', `Bearer ${savedToken}`);
-        } else if (config.headers) {
-          config.headers['Authorization'] = `Bearer ${savedToken}`;
-        }
+    const savedToken = getStoredAuthToken();
+    if (savedToken) {
+      if (config.headers && typeof (config.headers as any).set === 'function') {
+        (config.headers as any).set('Authorization', `Bearer ${savedToken}`);
+      } else if (config.headers) {
+        config.headers['Authorization'] = `Bearer ${savedToken}`;
       }
     }
     return config;
@@ -53,18 +65,23 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Immediately restore token from localStorage upon browser refresh
-if (typeof window !== 'undefined' && window.localStorage) {
-  try {
-    const savedToken = localStorage.getItem('chitkart_auth_token');
-    if (savedToken) {
-      api.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`;
-    }
-  } catch (e) {}
+// Immediately restore token upon tab launch or reload
+const initialToken = getStoredAuthToken();
+if (initialToken) {
+  api.defaults.headers.common['Authorization'] = `Bearer ${initialToken}`;
 }
 
-// Standard response interceptor (no premature auto-logouts on API errors)
+// Global response interceptor: kick out screen if same account was logged into another screen
 api.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject(error)
+  (error) => {
+    if (error.response?.status === 401 && error.response?.data?.code === 'SESSION_TERMINATED') {
+      if (typeof window !== 'undefined' && (window as any).__chitkart_session_terminated_handler) {
+        (window as any).__chitkart_session_terminated_handler(
+          error.response?.data?.message || 'This account was logged in from another screen. You have been logged out.'
+        );
+      }
+    }
+    return Promise.reject(error);
+  }
 );
