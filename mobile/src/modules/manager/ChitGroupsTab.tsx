@@ -34,7 +34,6 @@ export function ChitGroupsTab({ user }: { user: any }) {
 
   // Create Group Form (AC-05, AC-06)
   const [groupName, setGroupName] = useState('');
-  const [chitValue, setChitValue] = useState('100000');
   const [durationMonths, setDurationMonths] = useState('20');
   const [monthlyInstallment, setMonthlyInstallment] = useState('5000');
   const [maxMembers, setMaxMembers] = useState('20');
@@ -92,20 +91,9 @@ export function ChitGroupsTab({ user }: { user: any }) {
     fetchGroups();
   }, []);
 
-  // Auto-calculate monthly installment on create
-  const updateCreateChitValue = (val: string) => {
-    setChitValue(val);
-    const cv = Number(val) || 0;
-    const dm = Number(durationMonths) || 1;
-    if (dm > 0) setMonthlyInstallment(String(Math.round(cv / dm)));
-  };
-
   const updateCreateDuration = (val: string) => {
     setDurationMonths(val);
     setMaxMembers(val); // default maxMembers to duration
-    const cv = Number(chitValue) || 0;
-    const dm = Number(val) || 1;
-    if (dm > 0) setMonthlyInstallment(String(Math.round(cv / dm)));
   };
 
   // Auto-calculate monthly installment on edit
@@ -125,18 +113,19 @@ export function ChitGroupsTab({ user }: { user: any }) {
 
   // AC-05: Create Chit Group
   const handleCreateGroup = async () => {
-    if (!groupName.trim() || !chitValue || !durationMonths || !monthlyInstallment) {
+    if (!groupName.trim() || !durationMonths || !monthlyInstallment) {
       alert('Please fill all mandatory group configuration fields');
       return;
     }
+    const computedPoolValue = (Number(monthlyInstallment) || 0) * (Number(durationMonths) || 0);
     try {
       setSubmitting(true);
       const res = await api.post('/chit-groups', {
         name: groupName.trim(),
-        chitValue: Number(chitValue),
+        chitValue: computedPoolValue,
         totalMonths: Number(durationMonths),
         monthlyInstallment: Number(monthlyInstallment),
-        maxMembers: Number(maxMembers),
+        maxMembers: Number(maxMembers || durationMonths),
         foremanCommissionPct: Number(foremanCommissionRate),
         startDate,
         branchId: selectedBranchId || branches[0]?.id || user.branchId || undefined,
@@ -502,13 +491,13 @@ export function ChitGroupsTab({ user }: { user: any }) {
 
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={mStyles.label}>Total Chit Value (₹) *</Text>
+                  <Text style={mStyles.label}>Monthly Installment (₹) *</Text>
                   <TextInput
                     style={mStyles.input}
                     keyboardType="numeric"
-                    placeholder="100000"
-                    value={chitValue}
-                    onChangeText={updateCreateChitValue}
+                    placeholder="5000"
+                    value={monthlyInstallment}
+                    onChangeText={setMonthlyInstallment}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -525,16 +514,6 @@ export function ChitGroupsTab({ user }: { user: any }) {
 
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={mStyles.label}>Monthly Installment (₹) *</Text>
-                  <TextInput
-                    style={mStyles.input}
-                    keyboardType="numeric"
-                    placeholder="5000"
-                    value={monthlyInstallment}
-                    onChangeText={setMonthlyInstallment}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
                   <Text style={mStyles.label}>Member Capacity *</Text>
                   <TextInput
                     style={mStyles.input}
@@ -544,9 +523,6 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     onChangeText={setMaxMembers}
                   />
                 </View>
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={mStyles.label}>Foreman Commission (%) *</Text>
                   <TextInput
@@ -557,14 +533,41 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     onChangeText={setForemanCommissionRate}
                   />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={mStyles.label}>Commencement Date (YYYY-MM-DD)</Text>
-                  <TextInput
-                    style={mStyles.input}
-                    placeholder="YYYY-MM-DD"
-                    value={startDate}
-                    onChangeText={setStartDate}
-                  />
+              </View>
+
+              <View style={{ marginBottom: 12 }}>
+                <Text style={mStyles.label}>Commencement Date (YYYY-MM-DD)</Text>
+                <TextInput
+                  style={mStyles.input}
+                  placeholder="YYYY-MM-DD"
+                  value={startDate}
+                  onChangeText={setStartDate}
+                />
+              </View>
+
+              {/* Auto-calculated pool value summary card */}
+              <View
+                style={{
+                  backgroundColor: '#F0F9FF',
+                  borderColor: '#BAE6FD',
+                  borderWidth: 1,
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 14,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View>
+                    <Text style={{ fontSize: 11, color: '#0369A1', fontWeight: '700', textTransform: 'uppercase' }}>
+                      Calculated Total Scheme Value
+                    </Text>
+                    <Text style={{ fontSize: 18, color: '#0284C7', fontWeight: '800', marginTop: 2 }}>
+                      ₹{((Number(monthlyInstallment) || 0) * (Number(durationMonths) || 0)).toLocaleString()}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 12, color: '#64748B' }}>
+                    ₹{Number(monthlyInstallment || 0).toLocaleString()} × {durationMonths || 0} mos
+                  </Text>
                 </View>
               </View>
 

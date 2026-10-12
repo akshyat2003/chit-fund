@@ -48,8 +48,9 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
       startDate,
     } = req.body;
 
-    const effectiveChitValue = Number(chitValue ?? totalChitValue);
     const effectiveTotalMonths = Number(totalMonths ?? durationMonths);
+    const effectiveInstallment = Number(monthlyInstallment);
+    const effectiveChitValue = Number(chitValue ?? totalChitValue) || (effectiveInstallment * effectiveTotalMonths);
     const effectiveMaxMembers = Number(maxMembers || effectiveTotalMonths);
     const effectiveCommission = Number(foremanCommissionPct ?? foremanCommissionRate ?? 5.0);
 
@@ -62,11 +63,11 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
     if (!name || !effectiveChitValue || !effectiveMaxMembers || !effectiveTotalMonths || !startDate || !effectiveBranchId) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required chit group configuration parameters (name, chitValue, totalMonths, maxMembers, startDate)',
+        message: 'Missing required chit group configuration parameters (name, monthlyInstallment or chitValue, totalMonths, maxMembers, startDate)',
       });
     }
 
-    const calculatedInstallment = Number(monthlyInstallment) || (effectiveChitValue / effectiveTotalMonths);
+    const calculatedInstallment = effectiveInstallment || (effectiveChitValue / effectiveTotalMonths);
     const count = await prisma.chitGroup.count({ where: { companyId } });
     const groupCode = `CG-${2026 + count + 1}`;
 
