@@ -25,20 +25,30 @@ export function ChitGroupsTab({ user }: { user: any }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEnrollModal, setShowEnrollModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
 
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
   const [groupToDelete, setGroupToDelete] = useState<any>(null);
+  const [assignGroup, setAssignGroup] = useState<any>(null);
   const [scheduleData, setScheduleData] = useState<any>(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+
+  // Available staff members for assignment
+  const [staffMembers, setStaffMembers] = useState<any[]>([]);
+  const [createStaffIds, setCreateStaffIds] = useState<string[]>([]);
+  const [editStaffIds, setEditStaffIds] = useState<string[]>([]);
+  const [modalStaffIds, setModalStaffIds] = useState<string[]>([]);
 
   // Create Group Form (AC-05, AC-06)
+  const actualToday = new Date().toISOString().split('T')[0];
   const [groupName, setGroupName] = useState('');
   const [durationMonths, setDurationMonths] = useState('20');
   const [monthlyInstallment, setMonthlyInstallment] = useState('5000');
   const [maxMembers, setMaxMembers] = useState('20');
   const [foremanCommissionRate, setForemanCommissionRate] = useState('5');
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate] = useState(actualToday); // Actual date, fixed and cannot be changed
   const [selectedBranchId, setSelectedBranchId] = useState('');
 
   // Edit Group Form
@@ -60,10 +70,11 @@ export function ChitGroupsTab({ user }: { user: any }) {
   const fetchGroups = async () => {
     try {
       setLoading(true);
-      const [gRes, sRes, bRes] = await Promise.all([
+      const [gRes, sRes, bRes, staffRes] = await Promise.all([
         api.get('/chit-groups'),
         api.get('/subscribers'),
         api.get('/branches').catch(() => ({ data: { data: [] } })),
+        api.get('/auth/users?role=COLLECTION_STAFF').catch(() => ({ data: { data: [] } })),
       ]);
       if (gRes.data.success) {
         setGroups(gRes.data.data || []);
@@ -79,6 +90,9 @@ export function ChitGroupsTab({ user }: { user: any }) {
         if (bRes.data.data.length > 0 && !selectedBranchId) {
           setSelectedBranchId(bRes.data.data[0].id);
         }
+      }
+      if (staffRes.data.success) {
+        setStaffMembers(staffRes.data.data || []);
       }
     } catch (e) {
       console.error('Error fetching chit group data:', e);
@@ -111,7 +125,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
     if (dm > 0) setEditMonthlyInstallment(String(Math.round(cv / dm)));
   };
 
-  // AC-05: Create Chit Group
+  // AC-05: Create Chit Group (commencement date locked to actual date)
   const handleCreateGroup = async () => {
     if (!groupName.trim() || !durationMonths || !monthlyInstallment) {
       alert('Please fill all mandatory group configuration fields');
@@ -127,14 +141,17 @@ export function ChitGroupsTab({ user }: { user: any }) {
         monthlyInstallment: Number(monthlyInstallment),
         maxMembers: Number(maxMembers || durationMonths),
         foremanCommissionPct: Number(foremanCommissionRate),
-        startDate,
+        startDate: actualToday, // Fixed to current actual date - cannot be changed
         branchId: selectedBranchId || branches[0]?.id || user.branchId || undefined,
+        assignedStaffIds: createStaffIds,
+        assignedStaffId: createStaffIds[0] || null,
       });
 
       if (res.data.success) {
         alert('Chit group created successfully: ' + res.data.data.name);
         setShowCreateModal(false);
         setGroupName('');
+        setCreateStaffIds([]);
         fetchGroups();
       }
     } catch (e: any) {
@@ -153,9 +170,22 @@ export function ChitGroupsTab({ user }: { user: any }) {
     setEditMonthlyInstallment(String(grp.monthlyInstallment ?? 5000));
     setEditMaxMembers(String(grp.maxMembers ?? 20));
     setEditForemanCommissionRate(String(grp.foremanCommissionPct ?? grp.foremanCommissionRate ?? 5));
-    setEditStartDate(grp.startDate || new Date().toISOString().split('T')[0]);
+    setEditStartDate(grp.startDate || actualToday);
     setEditStatus(grp.status || 'ACTIVE');
     setEditBranchId(grp.branchId || branches[0]?.id || '');
+
+    // Collect currently assigned staff IDs
+    const assignedIds: string[] = [];
+    if (grp.staffAssignments && Array.isArray(grp.staffAssignments)) {
+      grp.staffAssignments.forEach((sa: any) => {
+        if (sa.staffId && !assignedIds.includes(sa.staffId)) assignedIds.push(sa.staffId);
+        else if (sa.staff?.id && !assignedIds.includes(sa.staff.id)) assignedIds.push(sa.staff.id);
+      });
+    }
+    if (grp.assignedStaffId && !assignedIds.includes(grp.assignedStaffId)) {
+      assignedIds.push(grp.assignedStaffId);
+    }
+    setEditStaffIds(assignedIds);
     setShowEditModal(true);
   };
 
@@ -174,9 +204,10 @@ export function ChitGroupsTab({ user }: { user: any }) {
         monthlyInstallment: Number(editMonthlyInstallment),
         maxMembers: Number(editMaxMembers),
         foremanCommissionPct: Number(editForemanCommissionRate),
-        startDate: editStartDate,
         status: editStatus,
         branchId: editBranchId || undefined,
+        assignedStaffIds: editStaffIds,
+        assignedStaffId: editStaffIds[0] || null,
       });
 
       if (res.data.success) {
@@ -188,6 +219,44 @@ export function ChitGroupsTab({ user }: { user: any }) {
       alert(e.response?.data?.message || 'Failed to update chit group');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Open Quick Staff Assignment Modal
+  const handleOpenAssignStaff = (grp: any) => {
+    setAssignGroup(grp);
+    const assignedIds: string[] = [];
+    if (grp.staffAssignments && Array.isArray(grp.staffAssignments)) {
+      grp.staffAssignments.forEach((sa: any) => {
+        if (sa.staffId && !assignedIds.includes(sa.staffId)) assignedIds.push(sa.staffId);
+        else if (sa.staff?.id && !assignedIds.includes(sa.staff.id)) assignedIds.push(sa.staff.id);
+      });
+    }
+    if (grp.assignedStaffId && !assignedIds.includes(grp.assignedStaffId)) {
+      assignedIds.push(grp.assignedStaffId);
+    }
+    setModalStaffIds(assignedIds);
+    setShowAssignModal(true);
+  };
+
+  // Save Staff Assignments for Group
+  const handleSaveAssignStaff = async () => {
+    if (!assignGroup) return;
+    try {
+      setAssigning(true);
+      const res = await api.post(`/chit-groups/${assignGroup.id}/assign-staff`, {
+        staffIds: modalStaffIds,
+      });
+      if (res.data.success) {
+        alert(res.data.message || `Staff assignment updated successfully for group "${assignGroup.name}".`);
+        setShowAssignModal(false);
+        setAssignGroup(null);
+        fetchGroups();
+      }
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'Failed to assign staff to chit group');
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -398,12 +467,53 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     Chit Value: ₹{poolValue.toLocaleString()} • Monthly: ₹{monthly.toLocaleString()} • Duration: {duration} Months
                   </Text>
                   <Text style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>
-                    👥 Enrolled: {enrolledCount} / {grp.maxMembers} Members {isFull ? '(FULL CAPACITY)' : ''} • Start Date: {grp.startDate} • Commission: {grp.foremanCommissionPct ?? grp.foremanCommissionRate ?? 5}%
+                    👥 Enrolled: {enrolledCount} / {grp.maxMembers} Members {isFull ? '(FULL CAPACITY)' : ''} • 🔒 Commencement Date: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{grp.startDate}</Text> (Fixed) • Commission: {grp.foremanCommissionPct ?? grp.foremanCommissionRate ?? 5}%
                   </Text>
+
+                  {/* Assigned Collection Staff Display */}
+                  {(() => {
+                    const assignedList: any[] = [];
+                    if (grp.staffAssignments && Array.isArray(grp.staffAssignments)) {
+                      grp.staffAssignments.forEach((sa: any) => {
+                        if (sa.staff && !assignedList.some((s) => s.id === sa.staff.id)) {
+                          assignedList.push(sa.staff);
+                        }
+                      });
+                    }
+                    if (grp.assignedStaff && !assignedList.some((s) => s.id === grp.assignedStaff.id)) {
+                      assignedList.push(grp.assignedStaff);
+                    }
+
+                    return (
+                      <View style={{ marginTop: 8, padding: 8, backgroundColor: '#F0F9FF', borderRadius: 8, borderWidth: 1, borderColor: '#BAE6FD' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
+                            🏃 Assigned Staff ({assignedList.length}):
+                          </Text>
+                          <Text style={{ fontSize: 10, color: '#0284C7' }}>
+                            (Multi-group assignment enabled)
+                          </Text>
+                        </View>
+                        {assignedList.length === 0 ? (
+                          <Text style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>⚠️ No staff currently assigned. Click "👥 Assign Staff" below to assign.</Text>
+                        ) : (
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                            {assignedList.map((stf: any) => (
+                              <View key={stf.id} style={{ backgroundColor: '#E0F2FE', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, flexDirection: 'row', alignItems: 'center' }}>
+                                <Text style={{ fontSize: 11, fontWeight: '700', color: '#0369A1' }}>
+                                  👤 {stf.fullName || stf.username} (@{stf.username})
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })()}
                 </View>
               </View>
 
-              {/* Action Buttons: Enroll, Schedule, Edit, Delete */}
+              {/* Action Buttons: Enroll, Schedule, Assign Staff, Edit, Delete */}
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
                 <TouchableOpacity
                   style={[mStyles.primaryBtn, { paddingVertical: 8, paddingHorizontal: 12 }, isFull && { opacity: 0.5 }]}
@@ -415,6 +525,13 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   }}
                 >
                   <Text style={mStyles.primaryBtnText}>👤 Enroll Member</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[mStyles.secondaryBtn, { paddingVertical: 8, paddingHorizontal: 12, borderColor: '#0284C7', backgroundColor: '#F0F9FF' }]}
+                  onPress={() => handleOpenAssignStaff(grp)}
+                >
+                  <Text style={[mStyles.secondaryBtnText, { color: '#0369A1', fontWeight: '700' }]}>👥 Assign Staff</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -536,13 +653,62 @@ export function ChitGroupsTab({ user }: { user: any }) {
               </View>
 
               <View style={{ marginBottom: 12 }}>
-                <Text style={mStyles.label}>Commencement Date (YYYY-MM-DD)</Text>
-                <TextInput
-                  style={mStyles.input}
-                  placeholder="YYYY-MM-DD"
-                  value={startDate}
-                  onChangeText={setStartDate}
-                />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={mStyles.label}>Commencement Date (Actual Date) *</Text>
+                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#B45309' }}>🔒 FIXED TO ACTUAL DATE</Text>
+                  </View>
+                </View>
+                <View style={[mStyles.input, { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1', justifyContent: 'center' }]}>
+                  <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: 14 }}>
+                    📅 {actualToday}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                  The commencement date is automatically locked to the actual inception date ({actualToday}) and cannot be changed.
+                </Text>
+              </View>
+
+              {/* Staff Assignment on Create */}
+              <View style={{ marginBottom: 14 }}>
+                <Text style={mStyles.label}>Assign Staff to this Chit Group</Text>
+                <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>
+                  Select one or more collection staff. A single staff member can manage multiple chit groups.
+                </Text>
+                {staffMembers.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>No staff members available. You can assign staff later.</Text>
+                ) : (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {staffMembers.map((stf) => {
+                      const isSelected = createStaffIds.includes(stf.id);
+                      return (
+                        <TouchableOpacity
+                          key={stf.id}
+                          style={{
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: isSelected ? '#0284C7' : '#CBD5E1',
+                            backgroundColor: isSelected ? '#E0F2FE' : '#FFF',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                          onPress={() => {
+                            setCreateStaffIds((prev) =>
+                              prev.includes(stf.id) ? prev.filter((id) => id !== stf.id) : [...prev, stf.id]
+                            );
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: isSelected ? '#0369A1' : '#475569' }}>
+                            {isSelected ? '✓ ' : '+ '} {stf.fullName || stf.username} (@{stf.username})
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
 
               {/* Auto-calculated pool value summary card */}
@@ -665,13 +831,58 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={mStyles.label}>Commencement Date</Text>
-                  <TextInput
-                    style={mStyles.input}
-                    value={editStartDate}
-                    onChangeText={setEditStartDate}
-                  />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={mStyles.label}>Commencement Date</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#B45309' }}>🔒 FIXED</Text>
+                  </View>
+                  <View style={[mStyles.input, { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1', justifyContent: 'center' }]}>
+                    <Text style={{ color: '#475569', fontWeight: '700', fontSize: 13 }}>
+                      📅 {editStartDate || actualToday} (Cannot be changed)
+                    </Text>
+                  </View>
                 </View>
+              </View>
+
+              {/* Staff Assignment on Edit */}
+              <View style={{ marginBottom: 14 }}>
+                <Text style={mStyles.label}>Assigned Staff Members</Text>
+                <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>
+                  Select staff members to handle collections for this group (single staff can be assigned to multiple groups).
+                </Text>
+                {staffMembers.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>No staff members available.</Text>
+                ) : (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {staffMembers.map((stf) => {
+                      const isSelected = editStaffIds.includes(stf.id);
+                      return (
+                        <TouchableOpacity
+                          key={stf.id}
+                          style={{
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: isSelected ? '#0284C7' : '#CBD5E1',
+                            backgroundColor: isSelected ? '#E0F2FE' : '#FFF',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                          onPress={() => {
+                            setEditStaffIds((prev) =>
+                              prev.includes(stf.id) ? prev.filter((id) => id !== stf.id) : [...prev, stf.id]
+                            );
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: isSelected ? '#0369A1' : '#475569' }}>
+                            {isSelected ? '✓ ' : '+ '} {stf.fullName || stf.username} (@{stf.username})
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
 
               <Text style={mStyles.label}>Group Status *</Text>
@@ -922,6 +1133,117 @@ export function ChitGroupsTab({ user }: { user: any }) {
                 </View>
               </ScrollView>
             ) : null}
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- MODAL 6: QUICK ASSIGN STAFF TO CHIT GROUP --- */}
+      <Modal visible={showAssignModal} transparent animationType="fade" onRequestClose={() => setShowAssignModal(false)}>
+        <View style={mStyles.modalBackdrop}>
+          <View style={[mStyles.modalBox, { maxWidth: 540 }]}>
+            <View style={mStyles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={mStyles.modalTitle}>👥 Assign Staff to Chit Group</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowAssignModal(false)}>
+                <Text style={mStyles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {assignGroup && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={{ backgroundColor: '#F0F9FF', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#BAE6FD', marginBottom: 14 }}>
+                  <Text style={{ fontWeight: '800', fontSize: 15, color: '#0369A1' }}>
+                    {assignGroup.name} [{assignGroup.groupCode}]
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+                    Chit Value: ₹{(assignGroup.chitValue ?? assignGroup.totalChitValue)?.toLocaleString()} • Commencement: {assignGroup.startDate} (Fixed)
+                  </Text>
+                </View>
+
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 4 }}>
+                  Select Staff Members ({modalStaffIds.length} Selected)
+                </Text>
+                <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
+                  Click on staff names to assign or remove. Note: A single staff member can be assigned to multiple chit groups simultaneously.
+                </Text>
+
+                {staffMembers.length === 0 ? (
+                  <View style={{ padding: 16, backgroundColor: '#F8FAFC', borderRadius: 8, alignItems: 'center' }}>
+                    <Text style={{ color: '#64748B', fontSize: 13 }}>No staff accounts registered yet. Create staff from the Staff tab first.</Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 8, marginBottom: 18 }}>
+                    {staffMembers.map((stf) => {
+                      const isAssigned = modalStaffIds.includes(stf.id);
+                      return (
+                        <TouchableOpacity
+                          key={stf.id}
+                          style={{
+                            padding: 12,
+                            borderRadius: 10,
+                            borderWidth: 1.5,
+                            borderColor: isAssigned ? '#0284C7' : '#E2E8F0',
+                            backgroundColor: isAssigned ? '#F0F9FF' : '#FFF',
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                          onPress={() => {
+                            setModalStaffIds((prev) =>
+                              prev.includes(stf.id) ? prev.filter((id) => id !== stf.id) : [...prev, stf.id]
+                            );
+                          }}
+                        >
+                          <View style={{ flex: 1, marginRight: 10 }}>
+                            <Text style={{ fontWeight: '700', fontSize: 14, color: isAssigned ? '#0369A1' : '#0F172A' }}>
+                              {stf.fullName || stf.username}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#64748B' }}>
+                              @{stf.username} • 📱 {stf.phone || '-'}
+                            </Text>
+                            {stf.address ? (
+                              <Text style={{ fontSize: 11, color: '#475569', marginTop: 2 }} numberOfLines={1}>
+                                🏠 {stf.address}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <View
+                            style={{
+                              paddingHorizontal: 12,
+                              paddingVertical: 6,
+                              borderRadius: 20,
+                              backgroundColor: isAssigned ? '#0284C7' : '#F1F5F9',
+                            }}
+                          >
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: isAssigned ? '#FFF' : '#64748B' }}>
+                              {isAssigned ? '✓ Assigned' : '+ Assign'}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 6 }}>
+                  <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowAssignModal(false)}>
+                    <Text style={mStyles.secondaryBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[mStyles.primaryBtn, assigning && { opacity: 0.7 }]}
+                    disabled={assigning}
+                    onPress={handleSaveAssignStaff}
+                  >
+                    {assigning ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Text style={mStyles.primaryBtnText}>✓ Save Assignments</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>

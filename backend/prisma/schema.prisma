@@ -86,6 +86,8 @@ model User {
   branch       Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
   
   assignedSubscribers Subscriber[] @relation("AssignedStaff")
+  assignedChitGroups   ChitGroup[] @relation("ChitGroupStaff")
+  chitGroupAssignments ChitGroupStaff[]
   recordedTransactions PaymentTransaction[] @relation("RecordedBy")
   approvedPayouts     Payout[] @relation("ApprovedBy")
   submittedHandovers  CashHandover[] @relation("StaffHandover")
@@ -150,11 +152,26 @@ model ChitGroup {
 
   company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   branch               Branch   @relation(fields: [branchId], references: [id])
+  assignedStaffId      String?
+  assignedStaff        User?    @relation("ChitGroupStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
 
   members              ChitGroupMember[]
+  staffAssignments     ChitGroupStaff[]
   schedules            InstallmentSchedule[]
   transactions         PaymentTransaction[]
   auctions             Auction[]
+}
+
+model ChitGroupStaff {
+  id         String   @id @default(uuid())
+  groupId    String
+  staffId    String
+  assignedAt DateTime @default(now())
+
+  group      ChitGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  staff      User      @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, staffId])
 }
 
 model ChitGroupMember {

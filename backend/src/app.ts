@@ -121,6 +121,7 @@ router.post('/chit-groups', authenticateToken, requireRoles('SUPER_ADMIN', 'MANA
 router.post('/chit-groups/enroll', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), chitGroupController.enrollSubscriber);
 router.get('/chit-groups/:id', authenticateToken, chitGroupController.getChitGroupDetails);
 router.put('/chit-groups/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), chitGroupController.updateChitGroup);
+router.post('/chit-groups/:id/assign-staff', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), chitGroupController.assignStaffToGroup);
 router.delete('/chit-groups/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), chitGroupController.deleteChitGroup);
 
 // Collection & Payment Routes (AC-08, AC-09, AC-10, AC-11, AC-12, AC-13)
