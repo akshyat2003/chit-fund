@@ -35,16 +35,10 @@ export const setAuthToken = (token: string | null) => {
   }
 };
 
-// Helper to retrieve tab-isolated token (sessionStorage first for multi-tab isolation, then localStorage)
+// Helper to retrieve tab-isolated token strictly from sessionStorage (new tabs start unauthenticated)
 export const getStoredAuthToken = (): string | null => {
-  if (typeof window !== 'undefined') {
-    if (window.sessionStorage) {
-      const sess = window.sessionStorage.getItem('chitkart_auth_token');
-      if (sess) return sess;
-    }
-    if (window.localStorage) {
-      return window.localStorage.getItem('chitkart_auth_token');
-    }
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    return window.sessionStorage.getItem('chitkart_auth_token');
   }
   return null;
 };

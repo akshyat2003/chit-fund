@@ -27,14 +27,18 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 const getInitialAuth = () => {
   if (typeof window !== 'undefined') {
+    // Purge any lingering tokens in localStorage to prevent session bleed to new tabs
     try {
-      // Check tab-isolated sessionStorage first, fallback to localStorage
-      const storedToken =
-        (window.sessionStorage && window.sessionStorage.getItem('chitkart_auth_token')) ||
-        (window.localStorage && window.localStorage.getItem('chitkart_auth_token'));
-      const storedUser =
-        (window.sessionStorage && window.sessionStorage.getItem('chitkart_auth_user')) ||
-        (window.localStorage && window.localStorage.getItem('chitkart_auth_user'));
+      if (window.localStorage) {
+        window.localStorage.removeItem('chitkart_auth_token');
+        window.localStorage.removeItem('chitkart_auth_user');
+      }
+    } catch (e) {}
+
+    try {
+      // ONLY check tab-isolated sessionStorage so newly opened tabs always start on the Login screen
+      const storedToken = window.sessionStorage ? window.sessionStorage.getItem('chitkart_auth_token') : null;
+      const storedUser = window.sessionStorage ? window.sessionStorage.getItem('chitkart_auth_user') : null;
 
       if (storedToken && storedUser) {
         const parsed = JSON.parse(storedUser);
@@ -94,14 +98,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .then((res) => {
           if (res.data?.success && res.data?.data) {
             setUser(res.data.data);
-            if (typeof window !== 'undefined') {
+            if (typeof window !== 'undefined' && window.sessionStorage) {
               try {
-                if (window.sessionStorage) {
-                  window.sessionStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
-                }
-                if (window.localStorage) {
-                  window.localStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
-                }
+                window.sessionStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
               } catch (e) {}
             }
           }
@@ -129,7 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(loggedUser);
         setAuthToken(accessToken);
 
-        // Store in both sessionStorage (isolated per tab) and localStorage
+        // Store exclusively in sessionStorage so this tab is authenticated without leaking to new tabs
         if (typeof window !== 'undefined') {
           try {
             if (window.sessionStorage) {
@@ -137,8 +136,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               window.sessionStorage.setItem('chitkart_auth_user', JSON.stringify(loggedUser));
             }
             if (window.localStorage) {
-              window.localStorage.setItem('chitkart_auth_token', accessToken);
-              window.localStorage.setItem('chitkart_auth_user', JSON.stringify(loggedUser));
+              window.localStorage.removeItem('chitkart_auth_token');
+              window.localStorage.removeItem('chitkart_auth_user');
             }
           } catch (e) {}
         }
@@ -162,14 +161,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await api.get('/auth/me');
       if (res.data.success && res.data.data) {
         setUser(res.data.data);
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && window.sessionStorage) {
           try {
-            if (window.sessionStorage) {
-              window.sessionStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
-            }
-            if (window.localStorage) {
-              window.localStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
-            }
+            window.sessionStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
           } catch (e) {}
         }
       }

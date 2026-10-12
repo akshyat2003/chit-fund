@@ -14,12 +14,9 @@ export interface AuthRequest extends Request {
 }
 
 export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
-  // Prioritize Bearer Authorization Header to isolate sessions per browser tab/screen
+  // Enforce tab-isolated Bearer header authorization to prevent cross-tab cookie bleeding
   const authHeader = req.headers['authorization'];
-  const tokenFromHeader = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : authHeader;
-  const tokenFromCookie = req.cookies?.token;
-
-  const token = tokenFromHeader || tokenFromCookie;
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
 
   if (!token) {
     return res.status(401).json({ success: false, message: 'Authentication token required' });
