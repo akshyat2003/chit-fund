@@ -424,31 +424,33 @@ export function MembersTab({ user }: { user: any }) {
         </View>
       </View>
 
-      {/* KPI Counters */}
-      <View style={mStyles.kpiRow}>
-        <View style={mStyles.kpiCard}>
-          <Text style={mStyles.kpiLabel}>Total Members</Text>
-          <Text style={[mStyles.kpiVal, { color: '#0F2F52' }]}>{subscribers.length}</Text>
+      {/* KPI Counters (Managers only - staff cannot see total members present) */}
+      {isManagerOrAdmin && (
+        <View style={mStyles.kpiRow}>
+          <View style={mStyles.kpiCard}>
+            <Text style={mStyles.kpiLabel}>Total Members</Text>
+            <Text style={[mStyles.kpiVal, { color: '#0F2F52' }]}>{subscribers.length}</Text>
+          </View>
+          <View style={mStyles.kpiCard}>
+            <Text style={mStyles.kpiLabel}>KYC Verified</Text>
+            <Text style={[mStyles.kpiVal, { color: '#16A34A' }]}>
+              {subscribers.filter((s) => s.kycStatus === 'VERIFIED').length}
+            </Text>
+          </View>
+          <View style={mStyles.kpiCard}>
+            <Text style={mStyles.kpiLabel}>Pending Review</Text>
+            <Text style={[mStyles.kpiVal, { color: '#D97706' }]}>
+              {subscribers.filter((s) => s.kycStatus === 'PENDING').length}
+            </Text>
+          </View>
+          <View style={mStyles.kpiCard}>
+            <Text style={mStyles.kpiLabel}>Total Group Enrollments</Text>
+            <Text style={[mStyles.kpiVal, { color: '#2563EB' }]}>
+              {subscribers.reduce((acc, s) => acc + (s.memberships?.length || 0), 0)}
+            </Text>
+          </View>
         </View>
-        <View style={mStyles.kpiCard}>
-          <Text style={mStyles.kpiLabel}>KYC Verified</Text>
-          <Text style={[mStyles.kpiVal, { color: '#16A34A' }]}>
-            {subscribers.filter((s) => s.kycStatus === 'VERIFIED').length}
-          </Text>
-        </View>
-        <View style={mStyles.kpiCard}>
-          <Text style={mStyles.kpiLabel}>Pending Review</Text>
-          <Text style={[mStyles.kpiVal, { color: '#D97706' }]}>
-            {subscribers.filter((s) => s.kycStatus === 'PENDING').length}
-          </Text>
-        </View>
-        <View style={mStyles.kpiCard}>
-          <Text style={mStyles.kpiLabel}>Total Group Enrollments</Text>
-          <Text style={[mStyles.kpiVal, { color: '#2563EB' }]}>
-            {subscribers.reduce((acc, s) => acc + (s.memberships?.length || 0), 0)}
-          </Text>
-        </View>
-      </View>
+      )}
 
       {/* Search & Filters */}
       <View style={mStyles.filterRow}>
@@ -552,7 +554,7 @@ export function MembersTab({ user }: { user: any }) {
                 {/* Multi-Group Enrollment Status */}
                 <View style={{ marginTop: 8 }}>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569', marginBottom: 4 }}>
-                    💰 ENROLLED CHIT GROUPS ({member.memberships?.length || 0}):
+                    💰 {isStaff ? 'ASSIGNED CHIT GROUPS:' : `ENROLLED CHIT GROUPS (${member.memberships?.length || 0}):`}
                   </Text>
                   {(!member.memberships || member.memberships.length === 0) ? (
                     <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>
@@ -1479,7 +1481,7 @@ export function MembersTab({ user }: { user: any }) {
                               {grp.name} [{grp.groupCode}]
                             </Text>
                             <Text style={{ fontSize: 12, color: '#64748B' }}>
-                              Chit Value: ₹{(grp.chitValue ?? grp.totalChitValue)?.toLocaleString()} • Monthly: ₹{(grp.monthlyInstallment)?.toLocaleString()} • Capacity: {grp._count?.members ?? grp.members?.length ?? 0}/{grp.maxMembers}
+                              Chit Value: ₹{(grp.chitValue ?? grp.totalChitValue)?.toLocaleString()} • Monthly: ₹{(grp.monthlyInstallment)?.toLocaleString()}{isManagerOrAdmin ? ` • Capacity: ${grp._count?.members ?? grp.members?.length ?? 0}/${grp.maxMembers}` : ''}
                             </Text>
                             {isAlreadyEnrolled && (
                               <Text style={{ fontSize: 11, color: '#D97706', fontWeight: '700', marginTop: 2 }}>

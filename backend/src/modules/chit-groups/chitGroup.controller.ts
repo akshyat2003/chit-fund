@@ -23,7 +23,24 @@ export const listChitGroups = async (req: AuthRequest, res: Response) => {
         },
         members: {
           include: {
-            subscriber: { select: { id: true, fullName: true, subscriberCode: true, phone: true } },
+            subscriber: {
+              select: {
+                id: true,
+                fullName: true,
+                subscriberCode: true,
+                phone: true,
+                email: true,
+                address: true,
+                aadhaarNo: true,
+                panNo: true,
+                dateOfBirth: true,
+                nomineeName: true,
+                nomineeRelation: true,
+                nomineePhone: true,
+                kycStatus: true,
+                assignedStaffId: true,
+              },
+            },
           },
         },
         schedules: { orderBy: { installmentNo: 'asc' } },
@@ -31,7 +48,21 @@ export const listChitGroups = async (req: AuthRequest, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    return res.json({ success: true, count: groups.length, data: groups });
+    const sanitizedGroups = groups.map((g) => {
+      if (req.user?.role === 'COLLECTION_STAFF') {
+        const staffUserId = req.user.id;
+        const assignedMembers = g.members.filter(
+          (m) => m.subscriber?.assignedStaffId === staffUserId
+        );
+        return {
+          ...g,
+          members: assignedMembers,
+        };
+      }
+      return g;
+    });
+
+    return res.json({ success: true, count: sanitizedGroups.length, data: sanitizedGroups });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -265,6 +296,13 @@ export const getChitGroupDetails = async (req: AuthRequest, res: Response) => {
 
     if (!group) {
       return res.status(404).json({ success: false, message: 'Chit group not found' });
+    }
+
+    if (req.user?.role === 'COLLECTION_STAFF') {
+      const staffUserId = req.user.id;
+      group.members = group.members.filter(
+        (m: any) => m.subscriber?.assignedStaffId === staffUserId
+      );
     }
 
     return res.json({ success: true, data: group });

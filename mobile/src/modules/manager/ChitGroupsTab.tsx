@@ -670,7 +670,10 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     Chit Value: ₹{poolValue.toLocaleString()} • Monthly: ₹{monthly.toLocaleString()} • Duration: {duration} Months
                   </Text>
                   <Text style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>
-                    👥 Enrolled: {enrolledCount} / {grp.maxMembers} Members {isFull ? '(FULL CAPACITY)' : ''} • 🔒 Commencement Date: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{formatCommencementDate(grp.startDate)}</Text> (Actual Date) • Commission: {grp.foremanCommissionPct ?? grp.foremanCommissionRate ?? 5}%
+                    {isManagerOrAdmin ? (
+                      <>👥 Enrolled: {enrolledCount} / {grp.maxMembers} Members {isFull ? '(FULL CAPACITY)' : ''} • </>
+                    ) : null}
+                    🔒 Commencement Date: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{formatCommencementDate(grp.startDate)}</Text> (Actual Date) • Commission: {grp.foremanCommissionPct ?? grp.foremanCommissionRate ?? 5}%
                   </Text>
                   {grp.createdAt ? (
                     <Text style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>
@@ -1201,7 +1204,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     Group: {selectedGroup.name} ({selectedGroup.groupCode})
                   </Text>
                   <Text style={{ fontSize: 12, color: '#64748B' }}>
-                    Chit Value: ₹{(selectedGroup.chitValue ?? selectedGroup.totalChitValue)?.toLocaleString()} • Monthly: ₹{(selectedGroup.monthlyInstallment)?.toLocaleString()} • Enrolled: {(selectedGroup.members?.length ?? selectedGroup.memberships?.length ?? 0)} / {selectedGroup.maxMembers}
+                    Chit Value: ₹{(selectedGroup.chitValue ?? selectedGroup.totalChitValue)?.toLocaleString()} • Monthly: ₹{(selectedGroup.monthlyInstallment)?.toLocaleString()}{isManagerOrAdmin ? ` • Enrolled: ${(selectedGroup.members?.length ?? selectedGroup.memberships?.length ?? 0)} / ${selectedGroup.maxMembers}` : ''}
                   </Text>
                 </View>
 
