@@ -63,9 +63,19 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
     const effectiveMaxMembers = Number(maxMembers || effectiveTotalMonths);
     const effectiveCommission = Number(foremanCommissionPct ?? foremanCommissionRate ?? 5.0);
 
-    // Commencement date must be the actual date (defaults to today's actual date)
-    const actualToday = new Date().toISOString().split('T')[0];
-    const effectiveStartDate = startDate ? String(startDate).trim() : actualToday;
+    // Commencement date must strictly be the actual creation date; no one can edit or provide a different commencement date
+    let effectiveStartDate: string;
+    try {
+      effectiveStartDate = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+    } catch {
+      const d = new Date();
+      effectiveStartDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
 
     let effectiveBranchId = branchId || req.user?.branchId;
     if (!effectiveBranchId) {
@@ -120,16 +130,18 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
     }
 
     // Auto-generate Installment Schedules for all totalMonths
-    const start = new Date(effectiveStartDate);
+    const [startYear, startMonth, startDay] = effectiveStartDate.split('-').map(Number);
     const scheduleData = [];
     for (let i = 1; i <= effectiveTotalMonths; i++) {
-      const dueDate = new Date(start);
-      dueDate.setMonth(dueDate.getMonth() + (i - 1));
+      const dueDate = new Date(startYear, (startMonth - 1) + (i - 1), startDay);
+      const dYear = dueDate.getFullYear();
+      const dMonth = String(dueDate.getMonth() + 1).padStart(2, '0');
+      const dDay = String(dueDate.getDate()).padStart(2, '0');
 
       scheduleData.push({
         groupId: group.id,
         installmentNo: i,
-        dueDate: dueDate.toISOString().split('T')[0],
+        dueDate: `${dYear}-${dMonth}-${dDay}`,
         scheduledAmount: calculatedInstallment,
         dividendAmount: 0.0,
         netDueAmount: calculatedInstallment,
@@ -356,15 +368,17 @@ export const updateChitGroup = async (req: AuthRequest, res: Response) => {
         newChitValue !== existingGroup.chitValue)
     ) {
       await prisma.installmentSchedule.deleteMany({ where: { groupId: id } });
-      const start = new Date(updated.startDate);
+      const [startYear, startMonth, startDay] = updated.startDate.split('-').map(Number);
       const scheduleData = [];
       for (let i = 1; i <= Number(newTotalMonths); i++) {
-        const dueDate = new Date(start);
-        dueDate.setMonth(dueDate.getMonth() + (i - 1));
+        const dueDate = new Date(startYear, (startMonth - 1) + (i - 1), startDay);
+        const dYear = dueDate.getFullYear();
+        const dMonth = String(dueDate.getMonth() + 1).padStart(2, '0');
+        const dDay = String(dueDate.getDate()).padStart(2, '0');
         scheduleData.push({
           groupId: id,
           installmentNo: i,
-          dueDate: dueDate.toISOString().split('T')[0],
+          dueDate: `${dYear}-${dMonth}-${dDay}`,
           scheduledAmount: newMonthly,
           dividendAmount: 0.0,
           netDueAmount: newMonthly,

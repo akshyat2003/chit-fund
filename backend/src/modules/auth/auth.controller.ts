@@ -928,7 +928,9 @@ export const listUsers = async (req: AuthRequest, res: Response) => {
 
     if (!isSuperAdmin) {
       if (req.user?.companyId) whereClause.companyId = req.user.companyId;
-      if (req.user?.branchId) whereClause.branchId = req.user.branchId;
+      if (req.query.branchId && typeof req.query.branchId === 'string' && req.query.branchId !== 'ALL') {
+        whereClause.branchId = req.query.branchId;
+      }
     } else {
       if (companyId && typeof companyId === 'string' && companyId !== 'ALL') {
         whereClause.companyId = companyId;

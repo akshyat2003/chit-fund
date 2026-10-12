@@ -54,8 +54,40 @@ export function ChitGroupsTab({ user }: { user: any }) {
   const [quickRegistering, setQuickRegistering] = useState(false);
   const [quickError, setQuickError] = useState('');
 
+  // Helper: Actual current date in YYYY-MM-DD (Asia/Kolkata / local timezone)
+  const getActualTodayDate = (): string => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+    } catch {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+  };
+
+  const formatActualTimestamp = (dateStr?: string | Date): string => {
+    if (!dateStr) return '-';
+    try {
+      return new Date(dateStr).toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return String(dateStr);
+    }
+  };
+
   // Create Group Form (AC-05, AC-06)
-  const actualToday = new Date().toISOString().split('T')[0];
+  const actualToday = getActualTodayDate();
   const [groupName, setGroupName] = useState('');
   const [durationMonths, setDurationMonths] = useState('20');
   const [monthlyInstallment, setMonthlyInstallment] = useState('5000');
@@ -597,8 +629,13 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     Chit Value: ₹{poolValue.toLocaleString()} • Monthly: ₹{monthly.toLocaleString()} • Duration: {duration} Months
                   </Text>
                   <Text style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>
-                    👥 Enrolled: {enrolledCount} / {grp.maxMembers} Members {isFull ? '(FULL CAPACITY)' : ''} • 🔒 Commencement Date: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{grp.startDate}</Text> (Fixed) • Commission: {grp.foremanCommissionPct ?? grp.foremanCommissionRate ?? 5}%
+                    👥 Enrolled: {enrolledCount} / {grp.maxMembers} Members {isFull ? '(FULL CAPACITY)' : ''} • 🔒 Commencement Date: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{grp.startDate}</Text> (Actual Inception) • Commission: {grp.foremanCommissionPct ?? grp.foremanCommissionRate ?? 5}%
                   </Text>
+                  {grp.createdAt ? (
+                    <Text style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>
+                      🕒 Registered Timestamp: <Text style={{ fontWeight: '600', color: '#334155' }}>{formatActualTimestamp(grp.createdAt)}</Text>
+                    </Text>
+                  ) : null}
 
                   {/* Assigned Collection Staff Display */}
                   {(() => {
@@ -620,9 +657,14 @@ export function ChitGroupsTab({ user }: { user: any }) {
                           <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
                             🏃 Assigned Staff ({assignedList.length}):
                           </Text>
-                          <Text style={{ fontSize: 10, color: '#0284C7' }}>
-                            (Multi-group assignment enabled)
-                          </Text>
+                          {isManagerOrAdmin && (
+                            <TouchableOpacity
+                              onPress={() => handleOpenAssignStaff(grp)}
+                              style={{ backgroundColor: '#0284C7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 }}
+                            >
+                              <Text style={{ fontSize: 11, color: '#FFF', fontWeight: '700' }}>👥 Assign Staff</Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
                         {assignedList.length === 0 ? (
                           <Text style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>⚠️ No staff currently assigned. Click "👥 Assign Staff" below to assign.</Text>
@@ -1456,6 +1498,15 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   <View style={{ gap: 8, marginBottom: 18 }}>
                     {staffMembers.map((stf) => {
                       const isAssigned = modalStaffIds.includes(stf.id);
+                      const otherGroupsCount = groups.filter((g) => {
+                        if (assignGroup && g.id === assignGroup.id) return false;
+                        if (g.assignedStaffId === stf.id) return true;
+                        if (g.staffAssignments && Array.isArray(g.staffAssignments)) {
+                          return g.staffAssignments.some((sa: any) => sa.staffId === stf.id || sa.staff?.id === stf.id);
+                        }
+                        return false;
+                      }).length;
+
                       return (
                         <TouchableOpacity
                           key={stf.id}
@@ -1487,6 +1538,9 @@ export function ChitGroupsTab({ user }: { user: any }) {
                                 🏠 {stf.address}
                               </Text>
                             ) : null}
+                            <Text style={{ fontSize: 11, color: otherGroupsCount > 0 ? '#0284C7' : '#64748B', marginTop: 3, fontWeight: '600' }}>
+                              ⚡ Assigned to {otherGroupsCount} other chit group(s)
+                            </Text>
                           </View>
                           <View
                             style={{
