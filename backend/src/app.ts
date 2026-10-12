@@ -87,6 +87,7 @@ router.post('/auth/forgot-password', authController.forgotPassword);
 router.post('/auth/verify-otp', authController.verifyOtp);
 router.post('/auth/reset-password', authController.resetPassword);
 router.get('/auth/me', authenticateToken, authController.me);
+router.put('/auth/profile', authenticateToken, authController.updateProfile);
 
 // User Account Administration (FR-AUTH-007, FR-AUTH-013, FR-AUTH-014, SA-04)
 router.get('/auth/users', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), authController.listUsers);

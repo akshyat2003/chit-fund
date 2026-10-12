@@ -30,6 +30,7 @@ export function StaffTab({
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
+  const [inspectingStaff, setInspectingStaff] = useState<any | null>(null);
 
   // Form Fields
   const [fullName, setFullName] = useState('');
@@ -37,6 +38,11 @@ export function StaffTab({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [branchId, setBranchId] = useState('');
+  const [aadhaarNo, setAadhaarNo] = useState('');
+  const [panNo, setPanNo] = useState('');
+  const [address, setAddress] = useState('');
+  const [emergencyContact, setEmergencyContact] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState('');
@@ -96,6 +102,11 @@ export function StaffTab({
     setPhone('');
     setEmail('');
     setBranchId(branches[0]?.id || user.branchId || '');
+    setAadhaarNo('');
+    setPanNo('');
+    setAddress('');
+    setEmergencyContact('');
+    setDateOfBirth('');
     generateStrongPassword();
     setFormError('');
     setFormSuccess('');
@@ -110,6 +121,11 @@ export function StaffTab({
     setPhone(staff.phone || '');
     setEmail(staff.email || '');
     setBranchId(staff.branchId || '');
+    setAadhaarNo(staff.aadhaarNo || '');
+    setPanNo(staff.panNo || '');
+    setAddress(staff.address || '');
+    setEmergencyContact(staff.emergencyContact || '');
+    setDateOfBirth(staff.dateOfBirth || '');
     setPassword('');
     setShowPassword(false);
     setFormError('');
@@ -158,7 +174,7 @@ export function StaffTab({
     try {
       setSubmitting(true);
       if (modalMode === 'create') {
-        const payload = {
+        const payload: any = {
           fullName: fullName.trim(),
           username: username.trim(),
           phone: phone.trim(),
@@ -167,6 +183,11 @@ export function StaffTab({
           role: 'COLLECTION_STAFF',
           companyId: user.company?.id,
           branchId: branchId || undefined,
+          aadhaarNo: aadhaarNo.trim() || undefined,
+          panNo: panNo.trim().toUpperCase() || undefined,
+          address: address.trim() || undefined,
+          emergencyContact: emergencyContact.trim() || undefined,
+          dateOfBirth: dateOfBirth.trim() || undefined,
         };
 
         const res = await api.post('/auth/users', payload);
@@ -187,6 +208,11 @@ export function StaffTab({
           phone: phone.trim(),
           email: email.trim() || null,
           branchId: branchId || null,
+          aadhaarNo: aadhaarNo.trim() || null,
+          panNo: panNo.trim().toUpperCase() || null,
+          address: address.trim() || null,
+          emergencyContact: emergencyContact.trim() || null,
+          dateOfBirth: dateOfBirth.trim() || null,
         };
         if (password.trim()) {
           payload.password = password.trim();
@@ -319,76 +345,262 @@ export function StaffTab({
           </TouchableOpacity>
         </View>
       ) : (
-        filteredStaff.map((staff) => (
-          <View key={staff.id} style={mStyles.card}>
-            <View style={mStyles.cardRow}>
-              <View style={{ flex: 1, marginRight: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <Text style={mStyles.cardTitle}>{staff.fullName}</Text>
-                  <View style={[mStyles.badge, mStyles.badgeInfo]}>
-                    <Text style={[mStyles.badgeText, mStyles.badgeInfoText]}>COLLECTION STAFF</Text>
-                  </View>
-                  <View
-                    style={[
-                      mStyles.badge,
-                      staff.status === 'ACTIVE' ? mStyles.badgeSuccess : mStyles.badgeDanger,
-                    ]}
-                  >
-                    <Text
+        filteredStaff.map((staff) => {
+          const hasKyc = Boolean(staff.aadhaarNo && staff.panNo);
+          return (
+            <View key={staff.id} style={mStyles.card}>
+              <View style={mStyles.cardRow}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                    <Text style={mStyles.cardTitle}>{staff.fullName}</Text>
+                    <View style={[mStyles.badge, mStyles.badgeInfo]}>
+                      <Text style={[mStyles.badgeText, mStyles.badgeInfoText]}>COLLECTION STAFF</Text>
+                    </View>
+                    <View
                       style={[
-                        mStyles.badgeText,
-                        staff.status === 'ACTIVE' ? mStyles.badgeSuccessText : mStyles.badgeDangerText,
+                        mStyles.badge,
+                        staff.status === 'ACTIVE' ? mStyles.badgeSuccess : mStyles.badgeDanger,
                       ]}
                     >
-                      {staff.status}
+                      <Text
+                        style={[
+                          mStyles.badgeText,
+                          staff.status === 'ACTIVE' ? mStyles.badgeSuccessText : mStyles.badgeDangerText,
+                        ]}
+                      >
+                        {staff.status}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        mStyles.badge,
+                        hasKyc ? mStyles.badgeSuccess : { backgroundColor: '#FEF3C7' },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          mStyles.badgeText,
+                          hasKyc ? mStyles.badgeSuccessText : { color: '#B45309' },
+                        ]}
+                      >
+                        {hasKyc ? '✓ KYC COMPLETE' : '⚠️ KYC PENDING'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={mStyles.cardSubtitle}>
+                    👤 Username: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{staff.username}</Text>
+                    {'  '}•{'  '}📱 Phone: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{staff.phone}</Text>
+                    {staff.email ? `  •  ✉️ ${staff.email}` : ''}
+                  </Text>
+
+                  {staff.branch?.name && (
+                    <Text style={[mStyles.cardSubtitle, { marginTop: 4, color: '#0284C7' }]}>
+                      🏛️ Branch: {staff.branch.name} ({staff.branch.code || ''})
                     </Text>
+                  )}
+
+                  {/* KYC & Personal Identification Summary */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8, backgroundColor: '#F8FAFC', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                    <Text style={{ fontSize: 12, color: '#475569' }}>
+                      🪪 <Text style={{ fontWeight: '700', color: '#1E293B' }}>Aadhaar:</Text> {staff.aadhaarNo || 'Not provided'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#475569' }}>
+                      💳 <Text style={{ fontWeight: '700', color: '#1E293B' }}>PAN:</Text> {staff.panNo || 'Not provided'}
+                    </Text>
+                    {staff.emergencyContact ? (
+                      <Text style={{ fontSize: 12, color: '#475569' }}>
+                        🚨 <Text style={{ fontWeight: '700', color: '#1E293B' }}>Emergency:</Text> {staff.emergencyContact}
+                      </Text>
+                    ) : null}
+                    {staff.address ? (
+                      <Text style={{ fontSize: 12, color: '#475569', width: '100%' }} numberOfLines={1}>
+                        🏠 <Text style={{ fontWeight: '700', color: '#1E293B' }}>Address:</Text> {staff.address}
+                      </Text>
+                    ) : null}
                   </View>
                 </View>
-                <Text style={mStyles.cardSubtitle}>
-                  👤 Username: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{staff.username}</Text>
-                  {'  '}•{'  '}📱 Phone: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{staff.phone}</Text>
-                  {staff.email ? `  •  ✉️ ${staff.email}` : ''}
-                </Text>
-                {staff.branch?.name && (
-                  <Text style={[mStyles.cardSubtitle, { marginTop: 4, color: '#0284C7' }]}>
-                    🏛️ Branch: {staff.branch.name} ({staff.branch.code || ''})
-                  </Text>
-                )}
-              </View>
 
-              {/* Action Buttons */}
-              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <TouchableOpacity
-                  style={[mStyles.secondaryBtn, { paddingVertical: 6, paddingHorizontal: 10 }]}
-                  onPress={() => openEditModal(staff)}
-                >
-                  <Text style={mStyles.secondaryBtnText}>✏️ Edit / Reset PW</Text>
-                </TouchableOpacity>
+                {/* Action Buttons */}
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <TouchableOpacity
+                    style={[mStyles.primaryBtn, { paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#0284C7' }]}
+                    onPress={() => setInspectingStaff(staff)}
+                  >
+                    <Text style={[mStyles.primaryBtnText, { fontSize: 12 }]}>📋 View Details</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[
-                    staff.status === 'ACTIVE' ? mStyles.dangerBtn : mStyles.successBtn,
-                    { paddingVertical: 6, paddingHorizontal: 10 },
-                  ]}
-                  onPress={() => handleToggleStatus(staff)}
-                >
-                  <Text style={staff.status === 'ACTIVE' ? mStyles.dangerBtnText : mStyles.successBtnText}>
-                    {staff.status === 'ACTIVE' ? '🔒 Suspend' : '🔓 Activate'}
-                  </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[mStyles.secondaryBtn, { paddingVertical: 6, paddingHorizontal: 10 }]}
+                    onPress={() => openEditModal(staff)}
+                  >
+                    <Text style={mStyles.secondaryBtnText}>✏️ Edit</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[mStyles.secondaryBtn, { paddingVertical: 6, paddingHorizontal: 8 }]}
-                  onPress={() => handleRevokeSessions(staff)}
-                  accessibilityLabel="Force Logout / Revoke Sessions"
-                >
-                  <Text style={{ fontSize: 13 }}>🚪</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      staff.status === 'ACTIVE' ? mStyles.dangerBtn : mStyles.successBtn,
+                      { paddingVertical: 6, paddingHorizontal: 10 },
+                    ]}
+                    onPress={() => handleToggleStatus(staff)}
+                  >
+                    <Text style={staff.status === 'ACTIVE' ? mStyles.dangerBtnText : mStyles.successBtnText}>
+                      {staff.status === 'ACTIVE' ? '🔒 Suspend' : '🔓 Activate'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[mStyles.secondaryBtn, { paddingVertical: 6, paddingHorizontal: 8 }]}
+                    onPress={() => handleRevokeSessions(staff)}
+                    accessibilityLabel="Force Logout / Revoke Sessions"
+                  >
+                    <Text style={{ fontSize: 13 }}>🚪</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
-        ))
+          );
+        })
       )}
+
+      {/* INSPECT STAFF FULL DETAILS MODAL */}
+      <Modal visible={!!inspectingStaff} transparent animationType="fade" onRequestClose={() => setInspectingStaff(null)}>
+        <View style={mStyles.modalBackdrop}>
+          <View style={[mStyles.modalBox, { maxWidth: 560 }]}>
+            <View style={mStyles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#0284C7', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 18 }}>
+                    {inspectingStaff?.fullName ? inspectingStaff.fullName[0].toUpperCase() : 'S'}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={mStyles.modalTitle}>{inspectingStaff?.fullName || 'Staff Member'}</Text>
+                  <Text style={{ fontSize: 12, color: '#64748B' }}>Login: @{inspectingStaff?.username}</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setInspectingStaff(null)}>
+                <Text style={mStyles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false}>
+              {/* Badges Row */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                <View style={[mStyles.badge, mStyles.badgeInfo]}>
+                  <Text style={[mStyles.badgeText, mStyles.badgeInfoText]}>COLLECTION STAFF</Text>
+                </View>
+                <View style={[mStyles.badge, inspectingStaff?.status === 'ACTIVE' ? mStyles.badgeSuccess : mStyles.badgeDanger]}>
+                  <Text style={[mStyles.badgeText, inspectingStaff?.status === 'ACTIVE' ? mStyles.badgeSuccessText : mStyles.badgeDangerText]}>
+                    STATUS: {inspectingStaff?.status}
+                  </Text>
+                </View>
+                <View style={[mStyles.badge, inspectingStaff?.aadhaarNo && inspectingStaff?.panNo ? mStyles.badgeSuccess : { backgroundColor: '#FEF3C7' }]}>
+                  <Text style={[mStyles.badgeText, inspectingStaff?.aadhaarNo && inspectingStaff?.panNo ? mStyles.badgeSuccessText : { color: '#B45309' }]}>
+                    {inspectingStaff?.aadhaarNo && inspectingStaff?.panNo ? '✓ KYC VERIFIED' : '⚠️ KYC PENDING'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Section 1: Contact Details */}
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                📞 Contact & Communication
+              </Text>
+              <View style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Primary Mobile Phone</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{inspectingStaff?.phone || '-'}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Email Address</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{inspectingStaff?.email || 'Not provided'}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Emergency Contact Phone</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: inspectingStaff?.emergencyContact ? '#0F172A' : '#94A3B8' }}>
+                    {inspectingStaff?.emergencyContact || 'Not provided'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Section 2: KYC & Government Identification */}
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                🪪 Government Identification & KYC
+              </Text>
+              <View style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Aadhaar Number</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: inspectingStaff?.aadhaarNo ? '#0F172A' : '#EF4444' }}>
+                    {inspectingStaff?.aadhaarNo || '⚠️ Not provided'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>PAN Card Number</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: inspectingStaff?.panNo ? '#0F172A' : '#EF4444' }}>
+                    {inspectingStaff?.panNo || '⚠️ Not provided'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Date of Birth</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
+                    {inspectingStaff?.dateOfBirth || 'Not provided'}
+                  </Text>
+                </View>
+                <View style={{ paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 2 }}>Residential Address</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#0F172A', lineHeight: 18 }}>
+                    {inspectingStaff?.address || 'Not provided'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Section 3: Branch & Employment */}
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                🏢 Branch & Employment Details
+              </Text>
+              <View style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Assigned Branch</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
+                    {inspectingStaff?.branch?.name ? `${inspectingStaff.branch.name} (${inspectingStaff.branch.code || ''})` : 'Company HQ / All'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Account Created</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
+                    {inspectingStaff?.createdAt ? new Date(inspectingStaff.createdAt).toLocaleDateString() : '-'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Staff User ID</Text>
+                  <Text style={{ fontSize: 11, fontFamily: 'monospace', color: '#64748B' }}>{inspectingStaff?.id}</Text>
+                </View>
+              </View>
+
+              {/* Action Buttons inside Inspector */}
+              <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
+                <TouchableOpacity
+                  style={mStyles.secondaryBtn}
+                  onPress={() => setInspectingStaff(null)}
+                >
+                  <Text style={mStyles.secondaryBtnText}>Close</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[mStyles.primaryBtn, { backgroundColor: '#0284C7' }]}
+                  onPress={() => {
+                    const st = inspectingStaff;
+                    setInspectingStaff(null);
+                    openEditModal(st);
+                  }}
+                >
+                  <Text style={mStyles.primaryBtnText}>✏️ Edit Staff Details</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Create / Edit Staff Modal */}
       <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeModal}>
@@ -503,8 +715,75 @@ export function StaffTab({
                 </>
               )}
 
+              {/* KYC & Identity Section Header */}
+              <View style={{ marginTop: 8, marginBottom: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>
+                  🪪 Personal & KYC Details (Aadhaar, PAN, Address)
+                </Text>
+                <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+                  Official government identification for compliance & verification.
+                </Text>
+              </View>
+
+              {/* Aadhaar Number */}
+              <Text style={mStyles.label}>Aadhaar Card Number</Text>
+              <TextInput
+                style={mStyles.input}
+                placeholder="12-digit Aadhaar number (e.g. 1234 5678 9012)"
+                placeholderTextColor="#94A3B8"
+                keyboardType="numeric"
+                maxLength={14}
+                value={aadhaarNo}
+                onChangeText={setAadhaarNo}
+              />
+
+              {/* PAN Number */}
+              <Text style={mStyles.label}>PAN Card Number</Text>
+              <TextInput
+                style={mStyles.input}
+                placeholder="10-digit PAN (e.g. ABCDE1234F)"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="characters"
+                maxLength={10}
+                value={panNo}
+                onChangeText={(text) => setPanNo(text.toUpperCase())}
+              />
+
+              {/* Residential Address */}
+              <Text style={mStyles.label}>Full Residential Address</Text>
+              <TextInput
+                style={[mStyles.input, { height: 60, textAlignVertical: 'top' }]}
+                placeholder="Street address, City, State, PIN Code"
+                placeholderTextColor="#94A3B8"
+                multiline
+                numberOfLines={2}
+                value={address}
+                onChangeText={setAddress}
+              />
+
+              {/* Emergency Contact */}
+              <Text style={mStyles.label}>Emergency Contact Phone</Text>
+              <TextInput
+                style={mStyles.input}
+                placeholder="Emergency phone number"
+                placeholderTextColor="#94A3B8"
+                keyboardType="phone-pad"
+                value={emergencyContact}
+                onChangeText={setEmergencyContact}
+              />
+
+              {/* Date of Birth */}
+              <Text style={mStyles.label}>Date of Birth</Text>
+              <TextInput
+                style={mStyles.input}
+                placeholder="YYYY-MM-DD (e.g. 1995-08-15)"
+                placeholderTextColor="#94A3B8"
+                value={dateOfBirth}
+                onChangeText={setDateOfBirth}
+              />
+
               {/* Password Section */}
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, marginTop: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 12 }}>
                 <Text style={mStyles.label}>
                   {modalMode === 'create' ? 'Staff Login Password *' : 'Reset Password (Leave blank to keep unchanged)'}
                 </Text>

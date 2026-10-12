@@ -248,6 +248,24 @@ function MainApp() {
       {/* Responsive Content Area Centered up to 1280px */}
       <View style={styles.contentArea}>
         <View style={styles.contentInner}>
+          {/* Staff KYC Action Prompt Banner */}
+          {user.role === 'COLLECTION_STAFF' && (!user.aadhaarNo || !user.panNo) && (
+            <View style={styles.kycPromptBanner}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={styles.kycPromptTitle}>⚠️ Action Required: Complete Your Staff Profile & KYC</Text>
+                <Text style={styles.kycPromptSubtitle}>
+                  Please provide your Aadhaar Number, PAN Card, and Residential Address so manager and administrators can verify your staff profile.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.kycPromptBtn}
+                onPress={() => setShowProfileModal(true)}
+              >
+                <Text style={styles.kycPromptBtnText}>Complete Profile Now ➔</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Render Active Tab on demand with role safety */}
           {effectiveTab === 'dashboard' && <DashboardTab user={user} onNavigateTab={handleTabNavigation} />}
           {effectiveTab === 'companies' && user.role === 'SUPER_ADMIN' && <CompaniesTab user={user} />}
@@ -1754,10 +1772,11 @@ function SuperAdminsTab({ user }: { user: any }) {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED'>('ALL');
   const [companyFilter, setCompanyFilter] = useState<string>('ALL');
 
-  // Modal State (Create / Edit)
+  // Modal State (Create / Edit / Inspect)
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [inspectingUser, setInspectingUser] = useState<any | null>(null);
 
   // Form Fields
   const [fullName, setFullName] = useState('');
@@ -1767,6 +1786,11 @@ function SuperAdminsTab({ user }: { user: any }) {
   const [role, setRole] = useState<'SUPER_ADMIN' | 'MANAGER' | 'COLLECTION_STAFF'>('MANAGER');
   const [companyId, setCompanyId] = useState('');
   const [userStatus, setUserStatus] = useState<'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED'>('ACTIVE');
+  const [aadhaarNo, setAadhaarNo] = useState('');
+  const [panNo, setPanNo] = useState('');
+  const [address, setAddress] = useState('');
+  const [emergencyContact, setEmergencyContact] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -1808,6 +1832,11 @@ function SuperAdminsTab({ user }: { user: any }) {
     setRole('MANAGER');
     setCompanyId(companies[0]?.id || '');
     setUserStatus('ACTIVE');
+    setAadhaarNo('');
+    setPanNo('');
+    setAddress('');
+    setEmergencyContact('');
+    setDateOfBirth('');
     setPassword('');
     setConfirmPassword('');
     setShowPassword(false);
@@ -1826,6 +1855,11 @@ function SuperAdminsTab({ user }: { user: any }) {
     setRole(target.role || 'MANAGER');
     setCompanyId(target.companyId || (target.company?.id || ''));
     setUserStatus(target.status || 'ACTIVE');
+    setAadhaarNo(target.aadhaarNo || '');
+    setPanNo(target.panNo || '');
+    setAddress(target.address || '');
+    setEmergencyContact(target.emergencyContact || '');
+    setDateOfBirth(target.dateOfBirth || '');
     setPassword('');
     setConfirmPassword('');
     setShowPassword(false);
@@ -1898,6 +1932,11 @@ function SuperAdminsTab({ user }: { user: any }) {
           role,
           companyId: role === 'SUPER_ADMIN' ? undefined : companyId,
           password,
+          aadhaarNo: aadhaarNo.trim() || undefined,
+          panNo: panNo.trim().toUpperCase() || undefined,
+          address: address.trim() || undefined,
+          emergencyContact: emergencyContact.trim() || undefined,
+          dateOfBirth: dateOfBirth.trim() || undefined,
         };
         const res = await api.post('/auth/users', payload);
         alert(res.data?.message || `User credential created successfully! Login credentials dispatched to ${cleanEmail}.`);
@@ -1912,6 +1951,11 @@ function SuperAdminsTab({ user }: { user: any }) {
           role,
           companyId: role === 'SUPER_ADMIN' ? null : companyId || null,
           status: userStatus,
+          aadhaarNo: aadhaarNo.trim() || null,
+          panNo: panNo.trim().toUpperCase() || null,
+          address: address.trim() || null,
+          emergencyContact: emergencyContact.trim() || null,
+          dateOfBirth: dateOfBirth.trim() || null,
         };
         if (password.trim()) {
           payload.password = password.trim();
@@ -2105,11 +2149,39 @@ function SuperAdminsTab({ user }: { user: any }) {
                   </Text>
                   {u.branch && <Text style={styles.companyMetaText}>📍 Branch: {u.branch.name}</Text>}
 
+                  {/* KYC & Identification Info */}
+                  <View style={{ marginTop: 8, padding: 8, backgroundColor: '#F8FAFC', borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0', gap: 4 }}>
+                    <Text style={{ fontSize: 12, color: '#475569' }}>
+                      🪪 Aadhaar: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{u.aadhaarNo || 'Not provided'}</Text>
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#475569' }}>
+                      💳 PAN: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{u.panNo || 'Not provided'}</Text>
+                    </Text>
+                    {u.emergencyContact ? (
+                      <Text style={{ fontSize: 12, color: '#475569' }}>
+                        🚨 Emergency: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{u.emergencyContact}</Text>
+                      </Text>
+                    ) : null}
+                    {u.address ? (
+                      <Text style={{ fontSize: 12, color: '#475569' }} numberOfLines={1}>
+                        🏠 Address: <Text style={{ fontWeight: '700', color: '#0F172A' }}>{u.address}</Text>
+                      </Text>
+                    ) : null}
+                  </View>
+
                   {/* Actions Row */}
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 10 }}>
+                    {/* View Full Details Button */}
+                    <TouchableOpacity
+                      style={{ flex: 1, minWidth: 85, backgroundColor: '#0A2540', paddingVertical: 8, borderRadius: 6, alignItems: 'center' }}
+                      onPress={() => setInspectingUser(u)}
+                    >
+                      <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>🔍 Details</Text>
+                    </TouchableOpacity>
+
                     {/* Edit Credential Button */}
                     <TouchableOpacity
-                      style={{ flex: 1, minWidth: 90, backgroundColor: '#0284C7', paddingVertical: 8, borderRadius: 6, alignItems: 'center' }}
+                      style={{ flex: 1, minWidth: 75, backgroundColor: '#0284C7', paddingVertical: 8, borderRadius: 6, alignItems: 'center' }}
                       onPress={() => openEditModal(u)}
                     >
                       <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>✏️ Edit</Text>
@@ -2120,7 +2192,7 @@ function SuperAdminsTab({ user }: { user: any }) {
                       <TouchableOpacity
                         style={{
                           flex: 1,
-                          minWidth: 90,
+                          minWidth: 85,
                           backgroundColor: u.status === 'ACTIVE' ? '#FEF3C7' : '#DCFCE7',
                           paddingVertical: 8,
                           borderRadius: 6,
@@ -2139,7 +2211,7 @@ function SuperAdminsTab({ user }: { user: any }) {
                     {/* Delete Credential Button */}
                     {!isCurrentUser && (
                       <TouchableOpacity
-                        style={{ flex: 1, minWidth: 80, backgroundColor: '#FEF2F2', paddingVertical: 8, borderRadius: 6, alignItems: 'center', borderWidth: 1, borderColor: '#EF4444' }}
+                        style={{ flex: 1, minWidth: 75, backgroundColor: '#FEF2F2', paddingVertical: 8, borderRadius: 6, alignItems: 'center', borderWidth: 1, borderColor: '#EF4444' }}
                         onPress={() => setDeleteTargetUser(u)}
                       >
                         <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 12 }}>🗑️ Delete</Text>
@@ -2152,6 +2224,129 @@ function SuperAdminsTab({ user }: { user: any }) {
           </View>
         </ScrollView>
       )}
+
+      {/* INSPECT USER DETAILS MODAL (SUPER ADMIN INSPECTOR) */}
+      <Modal visible={!!inspectingUser} transparent animationType="fade" onRequestClose={() => setInspectingUser(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: 560 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#0F2F52', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 18 }}>
+                    {inspectingUser?.fullName ? inspectingUser.fullName[0].toUpperCase() : 'U'}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={{ fontSize: 18, fontWeight: '800', color: '#0F172A' }}>{inspectingUser?.fullName}</Text>
+                  <Text style={{ fontSize: 12, color: '#64748B' }}>Login: @{inspectingUser?.username}</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setInspectingUser(null)}>
+                <Text style={{ fontSize: 22, color: '#64748B', fontWeight: '700' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
+              {/* Badges */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+                <View style={{ backgroundColor: '#E0F2FE', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#0284C7' }}>{inspectingUser?.role?.replace('_', ' ')}</Text>
+                </View>
+                <View style={inspectingUser?.status === 'ACTIVE' ? styles.statusBadgeActive : styles.statusBadgeSuspended}>
+                  <Text style={inspectingUser?.status === 'ACTIVE' ? styles.statusTextActive : styles.statusTextSuspended}>
+                    {inspectingUser?.status}
+                  </Text>
+                </View>
+                <View style={{ backgroundColor: inspectingUser?.aadhaarNo && inspectingUser?.panNo ? '#DCFCE7' : '#FEF3C7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: inspectingUser?.aadhaarNo && inspectingUser?.panNo ? '#166534' : '#B45309' }}>
+                    {inspectingUser?.aadhaarNo && inspectingUser?.panNo ? '✓ KYC COMPLETE' : '⚠️ KYC PENDING'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Contact Information */}
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#64748B', marginBottom: 6, textTransform: 'uppercase' }}>Contact & Access</Text>
+              <View style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14, gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Phone Number</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{inspectingUser?.phone || '-'}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Email</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{inspectingUser?.email || 'Not provided'}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Emergency Contact</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{inspectingUser?.emergencyContact || 'Not provided'}</Text>
+                </View>
+              </View>
+
+              {/* KYC Identification */}
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#64748B', marginBottom: 6, textTransform: 'uppercase' }}>Government Identification & KYC</Text>
+              <View style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14, gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Aadhaar Number</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: inspectingUser?.aadhaarNo ? '#0F172A' : '#EF4444' }}>
+                    {inspectingUser?.aadhaarNo || '⚠️ Not provided'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>PAN Number</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: inspectingUser?.panNo ? '#0F172A' : '#EF4444' }}>
+                    {inspectingUser?.panNo || '⚠️ Not provided'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Date of Birth</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{inspectingUser?.dateOfBirth || 'Not provided'}</Text>
+                </View>
+                <View style={{ paddingTop: 4 }}>
+                  <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 2 }}>Residential Address</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#0F172A', lineHeight: 18 }}>{inspectingUser?.address || 'Not provided'}</Text>
+                </View>
+              </View>
+
+              {/* Organization & Account */}
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#64748B', marginBottom: 6, textTransform: 'uppercase' }}>Organization & Account</Text>
+              <View style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16, gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Company</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
+                    {inspectingUser?.company ? `${inspectingUser.company.name} (${inspectingUser.company.code})` : 'Platform Level (All Companies)'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>Branch</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
+                    {inspectingUser?.branch?.name ? inspectingUser.branch.name : 'All Branches / HQ'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13, color: '#64748B' }}>User ID</Text>
+                  <Text style={{ fontSize: 11, fontFamily: 'monospace', color: '#64748B' }}>{inspectingUser?.id}</Text>
+                </View>
+              </View>
+
+              {/* Inspector Buttons */}
+              <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end' }}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setInspectingUser(null)}>
+                  <Text style={styles.cancelBtnText}>Close</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { backgroundColor: '#0284C7', marginTop: 0 }]}
+                  onPress={() => {
+                    const u = inspectingUser;
+                    setInspectingUser(null);
+                    openEditModal(u);
+                  }}
+                >
+                  <Text style={styles.primaryBtnText}>✏️ Edit User</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* CREATE / EDIT USER MODAL */}
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
@@ -2281,6 +2476,68 @@ function SuperAdminsTab({ user }: { user: any }) {
                   </View>
                 </>
               )}
+
+              {/* Personal Identification & KYC Section */}
+              <View style={{ marginTop: 12, marginBottom: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 12 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', marginBottom: 2 }}>
+                  🪪 Personal & KYC Details (Aadhaar, PAN, Address)
+                </Text>
+                <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 10 }}>
+                  Government identification details for identity verification and platform audits.
+                </Text>
+
+                {/* Aadhaar Number */}
+                <Text style={styles.label}>Aadhaar Number</Text>
+                <TextInput
+                  style={styles.input}
+                  value={aadhaarNo}
+                  onChangeText={setAadhaarNo}
+                  placeholder="12-digit Aadhaar (e.g. 1234 5678 9012)"
+                  keyboardType="numeric"
+                  maxLength={14}
+                />
+
+                {/* PAN Number */}
+                <Text style={styles.label}>PAN Card Number</Text>
+                <TextInput
+                  style={styles.input}
+                  value={panNo}
+                  onChangeText={(t) => setPanNo(t.toUpperCase())}
+                  placeholder="10-digit PAN (e.g. ABCDE1234F)"
+                  autoCapitalize="characters"
+                  maxLength={10}
+                />
+
+                {/* Address */}
+                <Text style={styles.label}>Residential Address</Text>
+                <TextInput
+                  style={[styles.input, { height: 60, textAlignVertical: 'top' }]}
+                  value={address}
+                  onChangeText={setAddress}
+                  placeholder="Street, City, State, PIN code"
+                  multiline
+                  numberOfLines={2}
+                />
+
+                {/* Emergency Contact */}
+                <Text style={styles.label}>Emergency Contact Phone</Text>
+                <TextInput
+                  style={styles.input}
+                  value={emergencyContact}
+                  onChangeText={setEmergencyContact}
+                  placeholder="Emergency phone number"
+                  keyboardType="phone-pad"
+                />
+
+                {/* Date of Birth */}
+                <Text style={styles.label}>Date of Birth</Text>
+                <TextInput
+                  style={styles.input}
+                  value={dateOfBirth}
+                  onChangeText={setDateOfBirth}
+                  placeholder="YYYY-MM-DD (e.g. 1995-08-15)"
+                />
+              </View>
 
               {/* Password Section */}
               <Text style={styles.label}>
@@ -4291,6 +4548,7 @@ function ProfileModal({
   onClose: () => void;
   onRefreshUser: () => Promise<void>;
 }) {
+  // Password state
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -4299,6 +4557,78 @@ function ProfileModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Personal / KYC Edit State
+  const [profileFullName, setProfileFullName] = useState(user?.fullName || '');
+  const [profilePhone, setProfilePhone] = useState(user?.phone || '');
+  const [profileEmail, setProfileEmail] = useState(user?.email || '');
+  const [profileAadhaarNo, setProfileAadhaarNo] = useState(user?.aadhaarNo || '');
+  const [profilePanNo, setProfilePanNo] = useState(user?.panNo || '');
+  const [profileAddress, setProfileAddress] = useState(user?.address || '');
+  const [profileEmergencyContact, setProfileEmergencyContact] = useState(user?.emergencyContact || '');
+  const [profileDateOfBirth, setProfileDateOfBirth] = useState(user?.dateOfBirth || '');
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+
+  // Re-sync states whenever modal opens or user updates
+  useEffect(() => {
+    if (visible && user) {
+      setProfileFullName(user.fullName || '');
+      setProfilePhone(user.phone || '');
+      setProfileEmail(user.email || '');
+      setProfileAadhaarNo(user.aadhaarNo || '');
+      setProfilePanNo(user.panNo || '');
+      setProfileAddress(user.address || '');
+      setProfileEmergencyContact(user.emergencyContact || '');
+      setProfileDateOfBirth(user.dateOfBirth || '');
+      setProfileError('');
+      setProfileSuccess('');
+      setError('');
+      setSuccess('');
+    }
+  }, [visible, user]);
+
+  const handleUpdateProfile = async () => {
+    setProfileError('');
+    setProfileSuccess('');
+
+    if (!profileFullName.trim() || !profilePhone.trim()) {
+      setProfileError('Full Name and Mobile Phone Number are required.');
+      return;
+    }
+
+    if (profileAadhaarNo.trim() && profileAadhaarNo.replace(/\s+/g, '').length < 12) {
+      setProfileError('Aadhaar number must be at least 12 digits.');
+      return;
+    }
+
+    if (profilePanNo.trim() && profilePanNo.trim().length !== 10) {
+      setProfileError('PAN Card number must be 10 characters (e.g. ABCDE1234F).');
+      return;
+    }
+
+    setProfileLoading(true);
+    try {
+      const res = await api.put('/auth/profile', {
+        fullName: profileFullName.trim(),
+        phone: profilePhone.trim(),
+        email: profileEmail.trim() || null,
+        aadhaarNo: profileAadhaarNo.trim() || null,
+        panNo: profilePanNo.trim().toUpperCase() || null,
+        address: profileAddress.trim() || null,
+        emergencyContact: profileEmergencyContact.trim() || null,
+        dateOfBirth: profileDateOfBirth.trim() || null,
+      });
+
+      setProfileSuccess(res.data?.message || 'Profile & KYC details saved successfully!');
+      if (onRefreshUser) await onRefreshUser();
+    } catch (err: any) {
+      setProfileError(err.response?.data?.message || err.message || 'Failed to update profile details');
+    } finally {
+      setProfileLoading(false);
+    }
+  };
 
   const handleChangePassword = async () => {
     setError('');
@@ -4350,10 +4680,12 @@ function ProfileModal({
     }
   };
 
+  const hasKyc = Boolean(user?.aadhaarNo && user?.panNo);
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { maxWidth: 620 }]}>
+        <View style={[styles.modalContent, { maxWidth: 660 }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <Text style={styles.modalTitle}>User Profile & Security</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -4362,7 +4694,7 @@ function ProfileModal({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-            {/* User Profile Card */}
+            {/* User Profile Summary Card */}
             <View style={styles.profileCard}>
               <View style={styles.profileHeaderRow}>
                 <View style={styles.profileAvatar}>
@@ -4372,22 +4704,49 @@ function ProfileModal({
                 </View>
                 <View style={{ flex: 1, marginLeft: 14 }}>
                   <Text style={styles.profileFullName}>{user?.fullName || 'User'}</Text>
-                  <Text style={styles.profileRoleBadge}>{user?.role?.replace('_', ' ') || 'USER'}</Text>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                    <Text style={styles.profileRoleBadge}>{user?.role?.replace('_', ' ') || 'USER'}</Text>
+                    <View style={{ backgroundColor: hasKyc ? '#DCFCE7' : '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: hasKyc ? '#166534' : '#B45309' }}>
+                        {hasKyc ? '✓ KYC VERIFIED' : '⚠️ KYC PENDING'}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               </View>
 
               <View style={styles.profileDetailsGrid}>
                 <View style={styles.profileDetailItem}>
                   <Text style={styles.profileDetailLabel}>Username</Text>
-                  <Text style={styles.profileDetailValue}>{user?.username || '-'}</Text>
-                </View>
-                <View style={styles.profileDetailItem}>
-                  <Text style={styles.profileDetailLabel}>Email</Text>
-                  <Text style={styles.profileDetailValue}>{user?.email || 'akshyatraj@yahoo.com'}</Text>
+                  <Text style={styles.profileDetailValue}>@{user?.username || '-'}</Text>
                 </View>
                 <View style={styles.profileDetailItem}>
                   <Text style={styles.profileDetailLabel}>Mobile Phone</Text>
                   <Text style={styles.profileDetailValue}>{user?.phone || '-'}</Text>
+                </View>
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Email</Text>
+                  <Text style={styles.profileDetailValue}>{user?.email || 'Not provided'}</Text>
+                </View>
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Aadhaar Card No</Text>
+                  <Text style={[styles.profileDetailValue, { color: user?.aadhaarNo ? '#0F172A' : '#EF4444' }]}>
+                    {user?.aadhaarNo || '⚠️ Not provided'}
+                  </Text>
+                </View>
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>PAN Card No</Text>
+                  <Text style={[styles.profileDetailValue, { color: user?.panNo ? '#0F172A' : '#EF4444' }]}>
+                    {user?.panNo || '⚠️ Not provided'}
+                  </Text>
+                </View>
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Date of Birth</Text>
+                  <Text style={styles.profileDetailValue}>{user?.dateOfBirth || '-'}</Text>
+                </View>
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Emergency Contact</Text>
+                  <Text style={styles.profileDetailValue}>{user?.emergencyContact || '-'}</Text>
                 </View>
                 <View style={styles.profileDetailItem}>
                   <Text style={styles.profileDetailLabel}>Company</Text>
@@ -4401,14 +4760,128 @@ function ProfileModal({
                     {user?.branch ? `${user.branch.name} (${user.branch.code})` : 'All Branches / HQ'}
                   </Text>
                 </View>
-                <View style={styles.profileDetailItem}>
-                  <Text style={styles.profileDetailLabel}>Account Status</Text>
-                  <Text style={[styles.profileDetailValue, { color: '#16A34A', fontWeight: '700' }]}>ACTIVE</Text>
+                <View style={[styles.profileDetailItem, { flexBasis: '100%' }]}>
+                  <Text style={styles.profileDetailLabel}>Residential Address</Text>
+                  <Text style={styles.profileDetailValue}>{user?.address || 'Not provided'}</Text>
                 </View>
               </View>
             </View>
 
-            {/* Change Password Section */}
+            {/* SECTION 1: UPDATE PERSONAL & KYC IDENTIFICATION */}
+            <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 20 }}>
+              <Text style={styles.subSectionTitle}>🪪 Update Personal & KYC Identification</Text>
+              <Text style={styles.subSectionDesc}>
+                Provide your Aadhaar Number, PAN Card, and Address. Managers and Super Admins can verify your KYC from their dashboard.
+              </Text>
+
+              {profileError ? (
+                <View style={[styles.modalErrorBadge, { marginBottom: 12 }]}>
+                  <Text style={styles.modalErrorBadgeText}>⚠️ {profileError}</Text>
+                </View>
+              ) : null}
+
+              {profileSuccess ? (
+                <View style={[styles.modalSuccessBadge, { marginBottom: 12 }]}>
+                  <Text style={styles.modalSuccessBadgeText}>✓ {profileSuccess}</Text>
+                </View>
+              ) : null}
+
+              {/* Full Name */}
+              <Text style={styles.label}>Full Name *</Text>
+              <TextInput
+                style={styles.input}
+                value={profileFullName}
+                onChangeText={setProfileFullName}
+                placeholder="Your full legal name"
+              />
+
+              {/* Mobile Phone */}
+              <Text style={styles.label}>Mobile Phone Number *</Text>
+              <TextInput
+                style={styles.input}
+                value={profilePhone}
+                onChangeText={setProfilePhone}
+                keyboardType="phone-pad"
+                placeholder="10-digit mobile number"
+              />
+
+              {/* Email */}
+              <Text style={styles.label}>Email Address</Text>
+              <TextInput
+                style={styles.input}
+                value={profileEmail}
+                onChangeText={setProfileEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                placeholder="e.g. staff@example.com"
+              />
+
+              {/* Aadhaar Number */}
+              <Text style={styles.label}>Aadhaar Card Number * (12 Digits)</Text>
+              <TextInput
+                style={styles.input}
+                value={profileAadhaarNo}
+                onChangeText={setProfileAadhaarNo}
+                keyboardType="numeric"
+                maxLength={14}
+                placeholder="e.g. 1234 5678 9012"
+              />
+
+              {/* PAN Number */}
+              <Text style={styles.label}>PAN Card Number * (10 Characters)</Text>
+              <TextInput
+                style={styles.input}
+                value={profilePanNo}
+                onChangeText={(t) => setProfilePanNo(t.toUpperCase())}
+                autoCapitalize="characters"
+                maxLength={10}
+                placeholder="e.g. ABCDE1234F"
+              />
+
+              {/* Residential Address */}
+              <Text style={styles.label}>Full Residential Address</Text>
+              <TextInput
+                style={[styles.input, { height: 60, textAlignVertical: 'top' }]}
+                value={profileAddress}
+                onChangeText={setProfileAddress}
+                multiline
+                numberOfLines={2}
+                placeholder="Flat / House No, Street, City, State, PIN code"
+              />
+
+              {/* Emergency Contact */}
+              <Text style={styles.label}>Emergency Contact Phone</Text>
+              <TextInput
+                style={styles.input}
+                value={profileEmergencyContact}
+                onChangeText={setProfileEmergencyContact}
+                keyboardType="phone-pad"
+                placeholder="Emergency contact phone number"
+              />
+
+              {/* Date of Birth */}
+              <Text style={styles.label}>Date of Birth</Text>
+              <TextInput
+                style={styles.input}
+                value={profileDateOfBirth}
+                onChangeText={setProfileDateOfBirth}
+                placeholder="YYYY-MM-DD (e.g. 1996-05-20)"
+              />
+
+              <TouchableOpacity
+                style={[styles.primaryBtn, { backgroundColor: '#0284C7', marginTop: 14 }]}
+                onPress={handleUpdateProfile}
+                disabled={profileLoading}
+              >
+                {profileLoading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>💾 SAVE PROFILE & KYC DETAILS</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* SECTION 2: CHANGE PASSWORD */}
             <View style={styles.changePasswordSection}>
               <Text style={styles.subSectionTitle}>🔐 Update Password</Text>
               <Text style={styles.subSectionDesc}>
@@ -5441,5 +5914,41 @@ const styles = StyleSheet.create({
     color: '#CBD5E1',
     fontSize: 11,
     lineHeight: 16,
+  },
+  kycPromptBanner: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  kycPromptTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+  kycPromptSubtitle: {
+    fontSize: 12,
+    color: '#B45309',
+    marginTop: 3,
+    lineHeight: 18,
+  },
+  kycPromptBtn: {
+    backgroundColor: '#D97706',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  kycPromptBtnText: {
+    color: '#FFF',
+    fontWeight: '800',
+    fontSize: 13,
   },
 });

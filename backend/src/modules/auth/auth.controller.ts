@@ -403,6 +403,11 @@ export const me = async (req: AuthRequest, res: Response) => {
         phone: user.phone,
         email: user.email,
         role: user.role,
+        aadhaarNo: user.aadhaarNo,
+        panNo: user.panNo,
+        address: user.address,
+        emergencyContact: user.emergencyContact,
+        dateOfBirth: user.dateOfBirth,
         company: user.company
           ? {
               id: user.company.id,
@@ -417,6 +422,85 @@ export const me = async (req: AuthRequest, res: Response) => {
               code: user.branch.code,
             }
           : null,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * Update Profile for Logged-in User (Staff, Manager, Admin)
+ * Allows updating personal & KYC details (Aadhaar, PAN, Address, etc.)
+ */
+export const updateProfile = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const { fullName, phone, email, aadhaarNo, panNo, address, emergencyContact, dateOfBirth } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (phone && phone.trim() !== user.phone) {
+      const existing = await prisma.user.findFirst({
+        where: { phone: phone.trim(), id: { not: userId } },
+      });
+      if (existing) {
+        return res.status(409).json({ success: false, message: 'Phone number is already registered to another account' });
+      }
+    }
+
+    if (email && email.trim().toLowerCase() !== (user.email || '').toLowerCase()) {
+      const existing = await prisma.user.findFirst({
+        where: { email: email.trim().toLowerCase(), id: { not: userId } },
+      });
+      if (existing) {
+        return res.status(409).json({ success: false, message: 'Email address is already in use' });
+      }
+    }
+
+    const updateData: any = {};
+    if (fullName !== undefined && fullName.trim()) updateData.fullName = fullName.trim();
+    if (phone !== undefined && phone.trim()) updateData.phone = phone.trim();
+    if (email !== undefined) updateData.email = email ? email.trim().toLowerCase() : null;
+    if (aadhaarNo !== undefined) updateData.aadhaarNo = aadhaarNo ? String(aadhaarNo).trim() : null;
+    if (panNo !== undefined) updateData.panNo = panNo ? String(panNo).trim().toUpperCase() : null;
+    if (address !== undefined) updateData.address = address ? String(address).trim() : null;
+    if (emergencyContact !== undefined) updateData.emergencyContact = emergencyContact ? String(emergencyContact).trim() : null;
+    if (dateOfBirth !== undefined) updateData.dateOfBirth = dateOfBirth ? String(dateOfBirth).trim() : null;
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      include: {
+        company: true,
+        branch: true,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: 'Profile details updated successfully',
+      data: {
+        id: updatedUser.id,
+        username: updatedUser.username,
+        fullName: updatedUser.fullName,
+        phone: updatedUser.phone,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        aadhaarNo: updatedUser.aadhaarNo,
+        panNo: updatedUser.panNo,
+        address: updatedUser.address,
+        emergencyContact: updatedUser.emergencyContact,
+        dateOfBirth: updatedUser.dateOfBirth,
+        company: updatedUser.company ? { id: updatedUser.company.id, name: updatedUser.company.name, code: updatedUser.company.code } : null,
+        branch: updatedUser.branch ? { id: updatedUser.branch.id, name: updatedUser.branch.name, code: updatedUser.branch.code } : null,
       },
     });
   } catch (err: any) {
@@ -877,6 +961,11 @@ export const listUsers = async (req: AuthRequest, res: Response) => {
         status: true,
         companyId: true,
         branchId: true,
+        aadhaarNo: true,
+        panNo: true,
+        address: true,
+        emergencyContact: true,
+        dateOfBirth: true,
         createdAt: true,
         company: { select: { id: true, name: true, code: true, status: true } },
         branch: { select: { id: true, name: true, code: true } },
@@ -895,7 +984,21 @@ export const listUsers = async (req: AuthRequest, res: Response) => {
  */
 export const createUser = async (req: AuthRequest, res: Response) => {
   try {
-    const { username, fullName, phone, email, password, role, companyId, branchId } = req.body;
+    const {
+      username,
+      fullName,
+      phone,
+      email,
+      password,
+      role,
+      companyId,
+      branchId,
+      aadhaarNo,
+      panNo,
+      address,
+      emergencyContact,
+      dateOfBirth,
+    } = req.body;
 
     if (!username || !fullName || !phone || !password || !role) {
       return res.status(400).json({ success: false, message: 'Missing required user fields' });
@@ -943,6 +1046,11 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         companyId: companyId || req.user?.companyId || null,
         branchId: branchId || req.user?.branchId || null,
         status: 'ACTIVE',
+        aadhaarNo: aadhaarNo ? String(aadhaarNo).trim() : null,
+        panNo: panNo ? String(panNo).trim().toUpperCase() : null,
+        address: address ? String(address).trim() : null,
+        emergencyContact: emergencyContact ? String(emergencyContact).trim() : null,
+        dateOfBirth: dateOfBirth ? String(dateOfBirth).trim() : null,
       },
       include: {
         company: true,
@@ -1028,6 +1136,11 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         email: newUser.email,
         role: newUser.role,
         status: newUser.status,
+        aadhaarNo: newUser.aadhaarNo,
+        panNo: newUser.panNo,
+        address: newUser.address,
+        emergencyContact: newUser.emergencyContact,
+        dateOfBirth: newUser.dateOfBirth,
         credentialsEmailSent,
       },
     });
@@ -1142,12 +1255,29 @@ export const revokeUserSessions = async (req: AuthRequest, res: Response) => {
 
 /**
  * Super Admin & Admin: Update Any User Credential
- * Allows updating fullName, username, phone, email, role, status, company, branch, and direct password reset
+ * Allows updating fullName, username, phone, email, role, status, company, branch, KYC fields, and direct password reset
  */
 export const updateUser = async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
-    const { fullName, username, phone, email, role, companyId, branchId, status, password } = req.body;
+    const {
+      id,
+    } = req.params;
+    const {
+      fullName,
+      username,
+      phone,
+      email,
+      role,
+      companyId,
+      branchId,
+      status,
+      password,
+      aadhaarNo,
+      panNo,
+      address,
+      emergencyContact,
+      dateOfBirth,
+    } = req.body;
 
     const targetUser = await prisma.user.findUnique({ where: { id } });
     if (!targetUser) {
@@ -1198,6 +1328,11 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     if (status) updateData.status = status;
     if (companyId !== undefined) updateData.companyId = companyId || null;
     if (branchId !== undefined) updateData.branchId = branchId || null;
+    if (aadhaarNo !== undefined) updateData.aadhaarNo = aadhaarNo ? String(aadhaarNo).trim() : null;
+    if (panNo !== undefined) updateData.panNo = panNo ? String(panNo).trim().toUpperCase() : null;
+    if (address !== undefined) updateData.address = address ? String(address).trim() : null;
+    if (emergencyContact !== undefined) updateData.emergencyContact = emergencyContact ? String(emergencyContact).trim() : null;
+    if (dateOfBirth !== undefined) updateData.dateOfBirth = dateOfBirth ? String(dateOfBirth).trim() : null;
 
     // Direct password reset by Super Admin
     if (password && password.trim()) {

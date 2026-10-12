@@ -8,6 +8,11 @@ export interface User {
   phone: string;
   email?: string | null;
   role: 'SUPER_ADMIN' | 'MANAGER' | 'COLLECTION_STAFF';
+  aadhaarNo?: string | null;
+  panNo?: string | null;
+  address?: string | null;
+  emergencyContact?: string | null;
+  dateOfBirth?: string | null;
   company: { id: string; name: string; code: string } | null;
   branch?: { id: string; name: string; code: string } | null;
 }
