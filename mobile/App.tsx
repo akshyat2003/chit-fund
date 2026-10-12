@@ -20,6 +20,7 @@ import { AccountingTab } from './src/modules/manager/AccountingTab';
 import { AuctionsPayoutsTab } from './src/modules/manager/AuctionsPayoutsTab';
 import { BranchGovernanceTab } from './src/modules/manager/BranchGovernanceTab';
 import { ComplianceReportsTab } from './src/modules/manager/ComplianceReportsTab';
+import { StaffTab } from './src/modules/manager/StaffTab';
 
 // --- MAIN APP CONTROLLER ---
 function MainApp() {
@@ -39,6 +40,7 @@ function MainApp() {
     | 'auctions'
     | 'branches'
     | 'compliance'
+    | 'staff'
   >('dashboard');
   const [showProfileModal, setShowProfileModal] = useState(false);
 
@@ -54,7 +56,7 @@ function MainApp() {
   // Allowed tabs per role with automatic fallback to 'dashboard' to prevent blank screens
   const allowedTabsByRole: Record<string, string[]> = {
     SUPER_ADMIN: ['dashboard', 'companies', 'admins', 'audits', 'system', 'backups', 'notifications'],
-    MANAGER: ['dashboard', 'members', 'chit_groups', 'collections', 'accounting', 'auctions', 'branches', 'compliance'],
+    MANAGER: ['dashboard', 'members', 'chit_groups', 'collections', 'accounting', 'auctions', 'branches', 'compliance', 'staff'],
     COLLECTION_STAFF: ['dashboard', 'collections', 'members'],
   };
   const roleAllowed = allowedTabsByRole[user.role] || ['dashboard'];
@@ -196,6 +198,13 @@ function MainApp() {
                 >
                   <Text style={[styles.navText, effectiveTab === 'compliance' && styles.navTextActive]}>📑 Compliance & Reports</Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, effectiveTab === 'staff' && styles.navItemActive]}
+                  onPress={() => setActiveTab('staff')}
+                >
+                  <Text style={[styles.navText, effectiveTab === 'staff' && styles.navTextActive]}>🛡️ Staff & Credentials</Text>
+                </TouchableOpacity>
               </>
             )}
 
@@ -239,6 +248,7 @@ function MainApp() {
           {effectiveTab === 'auctions' && user.role === 'MANAGER' && <AuctionsPayoutsTab user={user} />}
           {effectiveTab === 'branches' && user.role === 'MANAGER' && <BranchGovernanceTab user={user} />}
           {effectiveTab === 'compliance' && user.role === 'MANAGER' && <ComplianceReportsTab user={user} />}
+          {effectiveTab === 'staff' && user.role === 'MANAGER' && <StaffTab user={user} />}
         </View>
       </View>
 
