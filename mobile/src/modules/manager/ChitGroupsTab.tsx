@@ -542,29 +542,31 @@ export function ChitGroupsTab({ user }: { user: any }) {
         </View>
       )}
 
-      {/* KPI Counters */}
-      <View style={mStyles.kpiRow}>
-        <View style={mStyles.kpiCard}>
-          <Text style={mStyles.kpiLabel}>{isStaff ? 'Assigned Groups' : 'Total Groups'}</Text>
-          <Text style={[mStyles.kpiVal, { color: '#0F2F52' }]}>
-            {isStaff ? myAssignedCount : groups.length}
-          </Text>
+      {/* KPI Counters (Hidden when manager goes to 'Assigned to Me' and for staff) */}
+      {assignmentScope === 'ALL' && (
+        <View style={mStyles.kpiRow}>
+          <View style={mStyles.kpiCard}>
+            <Text style={mStyles.kpiLabel}>Total Groups</Text>
+            <Text style={[mStyles.kpiVal, { color: '#0F2F52' }]}>
+              {groups.length}
+            </Text>
+          </View>
+          <View style={mStyles.kpiCard}>
+            <Text style={mStyles.kpiLabel}>Active Groups</Text>
+            <Text style={[mStyles.kpiVal, { color: '#16A34A' }]}>
+              {groups.filter((g) => g.status === 'ACTIVE').length}
+            </Text>
+          </View>
+          <View style={mStyles.kpiCard}>
+            <Text style={mStyles.kpiLabel}>Total Scheme Value</Text>
+            <Text style={[mStyles.kpiVal, { color: '#0070BA' }]}>
+              ₹{groups
+                .reduce((acc, g) => acc + (g.chitValue || g.totalChitValue || 0), 0)
+                .toLocaleString()}
+            </Text>
+          </View>
         </View>
-        <View style={mStyles.kpiCard}>
-          <Text style={mStyles.kpiLabel}>Active Groups</Text>
-          <Text style={[mStyles.kpiVal, { color: '#16A34A' }]}>
-            {(isStaff ? groups.filter(isGroupAssignedToUser) : groups).filter((g) => g.status === 'ACTIVE').length}
-          </Text>
-        </View>
-        <View style={mStyles.kpiCard}>
-          <Text style={mStyles.kpiLabel}>{isStaff ? 'Assigned Scheme Value' : 'Total Scheme Value'}</Text>
-          <Text style={[mStyles.kpiVal, { color: '#0070BA' }]}>
-            ₹{(isStaff ? groups.filter(isGroupAssignedToUser) : groups)
-              .reduce((acc, g) => acc + (g.chitValue || g.totalChitValue || 0), 0)
-              .toLocaleString()}
-          </Text>
-        </View>
-      </View>
+      )}
 
       {/* Search & Filter Bar */}
       <View style={[mStyles.filterRow, { alignItems: 'center', gap: 10, marginBottom: 16 }]}>
@@ -730,7 +732,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   onPress={() => {
                     setSelectedGroup(grp);
                     setTicketNo(String(enrolledCount + 1));
-                    setIsQuickRegistering(false);
+                    setIsQuickRegistering(isStaff ? true : false);
                     setShowEnrollModal(true);
                   }}
                 >
@@ -1208,40 +1210,53 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   </Text>
                 </View>
 
-                {/* Mode Selector: Choose Existing vs Quick Register New */}
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-                  <TouchableOpacity
-                    style={{
-                      flex: 1,
-                      paddingVertical: 9,
-                      borderRadius: 8,
-                      alignItems: 'center',
-                      backgroundColor: !isQuickRegistering ? '#0284C7' : '#F1F5F9',
-                    }}
-                    onPress={() => setIsQuickRegistering(false)}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: !isQuickRegistering ? '#FFF' : '#475569' }}>
-                      👤 Select Member
-                    </Text>
-                  </TouchableOpacity>
+                {/* Mode Selector: Managers can switch between Select Existing vs Register New; Staff only registers directly */}
+                {isManagerOrAdmin && (
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        paddingVertical: 9,
+                        borderRadius: 8,
+                        alignItems: 'center',
+                        backgroundColor: !isQuickRegistering ? '#0284C7' : '#F1F5F9',
+                      }}
+                      onPress={() => setIsQuickRegistering(false)}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: !isQuickRegistering ? '#FFF' : '#475569' }}>
+                        👤 Select Member
+                      </Text>
+                    </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={{
-                      flex: 1,
-                      paddingVertical: 9,
-                      borderRadius: 8,
-                      alignItems: 'center',
-                      backgroundColor: isQuickRegistering ? '#0284C7' : '#F1F5F9',
-                    }}
-                    onPress={() => setIsQuickRegistering(true)}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: isQuickRegistering ? '#FFF' : '#475569' }}>
-                      ➕ Register & Enroll
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        paddingVertical: 9,
+                        borderRadius: 8,
+                        alignItems: 'center',
+                        backgroundColor: isQuickRegistering ? '#0284C7' : '#F1F5F9',
+                      }}
+                      onPress={() => setIsQuickRegistering(true)}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: isQuickRegistering ? '#FFF' : '#475569' }}>
+                        ➕ Register & Enroll
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
-                {!isQuickRegistering ? (
+                {isStaff && (
+                  <View style={{ marginBottom: 12, backgroundColor: '#F0F9FF', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#BAE6FD' }}>
+                    <Text style={{ fontWeight: '700', fontSize: 13, color: '#0369A1' }}>
+                      ➕ Register & Enroll Member into {selectedGroup.name}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                      Fill in the member particulars below to register and assign them to your group.
+                    </Text>
+                  </View>
+                )}
+
+                {isManagerOrAdmin && !isQuickRegistering ? (
                   <>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Text style={mStyles.label}>Select Registered Member *</Text>
