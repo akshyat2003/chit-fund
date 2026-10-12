@@ -132,7 +132,7 @@ function MainApp() {
             )}
 
             {/* Manager cum Accountant Module Tabs (AC-01 through AC-34 & FR-COMP-001 through FR-COMP-011) */}
-            {(user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && (
+            {user.role === 'MANAGER' && (
               <>
                 <TouchableOpacity
                   style={[styles.navItem, activeTab === 'members' && styles.navItemActive]}
@@ -199,13 +199,13 @@ function MainApp() {
           {activeTab === 'system' && user.role === 'SUPER_ADMIN' && <SystemMonitoringTab user={user} />}
           {activeTab === 'backups' && user.role === 'SUPER_ADMIN' && <BackupsTab user={user} />}
           {activeTab === 'notifications' && user.role === 'SUPER_ADMIN' && <NotificationsTab user={user} />}
-          {activeTab === 'members' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <MembersTab user={user} />}
-          {activeTab === 'chit_groups' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <ChitGroupsTab user={user} />}
-          {activeTab === 'collections' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <CollectionsTab user={user} />}
-          {activeTab === 'accounting' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <AccountingTab user={user} />}
-          {activeTab === 'auctions' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <AuctionsPayoutsTab user={user} />}
-          {activeTab === 'branches' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <BranchGovernanceTab user={user} />}
-          {activeTab === 'compliance' && (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') && <ComplianceReportsTab user={user} />}
+          {activeTab === 'members' && user.role === 'MANAGER' && <MembersTab user={user} />}
+          {activeTab === 'chit_groups' && user.role === 'MANAGER' && <ChitGroupsTab user={user} />}
+          {activeTab === 'collections' && user.role === 'MANAGER' && <CollectionsTab user={user} />}
+          {activeTab === 'accounting' && user.role === 'MANAGER' && <AccountingTab user={user} />}
+          {activeTab === 'auctions' && user.role === 'MANAGER' && <AuctionsPayoutsTab user={user} />}
+          {activeTab === 'branches' && user.role === 'MANAGER' && <BranchGovernanceTab user={user} />}
+          {activeTab === 'compliance' && user.role === 'MANAGER' && <ComplianceReportsTab user={user} />}
         </View>
       </View>
 
@@ -688,32 +688,32 @@ function DashboardTab({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab
     <ScrollView style={styles.tabScroll}>
       <Text style={styles.sectionTitle}>Dashboard ({stats?.role || user.role})</Text>
 
-      {stats?.role === 'SUPER_ADMIN' && (
+      {(stats?.role || user.role) === 'SUPER_ADMIN' && (
         <View style={styles.gridRow}>
-          <MetricCard title="Active Companies" value={stats.activeCompanies || 0} color="#0070BA" />
-          <MetricCard title="Active Users" value={stats.activeUsers ?? stats.totalUsers ?? 0} color="#10B981" />
-          <MetricCard title="Total Platform Users" value={stats.totalUsers || 0} color="#2563EB" />
-          <MetricCard title="System Engine Status" value={stats.systemStatus || 'ONLINE'} color="#16A34A" />
+          <MetricCard title="Active Companies" value={stats?.activeCompanies || 0} color="#0070BA" />
+          <MetricCard title="Active Users" value={stats?.activeUsers ?? stats?.totalUsers ?? 0} color="#10B981" />
+          <MetricCard title="Total Platform Users" value={stats?.totalUsers || 0} color="#2563EB" />
+          <MetricCard title="System Engine Status" value={stats?.systemStatus || 'ONLINE'} color="#16A34A" />
         </View>
       )}
 
-      {stats?.role === 'MANAGER' && (
+      {(stats?.role || user.role) === 'MANAGER' && (
         <View style={styles.gridRow}>
-          <MetricCard title="Today's Collections" value={`₹${(stats.todayTotalCollected || 0).toLocaleString()}`} color="#27AE60" />
-          <MetricCard title="Cash Collected" value={`₹${(stats.todayCashCollected || 0).toLocaleString()}`} color="#0070BA" />
-          <MetricCard title="Bank/UPI Collections" value={`₹${(stats.todayBankUpiCollected || 0).toLocaleString()}`} color="#D35400" />
-          <MetricCard title="Active Chit Groups" value={stats.activeGroups || 0} color="#8E44AD" />
-          <MetricCard title="Active Subscribers" value={stats.activeSubscribers || 0} color="#2D3748" />
-          <MetricCard title="Pending Payouts" value={stats.pendingPayouts || 0} color="#C0392B" />
+          <MetricCard title="Today's Collections" value={`₹${(stats?.todayTotalCollected || 0).toLocaleString()}`} color="#27AE60" />
+          <MetricCard title="Cash Collected" value={`₹${(stats?.todayCashCollected || 0).toLocaleString()}`} color="#0070BA" />
+          <MetricCard title="Bank/UPI Collections" value={`₹${(stats?.todayBankUpiCollected || 0).toLocaleString()}`} color="#D35400" />
+          <MetricCard title="Active Chit Groups" value={stats?.activeGroups || 0} color="#8E44AD" />
+          <MetricCard title="Active Subscribers" value={stats?.activeSubscribers || 0} color="#2D3748" />
+          <MetricCard title="Pending Payouts" value={stats?.pendingPayouts || 0} color="#C0392B" />
         </View>
       )}
 
-      {stats?.role === 'COLLECTION_STAFF' && (
+      {(stats?.role || user.role) === 'COLLECTION_STAFF' && (
         <View style={styles.gridRow}>
-          <MetricCard title="Assigned Subscribers" value={stats.assignedSubscribers || 0} color="#0070BA" />
-          <MetricCard title="Today's Collections Count" value={stats.todayCollectionsCount || 0} color="#8E44AD" />
-          <MetricCard title="Amount Collected" value={`₹${(stats.todayAmountCollected || 0).toLocaleString()}`} color="#27AE60" />
-          <MetricCard title="Cash in Hand" value={`₹${(stats.cashInHand || 0).toLocaleString()}`} color="#D35400" />
+          <MetricCard title="Assigned Subscribers" value={stats?.assignedSubscribers || 0} color="#0070BA" />
+          <MetricCard title="Today's Collections Count" value={stats?.todayCollectionsCount || 0} color="#8E44AD" />
+          <MetricCard title="Amount Collected" value={`₹${(stats?.todayAmountCollected || 0).toLocaleString()}`} color="#27AE60" />
+          <MetricCard title="Cash in Hand" value={`₹${(stats?.cashInHand || 0).toLocaleString()}`} color="#D35400" />
         </View>
       )}
     </ScrollView>
