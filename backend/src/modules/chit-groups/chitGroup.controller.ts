@@ -38,50 +38,71 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
       branchId,
       name,
       chitValue,
+      totalChitValue,
       maxMembers,
       totalMonths,
-      foremanCommissionPct = 5.0,
+      durationMonths,
+      monthlyInstallment,
+      foremanCommissionPct,
+      foremanCommissionRate,
       startDate,
     } = req.body;
 
-    if (!name || !chitValue || !maxMembers || !totalMonths || !startDate || !branchId) {
-      return res.status(400).json({ success: false, message: 'Missing required chit group configuration parameters' });
+    const effectiveChitValue = Number(chitValue ?? totalChitValue);
+    const effectiveTotalMonths = Number(totalMonths ?? durationMonths);
+    const effectiveMaxMembers = Number(maxMembers || effectiveTotalMonths);
+    const effectiveCommission = Number(foremanCommissionPct ?? foremanCommissionRate ?? 5.0);
+
+    let effectiveBranchId = branchId || req.user?.branchId;
+    if (!effectiveBranchId) {
+      const defaultBranch = await prisma.branch.findFirst({ where: { companyId } });
+      effectiveBranchId = defaultBranch?.id;
     }
 
-    const monthlyInstallment = Number(chitValue) / Number(totalMonths);
+    if (!name || !effectiveChitValue || !effectiveMaxMembers || !effectiveTotalMonths || !startDate || !effectiveBranchId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required chit group configuration parameters (name, chitValue, totalMonths, maxMembers, startDate)',
+      });
+    }
+
+    const calculatedInstallment = Number(monthlyInstallment) || (effectiveChitValue / effectiveTotalMonths);
     const count = await prisma.chitGroup.count({ where: { companyId } });
     const groupCode = `CG-${2026 + count + 1}`;
 
     const group = await prisma.chitGroup.create({
       data: {
         companyId,
-        branchId,
+        branchId: effectiveBranchId,
         groupCode,
-        name,
-        chitValue: Number(chitValue),
-        maxMembers: Number(maxMembers),
-        totalMonths: Number(totalMonths),
-        monthlyInstallment,
-        foremanCommissionPct: Number(foremanCommissionPct),
+        name: name.trim(),
+        chitValue: effectiveChitValue,
+        maxMembers: effectiveMaxMembers,
+        totalMonths: effectiveTotalMonths,
+        monthlyInstallment: calculatedInstallment,
+        foremanCommissionPct: effectiveCommission,
         startDate,
         status: 'ACTIVE',
+      },
+      include: {
+        branch: { select: { name: true, code: true } },
       },
     });
 
     // Auto-generate Installment Schedules for all totalMonths
     const start = new Date(startDate);
     const scheduleData = [];
-    for (let i = 1; i <= Number(totalMonths); i++) {
+    for (let i = 1; i <= effectiveTotalMonths; i++) {
       const dueDate = new Date(start);
       dueDate.setMonth(dueDate.getMonth() + (i - 1));
-      
+
       scheduleData.push({
         groupId: group.id,
         installmentNo: i,
         dueDate: dueDate.toISOString().split('T')[0],
-        scheduledAmount: monthlyInstallment,
+        scheduledAmount: calculatedInstallment,
         dividendAmount: 0.0,
-        netDueAmount: monthlyInstallment,
+        netDueAmount: calculatedInstallment,
       });
     }
 
@@ -96,7 +117,7 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
         action: 'CREATE_CHIT_GROUP',
         entity: 'ChitGroup',
         entityId: group.id,
-        details: JSON.stringify({ groupCode, chitValue, totalMonths }),
+        details: JSON.stringify({ groupCode, chitValue: effectiveChitValue, totalMonths: effectiveTotalMonths }),
       },
     });
 
@@ -176,6 +197,192 @@ export const getChitGroupDetails = async (req: AuthRequest, res: Response) => {
     }
 
     return res.json({ success: true, data: group });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const updateChitGroup = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user?.companyId;
+    const { id } = req.params;
+    const {
+      name,
+      chitValue,
+      totalChitValue,
+      maxMembers,
+      totalMonths,
+      durationMonths,
+      monthlyInstallment,
+      foremanCommissionPct,
+      foremanCommissionRate,
+      startDate,
+      endDate,
+      status,
+      branchId,
+    } = req.body;
+
+    const existingGroup = await prisma.chitGroup.findUnique({
+      where: { id },
+      include: { _count: { select: { transactions: true, auctions: true, members: true } } },
+    });
+
+    if (!existingGroup) {
+      return res.status(404).json({ success: false, message: 'Chit group not found' });
+    }
+
+    if (req.user?.role !== 'SUPER_ADMIN' && existingGroup.companyId !== companyId) {
+      return res.status(403).json({ success: false, message: 'Access denied: Cannot update group outside your company' });
+    }
+
+    const newChitValue =
+      chitValue !== undefined
+        ? Number(chitValue)
+        : totalChitValue !== undefined
+        ? Number(totalChitValue)
+        : existingGroup.chitValue;
+    const newTotalMonths =
+      totalMonths !== undefined
+        ? Number(totalMonths)
+        : durationMonths !== undefined
+        ? Number(durationMonths)
+        : existingGroup.totalMonths;
+    const newCommission =
+      foremanCommissionPct !== undefined
+        ? Number(foremanCommissionPct)
+        : foremanCommissionRate !== undefined
+        ? Number(foremanCommissionRate)
+        : existingGroup.foremanCommissionPct;
+    const newMonthly =
+      monthlyInstallment !== undefined
+        ? Number(monthlyInstallment)
+        : newChitValue / newTotalMonths;
+
+    if (maxMembers && Number(maxMembers) < existingGroup._count.members) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot reduce member capacity to ${maxMembers} as ${existingGroup._count.members} members are already enrolled.`,
+      });
+    }
+
+    const updated = await prisma.chitGroup.update({
+      where: { id },
+      data: {
+        name: name !== undefined ? name.trim() : existingGroup.name,
+        chitValue: newChitValue,
+        totalMonths: newTotalMonths,
+        monthlyInstallment: newMonthly,
+        foremanCommissionPct: newCommission,
+        maxMembers: maxMembers !== undefined ? Number(maxMembers) : existingGroup.maxMembers,
+        startDate: startDate || existingGroup.startDate,
+        endDate: endDate !== undefined ? endDate : existingGroup.endDate,
+        status: status || existingGroup.status,
+        branchId: branchId || existingGroup.branchId,
+      },
+      include: {
+        branch: { select: { name: true, code: true } },
+      },
+    });
+
+    // If schedules can be refreshed safely when no auctions or transactions have occurred:
+    if (
+      existingGroup._count.auctions === 0 &&
+      existingGroup._count.transactions === 0 &&
+      (newTotalMonths !== existingGroup.totalMonths ||
+        newChitValue !== existingGroup.chitValue ||
+        startDate !== existingGroup.startDate)
+    ) {
+      await prisma.installmentSchedule.deleteMany({ where: { groupId: id } });
+      const start = new Date(updated.startDate);
+      const scheduleData = [];
+      for (let i = 1; i <= Number(newTotalMonths); i++) {
+        const dueDate = new Date(start);
+        dueDate.setMonth(dueDate.getMonth() + (i - 1));
+        scheduleData.push({
+          groupId: id,
+          installmentNo: i,
+          dueDate: dueDate.toISOString().split('T')[0],
+          scheduledAmount: newMonthly,
+          dividendAmount: 0.0,
+          netDueAmount: newMonthly,
+        });
+      }
+      await prisma.installmentSchedule.createMany({ data: scheduleData });
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        companyId: existingGroup.companyId,
+        userId: req.user?.id,
+        action: 'UPDATE_CHIT_GROUP',
+        entity: 'ChitGroup',
+        entityId: id,
+        details: JSON.stringify({ name: updated.name, chitValue: updated.chitValue, status: updated.status }),
+      },
+    });
+
+    return res.json({ success: true, message: 'Chit group updated successfully', data: updated });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const deleteChitGroup = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user?.companyId;
+    const { id } = req.params;
+
+    const group = await prisma.chitGroup.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            transactions: true,
+            auctions: true,
+            members: true,
+          },
+        },
+      },
+    });
+
+    if (!group) {
+      return res.status(404).json({ success: false, message: 'Chit group not found' });
+    }
+
+    if (req.user?.role !== 'SUPER_ADMIN' && group.companyId !== companyId) {
+      return res.status(403).json({ success: false, message: 'Access denied: Cannot delete group outside your company' });
+    }
+
+    if (group._count.transactions > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete chit group '${group.name}' because it contains ${group._count.transactions} payment transaction(s). Please set its status to CANCELLED or COMPLETED instead.`,
+      });
+    }
+
+    if (group._count.auctions > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete chit group '${group.name}' because ${group._count.auctions} auction(s) have already been conducted.`,
+      });
+    }
+
+    await prisma.chitGroupMember.deleteMany({ where: { groupId: id } });
+    await prisma.installmentSchedule.deleteMany({ where: { groupId: id } });
+    await prisma.chitGroup.delete({ where: { id } });
+
+    await prisma.auditLog.create({
+      data: {
+        companyId: group.companyId,
+        userId: req.user?.id,
+        action: 'DELETE_CHIT_GROUP',
+        entity: 'ChitGroup',
+        entityId: id,
+        details: JSON.stringify({ name: group.name, groupCode: group.groupCode }),
+      },
+    });
+
+    return res.json({ success: true, message: `Chit group '${group.name}' deleted successfully.` });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }
