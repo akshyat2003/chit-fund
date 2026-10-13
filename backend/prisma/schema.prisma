@@ -219,6 +219,9 @@ model PaymentTransaction {
   paymentMode         String   // CASH, BANK_TRANSFER, UPI
   receiptNo           String   @unique
   externalRef         String?  // Bank / UPI Txn Reference ID
+  receiptPhoto        String?  // Photo / image of receipt proof
+  installmentType     String?  @default("REGULAR") // REGULAR, ADVANCE, BACKLOG
+  rejectionReason     String?  // Reason if rejected by manager
   recordedByUserId    String
   verificationStatus  String   @default("VERIFIED") // VERIFIED, PENDING_VERIFICATION, REJECTED, REVERSED
   isReversed          Boolean  @default(false)

@@ -134,6 +134,10 @@ router.get('/collections/receipts/:receiptNo', authenticateToken, collectionCont
 router.post('/collections/receipts/:receiptNo/reprint', authenticateToken, collectionController.reprintReceipt);
 router.post('/collections/reconcile', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), collectionController.reconcilePayments);
 router.post('/collections/:id/reverse', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), collectionController.reverseTransaction);
+router.post('/collections/:id/approve', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), collectionController.approveTransaction);
+router.patch('/collections/:id/approve', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), collectionController.approveTransaction);
+router.post('/collections/:id/reject', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), collectionController.rejectTransaction);
+router.patch('/collections/:id/reject', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), collectionController.rejectTransaction);
 
 // Auction Routes (AC-23, AC-24, AC-25)
 router.post('/auctions/confirm', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), auctionController.createAuctionResult);

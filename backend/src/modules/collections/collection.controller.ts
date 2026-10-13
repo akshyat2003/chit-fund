@@ -6,19 +6,29 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user?.companyId!;
     const recordedByUserId = req.user?.id!;
+    const userRole = req.user?.role;
     const {
       subscriberId,
       groupId,
       installmentNo,
       amount,
       paymentMode, // CASH, BANK_TRANSFER, UPI
-      externalRef,
+      installmentType = 'REGULAR', // REGULAR, ADVANCE, BACKLOG
+      externalRef, // Bank / UPI Txn Ref ID
+      receiptPhoto, // Photo of receipt / proof of payment
       idempotencyKey,
       notes,
     } = req.body;
 
     if (!subscriberId || !groupId || !installmentNo || !amount || !paymentMode) {
       return res.status(400).json({ success: false, message: 'Missing required payment details' });
+    }
+
+    if ((paymentMode === 'BANK_TRANSFER' || paymentMode === 'UPI') && (!externalRef || !externalRef.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Transaction Reference ID is required for Bank Transfer and UPI / QR payments.',
+      });
     }
 
     // Check Idempotency Key
@@ -48,6 +58,10 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
     const totalCount = await prisma.paymentTransaction.count({ where: { companyId } });
     const receiptNo = `${prefix}-${new Date().getFullYear()}-${String(totalCount + 1).padStart(5, '0')}`;
 
+    // If staff submits a digital payment (BANK_TRANSFER or UPI), it goes to PENDING_VERIFICATION for manager approval
+    const isDigital = paymentMode === 'BANK_TRANSFER' || paymentMode === 'UPI';
+    const verificationStatus = isDigital && userRole === 'COLLECTION_STAFF' ? 'PENDING_VERIFICATION' : 'VERIFIED';
+
     // Execute in Database Transaction
     const result = await prisma.$transaction(async (tx) => {
       const transaction = await tx.paymentTransaction.create({
@@ -59,11 +73,13 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
           installmentNo: Number(installmentNo),
           amount: Number(amount),
           paymentMode,
+          installmentType,
           receiptNo,
-          externalRef: externalRef || null,
+          externalRef: externalRef ? externalRef.trim() : null,
+          receiptPhoto: receiptPhoto || null,
           recordedByUserId,
           idempotencyKey: idempotencyKey || null,
-          verificationStatus: paymentMode === 'CASH' ? 'VERIFIED' : 'PENDING_VERIFICATION',
+          verificationStatus,
           notes: notes || null,
         },
       });
@@ -82,7 +98,14 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
           action: 'RECORD_PAYMENT',
           entity: 'PaymentTransaction',
           entityId: transaction.id,
-          details: JSON.stringify({ receiptNo, amount, paymentMode, subscriberId }),
+          details: JSON.stringify({
+            receiptNo,
+            amount,
+            paymentMode,
+            installmentType,
+            verificationStatus,
+            subscriberId,
+          }),
         },
       });
 
@@ -91,7 +114,10 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Payment recorded successfully',
+      message:
+        verificationStatus === 'PENDING_VERIFICATION'
+          ? 'Receipt submitted successfully and forwarded to manager for verification.'
+          : 'Payment recorded successfully.',
       data: {
         ...result.transaction,
         receipt: result.receipt,
@@ -125,14 +151,37 @@ export const listTransactions = async (req: AuthRequest, res: Response) => {
       where,
       include: {
         subscriber: { select: { fullName: true, subscriberCode: true, phone: true } },
-        group: { select: { groupCode: true, name: true } },
-        recordedBy: { select: { fullName: true } },
+        group: { select: { groupCode: true, name: true, monthlyInstallment: true } },
+        recordedBy: { select: { fullName: true, username: true, role: true } },
         receipt: true,
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    return res.json({ success: true, count: transactions.length, data: transactions });
+    const digitalCount = transactions.filter((t) => t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI').length;
+    const pendingCount = transactions.filter(
+      (t) => (t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI') && t.verificationStatus === 'PENDING_VERIFICATION'
+    ).length;
+    const approvedCount = transactions.filter(
+      (t) => (t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI') && t.verificationStatus === 'VERIFIED'
+    ).length;
+    const rejectedCount = transactions.filter(
+      (t) => (t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI') && t.verificationStatus === 'REJECTED'
+    ).length;
+    const cashCount = transactions.filter((t) => t.paymentMode === 'CASH').length;
+
+    return res.json({
+      success: true,
+      count: transactions.length,
+      stats: {
+        digitalCount,
+        pendingCount,
+        approvedCount,
+        rejectedCount,
+        cashCount,
+      },
+      data: transactions,
+    });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -300,6 +349,123 @@ export const reverseTransaction = async (req: AuthRequest, res: Response) => {
     return res.json({
       success: true,
       message: 'Transaction successfully reversed with audit trail preserved',
+      data: updated,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Manager / Super Admin: Approve Staff Digital Receipt
+export const approveTransaction = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user?.companyId!;
+    const userId = req.user?.id!;
+    const { id } = req.params;
+
+    const transaction = await prisma.paymentTransaction.findUnique({
+      where: { id },
+      include: { subscriber: true, group: true, recordedBy: true },
+    });
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    }
+
+    if (transaction.verificationStatus === 'VERIFIED') {
+      return res.status(400).json({ success: false, message: 'Transaction is already verified / approved' });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const appTx = await tx.paymentTransaction.update({
+        where: { id },
+        data: {
+          verificationStatus: 'VERIFIED',
+          rejectionReason: null,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          companyId,
+          userId,
+          action: 'APPROVE_PAYMENT_TRANSACTION',
+          entity: 'PaymentTransaction',
+          entityId: id,
+          details: JSON.stringify({
+            receiptNo: transaction.receiptNo,
+            amount: transaction.amount,
+            paymentMode: transaction.paymentMode,
+            approvedBy: req.user?.fullName,
+          }),
+        },
+      });
+
+      return appTx;
+    });
+
+    return res.json({
+      success: true,
+      message: `Transaction ${transaction.receiptNo} has been verified and approved.`,
+      data: updated,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Manager / Super Admin: Reject Staff Digital Receipt
+export const rejectTransaction = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user?.companyId!;
+    const userId = req.user?.id!;
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ success: false, message: 'Rejection reason is required' });
+    }
+
+    const transaction = await prisma.paymentTransaction.findUnique({
+      where: { id },
+      include: { subscriber: true, group: true, recordedBy: true },
+    });
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const rejTx = await tx.paymentTransaction.update({
+        where: { id },
+        data: {
+          verificationStatus: 'REJECTED',
+          rejectionReason: reason.trim(),
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          companyId,
+          userId,
+          action: 'REJECT_PAYMENT_TRANSACTION',
+          entity: 'PaymentTransaction',
+          entityId: id,
+          details: JSON.stringify({
+            receiptNo: transaction.receiptNo,
+            amount: transaction.amount,
+            reason: reason.trim(),
+            rejectedBy: req.user?.fullName,
+          }),
+        },
+      });
+
+      return rejTx;
+    });
+
+    return res.json({
+      success: true,
+      message: `Transaction ${transaction.receiptNo} has been rejected.`,
       data: updated,
     });
   } catch (err: any) {
