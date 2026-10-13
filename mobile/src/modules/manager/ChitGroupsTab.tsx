@@ -485,7 +485,12 @@ export function ChitGroupsTab({ user }: { user: any }) {
     return matchesSearch && matchesStatus && matchesScope;
   });
 
-  const myAssignedCount = groups.filter(isGroupAssignedToUser).length;
+  const myAssignedGroups = groups.filter(isGroupAssignedToUser);
+  const myAssignedCount = myAssignedGroups.length;
+  const myAssignedMembersCount = myAssignedGroups.reduce(
+    (acc, g) => acc + (g.members?.length ?? g.memberships?.length ?? g._count?.members ?? 0),
+    0
+  );
 
   return (
     <ScrollView style={mStyles.container}>
@@ -567,14 +572,14 @@ export function ChitGroupsTab({ user }: { user: any }) {
                 color: assignmentScope === 'ASSIGNED_TO_ME' ? '#FFF' : '#334155',
               }}
             >
-              🏃 Assigned to Me ({myAssignedCount})
+              🏃 Assigned to Me ({myAssignedCount} Groups • {myAssignedMembersCount} Members)
             </Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* KPI Counters (Hidden when manager goes to 'Assigned to Me' and for staff) */}
-      {assignmentScope === 'ALL' && (
+      {/* KPI Counters: All Groups shows global totals; Assigned to Me shows manager's own enrolled members and group counts */}
+      {assignmentScope === 'ALL' ? (
         <View style={mStyles.kpiRow}>
           <View style={mStyles.kpiCard}>
             <Text style={mStyles.kpiLabel}>Total Groups</Text>
@@ -597,7 +602,30 @@ export function ChitGroupsTab({ user }: { user: any }) {
             </Text>
           </View>
         </View>
-      )}
+      ) : isManagerOrAdmin ? (
+        <View style={mStyles.kpiRow}>
+          <View style={mStyles.kpiCard}>
+            <Text style={mStyles.kpiLabel}>Enrolled in My Chit Groups</Text>
+            <Text style={[mStyles.kpiVal, { color: '#0F2F52' }]}>
+              {myAssignedMembersCount} Members
+            </Text>
+          </View>
+          <View style={mStyles.kpiCard}>
+            <Text style={mStyles.kpiLabel}>My Assigned Groups</Text>
+            <Text style={[mStyles.kpiVal, { color: '#16A34A' }]}>
+              {myAssignedCount}
+            </Text>
+          </View>
+          <View style={mStyles.kpiCard}>
+            <Text style={mStyles.kpiLabel}>My Schemes Value</Text>
+            <Text style={[mStyles.kpiVal, { color: '#0070BA' }]}>
+              ₹{myAssignedGroups
+                .reduce((acc, g) => acc + (g.chitValue || g.totalChitValue || 0), 0)
+                .toLocaleString()}
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
       {/* Search & Filter Bar */}
       <View style={[mStyles.filterRow, { alignItems: 'center', gap: 10, marginBottom: 16 }]}>
@@ -666,7 +694,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     </Text>
                     {isGroupAssignedToUser(grp) && (
                       <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: '#86EFAC' }}>
-                        <Text style={{ fontSize: 11, color: '#166534', fontWeight: '800' }}>⭐ Assigned to You</Text>
+                        <Text style={{ fontSize: 11, color: '#166534', fontWeight: '800' }}>⭐ Assigned to You ({enrolledCount} Enrolled)</Text>
                       </View>
                     )}
                     {grp.branch?.name && (

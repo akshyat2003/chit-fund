@@ -272,12 +272,12 @@ export function MembersTab({ user }: { user: any }) {
     }
   };
 
-  // Open Assign to Chit Group Modal
+  // Open Assign to Chit Group Modal (Manager Only)
   const handleOpenAssignGroup = (member: any) => {
+    if (!isManagerOrAdmin) return;
     setAssigningMember(member);
-    const available = isManagerOrAdmin ? groups : staffAssignedGroups;
-    if (available.length > 0) {
-      setSelectedAssignGroupId(available[0].id);
+    if (groups.length > 0) {
+      setSelectedAssignGroupId(groups[0].id);
     }
     setShowAssignGroupModal(true);
   };
@@ -606,13 +606,15 @@ export function MembersTab({ user }: { user: any }) {
                 </TouchableOpacity>
               )}
 
-              {/* Assign to Chit Group: Manager can assign to any group; Staff can assign to their assigned groups */}
-              <TouchableOpacity
-                style={[mStyles.secondaryBtn, { borderColor: '#059669' }]}
-                onPress={() => handleOpenAssignGroup(member)}
-              >
-                <Text style={[mStyles.secondaryBtnText, { color: '#059669', fontWeight: '700' }]}>➕ Assign to Group</Text>
-              </TouchableOpacity>
+              {/* Assign to Chit Group: Only Manager / Super Admin (Removed in Staff dashboard) */}
+              {isManagerOrAdmin && (
+                <TouchableOpacity
+                  style={[mStyles.secondaryBtn, { borderColor: '#059669' }]}
+                  onPress={() => handleOpenAssignGroup(member)}
+                >
+                  <Text style={[mStyles.secondaryBtnText, { color: '#059669', fontWeight: '700' }]}>➕ Assign to Group</Text>
+                </TouchableOpacity>
+              )}
 
               {/* Delete Member: Only Manager / Super Admin */}
               {isManagerOrAdmin && (
@@ -1416,118 +1418,116 @@ export function MembersTab({ user }: { user: any }) {
         </View>
       </Modal>
 
-      {/* --- MODAL 8: ASSIGN MEMBER TO CHIT GROUP --- */}
-      <Modal visible={showAssignGroupModal} transparent animationType="fade">
-        <View style={mStyles.modalBackdrop}>
-          <View style={[mStyles.modalBox, { maxWidth: 550 }]}>
-            <View style={mStyles.modalHeader}>
-              <Text style={mStyles.modalTitle}>➕ Assign Member to Chit Group</Text>
-              <TouchableOpacity onPress={() => setShowAssignGroupModal(false)}>
-                <Text style={mStyles.modalClose}>✕</Text>
-              </TouchableOpacity>
-            </View>
+      {/* --- MODAL 8: ASSIGN MEMBER TO CHIT GROUP (Manager Only) --- */}
+      {isManagerOrAdmin && (
+        <Modal visible={showAssignGroupModal} transparent animationType="fade">
+          <View style={mStyles.modalBackdrop}>
+            <View style={[mStyles.modalBox, { maxWidth: 550 }]}>
+              <View style={mStyles.modalHeader}>
+                <Text style={mStyles.modalTitle}>➕ Assign Member to Chit Group</Text>
+                <TouchableOpacity onPress={() => setShowAssignGroupModal(false)}>
+                  <Text style={mStyles.modalClose}>✕</Text>
+                </TouchableOpacity>
+              </View>
 
-            {assigningMember && (
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <View style={{ backgroundColor: '#F0F9FF', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#BAE6FD', marginBottom: 14 }}>
-                  <Text style={{ fontWeight: '800', fontSize: 14, color: '#0369A1' }}>
-                    {assigningMember.fullName} [{assigningMember.subscriberCode}]
-                  </Text>
-                  <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
-                    Phone: {assigningMember.phone} • Enrolled in {assigningMember.memberships?.length || 0} chit groups
-                  </Text>
-                </View>
-
-                <Text style={mStyles.label}>
-                  {isStaff ? 'Select From Your Assigned Chit Groups *' : 'Select Chit Group to Assign *'}
-                </Text>
-                <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 8 }}>
-                  {isStaff
-                    ? 'Staff can only assign members to their own assigned chit groups.'
-                    : 'Managers can assign members to any active chit group globally.'}
-                </Text>
-
-                {(isStaff ? staffAssignedGroups : groups).length === 0 ? (
-                  <View style={{ backgroundColor: '#FEF3C7', padding: 12, borderRadius: 8, marginBottom: 14 }}>
-                    <Text style={{ color: '#B45309', fontSize: 12, fontWeight: '700' }}>
-                      ⚠️ No available chit groups to assign.
+              {assigningMember && (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <View style={{ backgroundColor: '#F0F9FF', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#BAE6FD', marginBottom: 14 }}>
+                    <Text style={{ fontWeight: '800', fontSize: 14, color: '#0369A1' }}>
+                      {assigningMember.fullName} [{assigningMember.subscriberCode}]
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+                      Phone: {assigningMember.phone} • Enrolled in {assigningMember.memberships?.length || 0} chit groups
                     </Text>
                   </View>
-                ) : (
-                  <View style={{ gap: 8, marginBottom: 16 }}>
-                    {(isStaff ? staffAssignedGroups : groups).map((grp) => {
-                      const isSelected = selectedAssignGroupId === grp.id;
-                      const isAlreadyEnrolled = assigningMember.memberships?.some(
-                        (m: any) => m.groupId === grp.id || m.group?.id === grp.id
-                      );
 
-                      return (
-                        <TouchableOpacity
-                          key={grp.id}
-                          style={{
-                            padding: 12,
-                            borderRadius: 8,
-                            borderWidth: 1.5,
-                            borderColor: isSelected ? '#0284C7' : '#E2E8F0',
-                            backgroundColor: isSelected ? '#F0F9FF' : '#FFF',
-                            flexDirection: 'row',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                          }}
-                          onPress={() => setSelectedAssignGroupId(grp.id)}
-                        >
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontWeight: '700', fontSize: 14, color: isSelected ? '#0369A1' : '#0F172A' }}>
-                              {grp.name} [{grp.groupCode}]
-                            </Text>
-                            <Text style={{ fontSize: 12, color: '#64748B' }}>
-                              Chit Value: ₹{(grp.chitValue ?? grp.totalChitValue)?.toLocaleString()} • Monthly: ₹{(grp.monthlyInstallment)?.toLocaleString()}{isManagerOrAdmin ? ` • Capacity: ${grp._count?.members ?? grp.members?.length ?? 0}/${grp.maxMembers}` : ''}
-                            </Text>
-                            {isAlreadyEnrolled && (
-                              <Text style={{ fontSize: 11, color: '#D97706', fontWeight: '700', marginTop: 2 }}>
-                                ⚠️ Already enrolled in this group
-                              </Text>
-                            )}
-                          </View>
-                          <View
+                  <Text style={mStyles.label}>Select Chit Group to Assign *</Text>
+                  <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 8 }}>
+                    Managers can assign members to any active chit group globally.
+                  </Text>
+
+                  {groups.length === 0 ? (
+                    <View style={{ backgroundColor: '#FEF3C7', padding: 12, borderRadius: 8, marginBottom: 14 }}>
+                      <Text style={{ color: '#B45309', fontSize: 12, fontWeight: '700' }}>
+                        ⚠️ No available chit groups to assign.
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8, marginBottom: 16 }}>
+                      {groups.map((grp) => {
+                        const isSelected = selectedAssignGroupId === grp.id;
+                        const isAlreadyEnrolled = assigningMember.memberships?.some(
+                          (m: any) => m.groupId === grp.id || m.group?.id === grp.id
+                        );
+
+                        return (
+                          <TouchableOpacity
+                            key={grp.id}
                             style={{
-                              paddingHorizontal: 10,
-                              paddingVertical: 4,
-                              borderRadius: 14,
-                              backgroundColor: isSelected ? '#0284C7' : '#F1F5F9',
+                              padding: 12,
+                              borderRadius: 8,
+                              borderWidth: 1.5,
+                              borderColor: isSelected ? '#0284C7' : '#E2E8F0',
+                              backgroundColor: isSelected ? '#F0F9FF' : '#FFF',
+                              flexDirection: 'row',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
                             }}
+                            onPress={() => setSelectedAssignGroupId(grp.id)}
                           >
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#FFF' : '#64748B' }}>
-                              {isSelected ? '✓ Selected' : 'Select'}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontWeight: '700', fontSize: 14, color: isSelected ? '#0369A1' : '#0F172A' }}>
+                                {grp.name} [{grp.groupCode}]
+                              </Text>
+                              <Text style={{ fontSize: 12, color: '#64748B' }}>
+                                Chit Value: ₹{(grp.chitValue ?? grp.totalChitValue)?.toLocaleString()} • Monthly: ₹{(grp.monthlyInstallment)?.toLocaleString()} • Capacity: {grp._count?.members ?? grp.members?.length ?? 0}/{grp.maxMembers}
+                              </Text>
+                              {isAlreadyEnrolled && (
+                                <Text style={{ fontSize: 11, color: '#D97706', fontWeight: '700', marginTop: 2 }}>
+                                  ⚠️ Already enrolled in this group
+                                </Text>
+                              )}
+                            </View>
+                            <View
+                              style={{
+                                paddingHorizontal: 10,
+                                paddingVertical: 4,
+                                borderRadius: 14,
+                                backgroundColor: isSelected ? '#0284C7' : '#F1F5F9',
+                              }}
+                            >
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#FFF' : '#64748B' }}>
+                                {isSelected ? '✓ Selected' : 'Select'}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
 
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
-                  <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowAssignGroupModal(false)}>
-                    <Text style={mStyles.secondaryBtnText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[mStyles.primaryBtn, assigningToGroup && { opacity: 0.7 }]}
-                    disabled={assigningToGroup || (isStaff ? staffAssignedGroups : groups).length === 0}
-                    onPress={handleConfirmAssignGroup}
-                  >
-                    {assigningToGroup ? (
-                      <ActivityIndicator size="small" color="#FFF" />
-                    ) : (
-                      <Text style={mStyles.primaryBtnText}>✓ Assign to Group</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            )}
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+                    <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowAssignGroupModal(false)}>
+                      <Text style={mStyles.secondaryBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[mStyles.primaryBtn, assigningToGroup && { opacity: 0.7 }]}
+                      disabled={assigningToGroup || groups.length === 0}
+                      onPress={handleConfirmAssignGroup}
+                    >
+                      {assigningToGroup ? (
+                        <ActivityIndicator size="small" color="#FFF" />
+                      ) : (
+                        <Text style={mStyles.primaryBtnText}>✓ Assign to Group</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              )}
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </ScrollView>
   );
 }
