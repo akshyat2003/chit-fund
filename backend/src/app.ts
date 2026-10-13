@@ -15,6 +15,7 @@ import * as reconciliationController from './modules/reconciliation/reconciliati
 import * as reportController from './modules/reports/report.controller.js';
 import * as superAdminController from './modules/super-admin/superAdmin.controller.js';
 import * as accountingController from './modules/accounting/accounting.controller.js';
+import * as notificationController from './modules/notifications/notification.controller.js';
 
 const app = express();
 
@@ -231,11 +232,17 @@ router.get('/super-admin/archival-policy', authenticateToken, requireRoles('SUPE
 // SA-21, SA-22: Multi-Branch Oversight & Exception Management
 router.get('/super-admin/exceptions', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getMultiBranchExceptions);
 
-// SA-23: Multi-Tier Notification Engine
-router.get('/super-admin/notifications/recipients', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getNotificationRecipientsData);
-router.get('/super-admin/notifications', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getNotifications);
-router.post('/super-admin/notifications/send', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.sendNotification);
-router.delete('/super-admin/notifications/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.deleteNotification);
+// Universal In-App Notification System (Super Admin, Manager, Staff)
+router.get('/notifications/recipients', authenticateToken, notificationController.getRecipients);
+router.get('/notifications', authenticateToken, notificationController.listNotifications);
+router.post('/notifications/send', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), notificationController.sendNotification);
+router.delete('/notifications/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), notificationController.deleteNotification);
+
+// Legacy/Compatibility endpoints for Super Admin
+router.get('/super-admin/notifications/recipients', authenticateToken, requireRoles('SUPER_ADMIN'), notificationController.getRecipients);
+router.get('/super-admin/notifications', authenticateToken, requireRoles('SUPER_ADMIN'), notificationController.listNotifications);
+router.post('/super-admin/notifications/send', authenticateToken, requireRoles('SUPER_ADMIN'), notificationController.sendNotification);
+router.delete('/super-admin/notifications/:id', authenticateToken, requireRoles('SUPER_ADMIN'), notificationController.deleteNotification);
 
 // Financial Record Immutability Enforcement (FR-SA-018)
 router.delete('/collections/transactions/:id', authenticateToken, superAdminController.rejectFinancialRecordMutation);

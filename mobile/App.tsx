@@ -78,8 +78,8 @@ function MainApp() {
   // Allowed tabs per role with automatic fallback to 'dashboard' to prevent blank screens
   const allowedTabsByRole: Record<string, string[]> = {
     SUPER_ADMIN: ['dashboard', 'companies', 'admins', 'audits', 'system', 'backups', 'notifications'],
-    MANAGER: ['dashboard', 'members', 'chit_groups', 'collections', 'accounting', 'auctions', 'branches', 'compliance', 'staff'],
-    COLLECTION_STAFF: ['dashboard', 'chit_groups', 'collections', 'members'],
+    MANAGER: ['dashboard', 'members', 'chit_groups', 'collections', 'accounting', 'auctions', 'branches', 'compliance', 'staff', 'notifications'],
+    COLLECTION_STAFF: ['dashboard', 'chit_groups', 'collections', 'members', 'notifications'],
   };
   const roleAllowed = allowedTabsByRole[user.role] || ['dashboard'];
   const effectiveTab = roleAllowed.includes(activeTab) ? activeTab : 'dashboard';
@@ -231,6 +231,13 @@ function MainApp() {
                 >
                   <Text style={[styles.navText, effectiveTab === 'compliance' && styles.navTextActive]}>📑 Compliance & Reports</Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, effectiveTab === 'notifications' && styles.navItemActive]}
+                  onPress={() => setActiveTab('notifications')}
+                >
+                  <Text style={[styles.navText, effectiveTab === 'notifications' && styles.navTextActive]}>🔔 Notifications</Text>
+                </TouchableOpacity>
               </>
             )}
 
@@ -256,6 +263,13 @@ function MainApp() {
                   onPress={() => setActiveTab('members')}
                 >
                   <Text style={[styles.navText, effectiveTab === 'members' && styles.navTextActive]}>👥 Subscribers & Members</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, effectiveTab === 'notifications' && styles.navItemActive]}
+                  onPress={() => setActiveTab('notifications')}
+                >
+                  <Text style={[styles.navText, effectiveTab === 'notifications' && styles.navTextActive]}>🔔 Notifications</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -316,7 +330,7 @@ function MainApp() {
           {effectiveTab === 'audits' && user.role === 'SUPER_ADMIN' && <AuditsTab user={user} />}
           {effectiveTab === 'system' && user.role === 'SUPER_ADMIN' && <SystemMonitoringTab user={user} />}
           {effectiveTab === 'backups' && user.role === 'SUPER_ADMIN' && <BackupsTab user={user} />}
-          {effectiveTab === 'notifications' && user.role === 'SUPER_ADMIN' && <NotificationsTab user={user} />}
+          {effectiveTab === 'notifications' && <NotificationsTab user={user} />}
           {effectiveTab === 'members' && (user.role === 'MANAGER' || user.role === 'COLLECTION_STAFF') && <MembersTab user={user} />}
           {effectiveTab === 'chit_groups' && (user.role === 'MANAGER' || user.role === 'COLLECTION_STAFF') && <ChitGroupsTab user={user} />}
           {effectiveTab === 'collections' && (user.role === 'MANAGER' || user.role === 'COLLECTION_STAFF') && <CollectionsTab user={user} />}
@@ -3973,23 +3987,37 @@ function BackupsTab({ user }: { user: any }) {
   );
 }
 
-// --- 6. MULTI-TARGET NOTIFICATION CENTER (SUPER ADMIN) ---
+// --- 6. MULTI-TIER APP-BASED NOTIFICATION CENTER ---
 function NotificationsTab({ user }: { user: any }) {
-  const [subTab, setSubTab] = useState<'compose' | 'history'>('compose');
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const isManager = user?.role === 'MANAGER';
+  const isStaff = user?.role === 'COLLECTION_STAFF';
+
+  // Staff can only view notifications (no compose permission)
+  const [subTab, setSubTab] = useState<'compose' | 'history'>(isStaff ? 'history' : 'compose');
 
   // Recipient data loaded from backend
-  const [recipientsData, setRecipientsData] = useState<any>({
-    admins: [],
-    counts: { managersCount: 0, staffCount: 0, totalUsers: 0 },
+  const [recipientsData, setRecipientsData] = useState<{
+    managers: any[];
+    staff: any[];
+    counts: { managersCount: number; staffCount: number };
+  }>({
+    managers: [],
+    staff: [],
+    counts: { managersCount: 0, staffCount: 0 },
   });
-  const [loadingRecipients, setLoadingRecipients] = useState(true);
+  const [loadingRecipients, setLoadingRecipients] = useState(false);
 
-  // Notification history
+  // Notification history / inbox
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // Form State
-  const [targetType, setTargetType] = useState<'ALL_MANAGERS' | 'ALL_STAFF' | 'INDIVIDUAL_ADMIN'>('ALL_MANAGERS');
+  // Target Type:
+  // Super Admin: ALL_MANAGERS | SINGLE_MANAGER | ALL_STAFF | SINGLE_STAFF
+  // Manager: ALL_STAFF | SINGLE_STAFF
+  const [targetType, setTargetType] = useState<
+    'ALL_MANAGERS' | 'SINGLE_MANAGER' | 'ALL_STAFF' | 'SINGLE_STAFF'
+  >(isSuperAdmin ? 'ALL_MANAGERS' : 'ALL_STAFF');
   const [targetId, setTargetId] = useState<string>('');
 
   const [title, setTitle] = useState('');
@@ -3997,26 +4025,24 @@ function NotificationsTab({ user }: { user: any }) {
   const [priority, setPriority] = useState<'NORMAL' | 'HIGH' | 'CRITICAL'>('NORMAL');
   const [type, setType] = useState<string>('GENERAL_ANNOUNCEMENT');
 
-  // Channels
-  const [inApp, setInApp] = useState(true);
-  const [email, setEmail] = useState(false);
-
-  // Search queries for individual picker
-  const [adminSearch, setAdminSearch] = useState('');
+  // Search query for single recipient pickers
+  const [recipientSearch, setRecipientSearch] = useState('');
 
   // Sending state & result
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState<any | null>(null);
 
   useEffect(() => {
-    loadRecipients();
+    if (!isStaff) {
+      loadRecipients();
+    }
     loadHistory();
   }, []);
 
   const loadRecipients = async () => {
     try {
       setLoadingRecipients(true);
-      const res = await api.get('/super-admin/notifications/recipients');
+      const res = await api.get('/notifications/recipients');
       if (res.data?.success) {
         setRecipientsData(res.data.data);
       }
@@ -4030,7 +4056,7 @@ function NotificationsTab({ user }: { user: any }) {
   const loadHistory = async () => {
     try {
       setLoadingHistory(true);
-      const res = await api.get('/super-admin/notifications');
+      const res = await api.get('/notifications');
       if (res.data?.success) {
         setNotifications(res.data.data || []);
       }
@@ -4042,8 +4068,9 @@ function NotificationsTab({ user }: { user: any }) {
   };
 
   const handleDeleteNotification = async (id: string) => {
+    if (isStaff) return;
     try {
-      await api.delete(`/super-admin/notifications/${id}`);
+      await api.delete(`/notifications/${id}`);
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     } catch (e: any) {
       alert(e.response?.data?.message || 'Failed to delete notification');
@@ -4051,33 +4078,31 @@ function NotificationsTab({ user }: { user: any }) {
   };
 
   const handleSendNotification = async () => {
+    if (isStaff) {
+      alert('Staff members cannot send notifications.');
+      return;
+    }
     if (!title.trim()) {
-      alert('Please enter a notification title / headline.');
+      alert('Please enter a notification headline / title.');
       return;
     }
     if (!message.trim()) {
       alert('Please enter a notification message.');
       return;
     }
-    if (targetType === 'INDIVIDUAL_ADMIN' && !targetId) {
-      alert('Please select an individual admin, manager, or staff member from the list.');
+    if ((targetType === 'SINGLE_MANAGER' || targetType === 'SINGLE_STAFF') && !targetId) {
+      alert(`Please select a ${targetType === 'SINGLE_MANAGER' ? 'manager' : 'staff member'} from the list.`);
       return;
     }
-
-    const channels: string[] = [];
-    if (inApp) channels.push('IN_APP');
-    if (email) channels.push('EMAIL');
-    if (channels.length === 0) channels.push('IN_APP');
 
     try {
       setSending(true);
       setSendSuccess(null);
-      const res = await api.post('/super-admin/notifications/send', {
+      const res = await api.post('/notifications/send', {
         title: title.trim(),
         message: message.trim(),
         targetType,
-        targetId: targetType === 'INDIVIDUAL_ADMIN' ? targetId : undefined,
-        channels,
+        targetId: (targetType === 'SINGLE_MANAGER' || targetType === 'SINGLE_STAFF') ? targetId : undefined,
         type,
         priority,
       });
@@ -4085,6 +4110,8 @@ function NotificationsTab({ user }: { user: any }) {
       setSendSuccess(res.data);
       setTitle('');
       setMessage('');
+      setTargetId('');
+      setRecipientSearch('');
       loadHistory();
     } catch (e: any) {
       alert(e.response?.data?.message || 'Failed to send notification');
@@ -4093,94 +4120,142 @@ function NotificationsTab({ user }: { user: any }) {
     }
   };
 
-  // Filtered list for individual picker
-  const filteredAdmins = (recipientsData.admins || []).filter((a: any) => {
-    if (!adminSearch) return true;
-    const q = adminSearch.toLowerCase();
+  // Filtered lists for single recipient selection
+  const filteredManagers = (recipientsData.managers || []).filter((m: any) => {
+    if (!recipientSearch) return true;
+    const q = recipientSearch.toLowerCase();
     return (
-      a.fullName?.toLowerCase().includes(q) ||
-      a.username?.toLowerCase().includes(q) ||
-      a.company?.name?.toLowerCase().includes(q) ||
-      a.role?.toLowerCase().includes(q)
+      m.fullName?.toLowerCase().includes(q) ||
+      m.username?.toLowerCase().includes(q) ||
+      m.company?.name?.toLowerCase().includes(q) ||
+      m.phone?.includes(q)
     );
   });
 
-  const selectedAdmin = (recipientsData.admins || []).find((a: any) => a.id === targetId);
+  const filteredStaff = (recipientsData.staff || []).filter((s: any) => {
+    if (!recipientSearch) return true;
+    const q = recipientSearch.toLowerCase();
+    return (
+      s.fullName?.toLowerCase().includes(q) ||
+      s.username?.toLowerCase().includes(q) ||
+      s.company?.name?.toLowerCase().includes(q) ||
+      s.branch?.name?.toLowerCase().includes(q) ||
+      s.phone?.includes(q)
+    );
+  });
+
+  const selectedRecipient =
+    targetType === 'SINGLE_MANAGER'
+      ? (recipientsData.managers || []).find((m: any) => m.id === targetId)
+      : targetType === 'SINGLE_STAFF'
+      ? (recipientsData.staff || []).find((s: any) => s.id === targetId)
+      : null;
 
   return (
     <ScrollView style={styles.tabScroll}>
-      <Text style={styles.sectionTitle}>Multi-Tier Notification Engine</Text>
-
-      {/* Sub-tab Navigation */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <TouchableOpacity
-            style={[
-              {
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingVertical: 9,
-                paddingHorizontal: 16,
-                borderRadius: 10,
-                backgroundColor: subTab === 'compose' ? '#0F172A' : '#FFF',
-                borderWidth: 1,
-                borderColor: subTab === 'compose' ? '#0F172A' : '#E2E8F0',
-              },
-            ]}
-            onPress={() => setSubTab('compose')}
-          >
-            <Text style={{ color: subTab === 'compose' ? '#FFF' : '#334155', fontWeight: '800', fontSize: 13 }}>
-              ✍️ Compose & Dispatch Notification
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              {
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingVertical: 9,
-                paddingHorizontal: 16,
-                borderRadius: 10,
-                backgroundColor: subTab === 'history' ? '#0F172A' : '#FFF',
-                borderWidth: 1,
-                borderColor: subTab === 'history' ? '#0F172A' : '#E2E8F0',
-              },
-            ]}
-            onPress={() => setSubTab('history')}
-          >
-            <Text style={{ color: subTab === 'history' ? '#FFF' : '#334155', fontWeight: '800', fontSize: 13 }}>
-              📜 Sent History
-            </Text>
-            <View
-              style={{
-                marginLeft: 8,
-                backgroundColor: subTab === 'history' ? '#334155' : '#F1F5F9',
-                paddingHorizontal: 7,
-                paddingVertical: 2,
-                borderRadius: 12,
-              }}
-            >
-              <Text style={{ fontSize: 11, fontWeight: '800', color: subTab === 'history' ? '#93C5FD' : '#64748B' }}>
-                {notifications.length}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.filterChip, { paddingVertical: 8, paddingHorizontal: 12 }]}
-          onPress={() => {
-            loadRecipients();
-            loadHistory();
-          }}
-        >
-          <Text style={{ fontSize: 12, color: '#0284C7', fontWeight: '700' }}>🔄 Refresh Recipients & Logs</Text>
-        </TouchableOpacity>
+      <View style={{ marginBottom: 16 }}>
+        <Text style={styles.sectionTitle}>
+          {isSuperAdmin
+            ? 'Super Admin Notification Hub'
+            : isManager
+            ? 'Branch Manager Notification Center'
+            : 'Operational In-App Notification Feed'}
+        </Text>
+        <Text style={{ fontSize: 13, color: '#64748B', marginTop: 4 }}>
+          {isSuperAdmin
+            ? 'Dispatch instant in-app alerts to groups of managers, individual managers, groups of staff, or individual staff.'
+            : isManager
+            ? 'Send direct in-app announcements and alerts to your branch staff team or individual staff members, and view incoming Super Admin alerts.'
+            : 'Official real-time notices, security advisories, and administrative instructions dispatched to you.'}
+        </Text>
       </View>
 
-      {/* SUBTAB 1: COMPOSE & DISPATCH */}
-      {subTab === 'compose' && (
+      {/* Sub-tab Navigation (Hidden for staff since staff cannot send notifications) */}
+      {!isStaff ? (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity
+              style={[
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 9,
+                  paddingHorizontal: 16,
+                  borderRadius: 10,
+                  backgroundColor: subTab === 'compose' ? '#0F172A' : '#FFF',
+                  borderWidth: 1,
+                  borderColor: subTab === 'compose' ? '#0F172A' : '#E2E8F0',
+                },
+              ]}
+              onPress={() => setSubTab('compose')}
+            >
+              <Text style={{ color: subTab === 'compose' ? '#FFF' : '#334155', fontWeight: '800', fontSize: 13 }}>
+                ✍️ Compose & Dispatch
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 9,
+                  paddingHorizontal: 16,
+                  borderRadius: 10,
+                  backgroundColor: subTab === 'history' ? '#0F172A' : '#FFF',
+                  borderWidth: 1,
+                  borderColor: subTab === 'history' ? '#0F172A' : '#E2E8F0',
+                },
+              ]}
+              onPress={() => setSubTab('history')}
+            >
+              <Text style={{ color: subTab === 'history' ? '#FFF' : '#334155', fontWeight: '800', fontSize: 13 }}>
+                📜 In-App Notifications Feed
+              </Text>
+              <View
+                style={{
+                  marginLeft: 8,
+                  backgroundColor: subTab === 'history' ? '#334155' : '#F1F5F9',
+                  paddingHorizontal: 7,
+                  paddingVertical: 2,
+                  borderRadius: 12,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '800', color: subTab === 'history' ? '#93C5FD' : '#64748B' }}>
+                  {notifications.length}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.filterChip, { paddingVertical: 8, paddingHorizontal: 12 }]}
+            onPress={() => {
+              loadRecipients();
+              loadHistory();
+            }}
+          >
+            <Text style={{ fontSize: 12, color: '#0284C7', fontWeight: '700' }}>🔄 Refresh</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <View style={{ backgroundColor: '#F1F5F9', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 }}>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155' }}>
+              📥 {notifications.length} In-App Notifications Received
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.filterChip, { paddingVertical: 8, paddingHorizontal: 12 }]}
+            onPress={loadHistory}
+          >
+            <Text style={{ fontSize: 12, color: '#0284C7', fontWeight: '700' }}>🔄 Refresh Feed</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* SUBTAB 1: COMPOSE & DISPATCH (SUPER ADMIN & MANAGER ONLY) */}
+      {!isStaff && subTab === 'compose' && (
         <View style={{ gap: 16, paddingBottom: 40 }}>
           {/* SUCCESS BANNER */}
           {sendSuccess && (
@@ -4189,7 +4264,7 @@ function NotificationsTab({ user }: { user: any }) {
                 ✓ {sendSuccess.message}
               </Text>
               <Text style={{ color: '#15803D', fontSize: 12, marginTop: 4 }}>
-                Channels: {sendSuccess.notification?.channels} • Reference ID: {sendSuccess.notification?.id} • Logged in Security Audit Trail
+                Target: {sendSuccess.notification?.targetName} • Recipients: {sendSuccess.notification?.recipientCount} • Delivery: App-Based In-App Alert
               </Text>
             </View>
           )}
@@ -4201,76 +4276,117 @@ function NotificationsTab({ user }: { user: any }) {
                 1. Select Target Audience
               </Text>
               <Text style={{ fontSize: 11, color: '#64748B' }}>
-                {recipientsData.counts?.managersCount || 0} Admins & Managers • {recipientsData.counts?.staffCount || 0} Staff
+                {isSuperAdmin
+                  ? `${recipientsData.counts?.managersCount || 0} Managers • ${recipientsData.counts?.staffCount || 0} Staff Platform-Wide`
+                  : `${recipientsData.counts?.staffCount || 0} Staff in Company`}
               </Text>
             </View>
 
+            {/* Target Options Based on Role */}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-              {[
-                { id: 'ALL_MANAGERS', label: '👔 1. All Admins / Managers' },
-                { id: 'ALL_STAFF', label: '👥 2. All Staff' },
-                { id: 'INDIVIDUAL_ADMIN', label: '👤 3. Individual Admin / Manager and Staff' },
-              ].map((t) => (
-                <TouchableOpacity
-                  key={t.id}
-                  style={[
-                    styles.filterChip,
-                    targetType === t.id && styles.filterChipActive,
-                    { paddingVertical: 9, paddingHorizontal: 14 },
-                  ]}
-                  onPress={() => {
-                    setTargetType(t.id as any);
-                    setTargetId('');
-                  }}
-                >
-                  <Text style={targetType === t.id ? styles.filterChipTextActive : styles.filterChipText}>
-                    {t.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {isSuperAdmin && (
+                <>
+                  <TouchableOpacity
+                    style={[
+                      styles.filterChip,
+                      targetType === 'ALL_MANAGERS' && styles.filterChipActive,
+                      { paddingVertical: 9, paddingHorizontal: 14 },
+                    ]}
+                    onPress={() => {
+                      setTargetType('ALL_MANAGERS');
+                      setTargetId('');
+                    }}
+                  >
+                    <Text style={targetType === 'ALL_MANAGERS' ? styles.filterChipTextActive : styles.filterChipText}>
+                      👔 Group of Managers (All)
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.filterChip,
+                      targetType === 'SINGLE_MANAGER' && styles.filterChipActive,
+                      { paddingVertical: 9, paddingHorizontal: 14 },
+                    ]}
+                    onPress={() => {
+                      setTargetType('SINGLE_MANAGER');
+                      setTargetId('');
+                    }}
+                  >
+                    <Text style={targetType === 'SINGLE_MANAGER' ? styles.filterChipTextActive : styles.filterChipText}>
+                      👤 Single Manager
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.filterChip,
+                  targetType === 'ALL_STAFF' && styles.filterChipActive,
+                  { paddingVertical: 9, paddingHorizontal: 14 },
+                ]}
+                onPress={() => {
+                  setTargetType('ALL_STAFF');
+                  setTargetId('');
+                }}
+              >
+                <Text style={targetType === 'ALL_STAFF' ? styles.filterChipTextActive : styles.filterChipText}>
+                  👥 Group of Staff (All Staff)
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.filterChip,
+                  targetType === 'SINGLE_STAFF' && styles.filterChipActive,
+                  { paddingVertical: 9, paddingHorizontal: 14 },
+                ]}
+                onPress={() => {
+                  setTargetType('SINGLE_STAFF');
+                  setTargetId('');
+                }}
+              >
+                <Text style={targetType === 'SINGLE_STAFF' ? styles.filterChipTextActive : styles.filterChipText}>
+                  🏃 Single Staff
+                </Text>
+              </TouchableOpacity>
             </View>
 
-            {/* CONDITIONAL TARGET SELECTOR: ALL MANAGERS */}
+            {/* Target Summary Banners */}
             {targetType === 'ALL_MANAGERS' && (
               <View style={{ backgroundColor: '#F0F9FF', padding: 14, borderRadius: 8, borderWidth: 1, borderColor: '#BAE6FD' }}>
                 <Text style={{ fontSize: 13, fontWeight: '800', color: '#0369A1' }}>
-                  👔 Mode: All Platform Admins & Managers
+                  👔 Target: Group of Managers (All Platform Managers)
                 </Text>
                 <Text style={{ fontSize: 12, color: '#0C4A6E', marginTop: 3 }}>
-                  This notification will be transmitted to all registered company administrators and branch managers ({recipientsData.counts?.managersCount || 0} Admins & Managers) across all active companies.
+                  This alert will be broadcasted to all registered managers ({recipientsData.counts?.managersCount || 0} Managers).
                 </Text>
               </View>
             )}
 
-            {/* CONDITIONAL TARGET SELECTOR: ALL STAFF */}
             {targetType === 'ALL_STAFF' && (
               <View style={{ backgroundColor: '#F0FDF4', padding: 14, borderRadius: 8, borderWidth: 1, borderColor: '#BBF7D0' }}>
                 <Text style={{ fontSize: 13, fontWeight: '800', color: '#15803D' }}>
-                  👥 Mode: All Operational & Collection Staff
+                  👥 Target: Group of Staff (All Staff Members)
                 </Text>
                 <Text style={{ fontSize: 12, color: '#166534', marginTop: 3 }}>
-                  This notification will be transmitted to all registered field and collection staff ({recipientsData.counts?.staffCount || 0} Staff members) across all active companies.
+                  This alert will be broadcasted to all staff ({recipientsData.counts?.staffCount || 0} Staff).
                 </Text>
               </View>
             )}
 
-            {/* CONDITIONAL TARGET SELECTOR: INDIVIDUAL ADMIN / MANAGER OR STAFF */}
-            {targetType === 'INDIVIDUAL_ADMIN' && (
+            {/* Single Manager Picker (Super Admin Only) */}
+            {targetType === 'SINGLE_MANAGER' && (
               <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', gap: 10 }}>
                 <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155' }}>
-                  Select Individual Admin / Manager or Staff Member:
+                  Select Single Manager:
                 </Text>
-                <TextInput
-                  style={[styles.searchBar, { marginBottom: 0 }]}
-                  placeholder="🔍 Search user by name, username, company, or role..."
-                  value={adminSearch}
-                  onChangeText={setAdminSearch}
-                />
 
-                {selectedAdmin && (
+                {selectedRecipient && (
                   <View style={{ backgroundColor: '#DCFCE7', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#86EFAC', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Text style={{ fontSize: 12, fontWeight: '800', color: '#166534' }}>
-                      ✓ Selected: {selectedAdmin.fullName} (@{selectedAdmin.username}) • {selectedAdmin.role?.replace('_', ' ')} • {selectedAdmin.company?.name || 'Platform'}
+                      ✓ Selected Manager: {selectedRecipient.fullName} (@{selectedRecipient.username}) • {selectedRecipient.company?.name || 'Platform'}
                     </Text>
                     <TouchableOpacity onPress={() => setTargetId('')}>
                       <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '800' }}>Change</Text>
@@ -4278,18 +4394,23 @@ function NotificationsTab({ user }: { user: any }) {
                   </View>
                 )}
 
-                <ScrollView style={{ maxHeight: 200 }}>
+                <TextInput
+                  style={[styles.searchBar, { marginBottom: 0 }]}
+                  placeholder="🔍 Search manager by name, username, company, phone..."
+                  value={recipientSearch}
+                  onChangeText={setRecipientSearch}
+                />
+
+                <ScrollView style={{ maxHeight: 180 }}>
                   <View style={{ gap: 6 }}>
-                    {filteredAdmins.length === 0 ? (
-                      <Text style={{ fontSize: 12, color: '#94A3B8', padding: 8 }}>No admin, manager, or staff found matching search.</Text>
+                    {filteredManagers.length === 0 ? (
+                      <Text style={{ fontSize: 12, color: '#94A3B8', padding: 8 }}>No managers found.</Text>
                     ) : (
-                      filteredAdmins.map((adm: any) => {
-                        const isMgr = adm.role === 'MANAGER';
-                        const roleColor = isMgr ? '#0284C7' : '#16A34A';
-                        const isSelected = targetId === adm.id;
+                      filteredManagers.map((m: any) => {
+                        const isSelected = targetId === m.id;
                         return (
                           <TouchableOpacity
-                            key={adm.id}
+                            key={m.id}
                             style={{
                               backgroundColor: isSelected ? '#0F172A' : '#FFF',
                               padding: 10,
@@ -4300,19 +4421,88 @@ function NotificationsTab({ user }: { user: any }) {
                               justifyContent: 'space-between',
                               alignItems: 'center',
                             }}
-                            onPress={() => setTargetId(adm.id)}
+                            onPress={() => setTargetId(m.id)}
                           >
                             <View style={{ flex: 1, marginRight: 8 }}>
                               <Text style={{ fontWeight: '800', color: isSelected ? '#FFF' : '#0F172A', fontSize: 12 }}>
-                                {adm.fullName} (@{adm.username})
+                                {m.fullName} (@{m.username})
                               </Text>
                               <Text style={{ fontSize: 11, color: isSelected ? '#94A3B8' : '#64748B' }}>
-                                Company: {adm.company?.name || 'Platform HQ'} • Phone: {adm.phone || '-'}
+                                Company: {m.company?.name || '-'} • Phone: {m.phone || '-'}
                               </Text>
                             </View>
-                            <View style={{ backgroundColor: isSelected ? '#334155' : roleColor + '18', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4 }}>
-                              <Text style={{ fontSize: 10, fontWeight: '800', color: isSelected ? '#38BDF8' : roleColor }}>
-                                {adm.role?.replace('_', ' ')}
+                            <View style={{ backgroundColor: isSelected ? '#334155' : '#E0F2FE', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: isSelected ? '#38BDF8' : '#0284C7' }}>
+                                MANAGER
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
+                  </View>
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Single Staff Picker (Super Admin & Manager) */}
+            {targetType === 'SINGLE_STAFF' && (
+              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', gap: 10 }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155' }}>
+                  Select Single Staff Member:
+                </Text>
+
+                {selectedRecipient && (
+                  <View style={{ backgroundColor: '#DCFCE7', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#86EFAC', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#166534' }}>
+                      ✓ Selected Staff: {selectedRecipient.fullName} (@{selectedRecipient.username}) • {selectedRecipient.branch?.name || selectedRecipient.company?.name || 'Assigned Branch'}
+                    </Text>
+                    <TouchableOpacity onPress={() => setTargetId('')}>
+                      <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '800' }}>Change</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <TextInput
+                  style={[styles.searchBar, { marginBottom: 0 }]}
+                  placeholder="🔍 Search staff member by name, username, branch, phone..."
+                  value={recipientSearch}
+                  onChangeText={setRecipientSearch}
+                />
+
+                <ScrollView style={{ maxHeight: 180 }}>
+                  <View style={{ gap: 6 }}>
+                    {filteredStaff.length === 0 ? (
+                      <Text style={{ fontSize: 12, color: '#94A3B8', padding: 8 }}>No staff members found.</Text>
+                    ) : (
+                      filteredStaff.map((s: any) => {
+                        const isSelected = targetId === s.id;
+                        return (
+                          <TouchableOpacity
+                            key={s.id}
+                            style={{
+                              backgroundColor: isSelected ? '#0F172A' : '#FFF',
+                              padding: 10,
+                              borderRadius: 6,
+                              borderWidth: 1,
+                              borderColor: isSelected ? '#0F172A' : '#CBD5E1',
+                              flexDirection: 'row',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                            }}
+                            onPress={() => setTargetId(s.id)}
+                          >
+                            <View style={{ flex: 1, marginRight: 8 }}>
+                              <Text style={{ fontWeight: '800', color: isSelected ? '#FFF' : '#0F172A', fontSize: 12 }}>
+                                {s.fullName} (@{s.username})
+                              </Text>
+                              <Text style={{ fontSize: 11, color: isSelected ? '#94A3B8' : '#64748B' }}>
+                                Branch: {s.branch?.name || '-'} • Phone: {s.phone || '-'}
+                              </Text>
+                            </View>
+                            <View style={{ backgroundColor: isSelected ? '#334155' : '#DCFCE7', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: isSelected ? '#86EFAC' : '#16A34A' }}>
+                                STAFF
                               </Text>
                             </View>
                           </TouchableOpacity>
@@ -4331,16 +4521,15 @@ function NotificationsTab({ user }: { user: any }) {
               2. Notification Content & Priority
             </Text>
 
-            {/* Notification Type & Urgency Pills */}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
               <View style={{ flex: 1, minWidth: 260 }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6 }}>Category / Intent:</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {[
                     { id: 'GENERAL_ANNOUNCEMENT', label: '📢 Announcement' },
-                    { id: 'SYSTEM_ALERT', label: '⚠️ System Alert' },
-                    { id: 'PAYMENT_REMINDER', label: '💳 Payment Reminder' },
-                    { id: 'SECURITY_NOTICE', label: '🛡️ Security Advisory' },
+                    { id: 'SYSTEM_ALERT', label: '⚠️ Alert' },
+                    { id: 'PAYMENT_REMINDER', label: '💳 Payment/Collection' },
+                    { id: 'SECURITY_NOTICE', label: '🛡️ Advisory' },
                   ].map((t) => (
                     <TouchableOpacity
                       key={t.id}
@@ -4387,7 +4576,7 @@ function NotificationsTab({ user }: { user: any }) {
               </Text>
               <TextInput
                 style={[styles.input, { marginBottom: 0 }]}
-                placeholder="e.g. Scheduled System Maintenance or Security Advisory"
+                placeholder="e.g. Mandatory Staff Meeting / Payment Cutoff Notice"
                 value={title}
                 onChangeText={setTitle}
               />
@@ -4412,30 +4601,23 @@ function NotificationsTab({ user }: { user: any }) {
             </View>
           </View>
 
-          {/* SECTION 3: DELIVERY CHANNELS & DISPATCH */}
+          {/* SECTION 3: APP-BASED DELIVERY CONFIRMATION & DISPATCH */}
           <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 18, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 3 }}>
-            <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A', marginBottom: 10 }}>
-              3. Delivery Channels & Dispatch
+            <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A', marginBottom: 6 }}>
+              3. Delivery Mechanism
             </Text>
 
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 18 }}>
-              <TouchableOpacity
-                style={[styles.filterChip, inApp && styles.filterChipActive]}
-                onPress={() => setInApp(!inApp)}
-              >
-                <Text style={inApp ? styles.filterChipTextActive : styles.filterChipText}>
-                  {inApp ? '✓ 📱 In-App Dashboard Alert' : '○ 📱 In-App Dashboard Alert'}
+            {/* App Based Only Alert Notice - NO Email Toggle Button */}
+            <View style={{ backgroundColor: '#EFF6FF', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#BFDBFE', flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+              <Text style={{ fontSize: 20 }}>📱</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#1E40AF' }}>
+                  App-Based Direct In-App Notification (Push & Dashboard Alerts)
                 </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.filterChip, email && styles.filterChipActive]}
-                onPress={() => setEmail(!email)}
-              >
-                <Text style={email ? styles.filterChipTextActive : styles.filterChipText}>
-                  {email ? '✓ 📧 Email Notification' : '○ 📧 Email Notification'}
+                <Text style={{ fontSize: 11, color: '#3B82F6', marginTop: 2 }}>
+                  Notifications are delivered instantly within the app to recipient dashboards and audit trails.
                 </Text>
-              </TouchableOpacity>
+              </View>
             </View>
 
             <TouchableOpacity
@@ -4461,7 +4643,7 @@ function NotificationsTab({ user }: { user: any }) {
                 <>
                   <Text style={{ fontSize: 16 }}>🚀</Text>
                   <Text style={[styles.addBtnText, { fontSize: 13, letterSpacing: 0.5 }]}>
-                    SEND NOTIFICATION NOW
+                    DISPATCH NOTIFICATION NOW
                   </Text>
                 </>
               )}
@@ -4470,8 +4652,8 @@ function NotificationsTab({ user }: { user: any }) {
         </View>
       )}
 
-      {/* SUBTAB 2: SENT NOTIFICATIONS LOG */}
-      {subTab === 'history' && (
+      {/* SUBTAB 2 / DEFAULT VIEW: NOTIFICATIONS FEED & LOGS */}
+      {(isStaff || subTab === 'history') && (
         <View style={{ paddingBottom: 40 }}>
           {loadingHistory ? (
             <ActivityIndicator size="large" color="#0A2540" style={{ marginTop: 30 }} />
@@ -4479,17 +4661,21 @@ function NotificationsTab({ user }: { user: any }) {
             <View style={[styles.emptyBox, { padding: 36, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' }]}>
               <Text style={{ fontSize: 32, marginBottom: 8 }}>🔔</Text>
               <Text style={[styles.emptyText, { fontSize: 16, fontWeight: '800', color: '#0F172A' }]}>
-                No notifications sent yet.
+                No notifications in your inbox yet.
               </Text>
               <Text style={[styles.emptySubText, { maxWidth: 420, textAlign: 'center', marginTop: 4 }]}>
-                Dispatched messages to all admins/managers, all staff, and individual administrators or staff members will be recorded here.
+                {isStaff
+                  ? 'All important alerts, guidelines, and messages dispatched to you by Super Admins and Managers will appear here.'
+                  : 'Dispatched messages and notifications sent to your team or received from Super Admin will appear here.'}
               </Text>
-              <TouchableOpacity
-                style={[styles.addBtn, { backgroundColor: '#0284C7', marginTop: 14 }]}
-                onPress={() => setSubTab('compose')}
-              >
-                <Text style={styles.addBtnText}>Compose First Notification</Text>
-              </TouchableOpacity>
+              {!isStaff && (
+                <TouchableOpacity
+                  style={[styles.addBtn, { backgroundColor: '#0284C7', marginTop: 14 }]}
+                  onPress={() => setSubTab('compose')}
+                >
+                  <Text style={styles.addBtnText}>Compose First Notification</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             <View style={{ gap: 12 }}>
@@ -4497,6 +4683,8 @@ function NotificationsTab({ user }: { user: any }) {
                 const isCritical = n.priority === 'CRITICAL';
                 const isHigh = n.priority === 'HIGH';
                 const borderColor = isCritical ? '#DC2626' : isHigh ? '#D97706' : '#0284C7';
+                const isFromSuperAdmin = n.senderRole === 'SUPER_ADMIN';
+                const canDelete = isSuperAdmin || (isManager && n.senderId === user?.id);
 
                 return (
                   <View
@@ -4515,6 +4703,7 @@ function NotificationsTab({ user }: { user: any }) {
                       shadowRadius: 3,
                     }}
                   >
+                    {/* Header Row */}
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <View style={{ backgroundColor: borderColor + '18', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: borderColor + '40' }}>
@@ -4522,11 +4711,21 @@ function NotificationsTab({ user }: { user: any }) {
                             {n.priority}
                           </Text>
                         </View>
+
+                        {isFromSuperAdmin && (
+                          <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: '#FDE68A' }}>
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#B45309' }}>
+                              🛡️ Super Admin Announcement
+                            </Text>
+                          </View>
+                        )}
+
                         <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 }}>
                           <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569' }}>
                             {n.type?.replace('_', ' ')}
                           </Text>
                         </View>
+
                         <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A' }}>
                           {n.title}
                         </Text>
@@ -4536,35 +4735,39 @@ function NotificationsTab({ user }: { user: any }) {
                         <Text style={{ fontSize: 11, color: '#94A3B8' }}>
                           🕒 {new Date(n.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
                         </Text>
-                        <TouchableOpacity onPress={() => handleDeleteNotification(n.id)}>
-                          <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '700' }}>🗑️ Delete</Text>
-                        </TouchableOpacity>
+                        {canDelete && (
+                          <TouchableOpacity onPress={() => handleDeleteNotification(n.id)}>
+                            <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '700' }}>🗑️ Delete</Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
                     </View>
 
-                    <Text style={{ fontSize: 13, color: '#334155', lineHeight: 20, marginBottom: 10 }}>
+                    {/* Message Body */}
+                    <Text style={{ fontSize: 13, color: '#334155', lineHeight: 20, marginBottom: 12 }}>
                       {n.message}
                     </Text>
 
+                    {/* Meta Badges */}
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
                       <View style={{ backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: '#E2E8F0' }}>
                         <Text style={{ fontSize: 11, color: '#64748B' }}>
                           🎯 Target: <Text style={{ fontWeight: '800', color: '#0F172A' }}>{n.targetName || n.targetType}</Text>
                         </Text>
                       </View>
+
                       <View style={{ backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: '#E2E8F0' }}>
                         <Text style={{ fontSize: 11, color: '#64748B' }}>
-                          👥 Recipients: <Text style={{ fontWeight: '800', color: '#16A34A' }}>{n.recipientCount}</Text>
+                          📱 Delivery: <Text style={{ fontWeight: '800', color: '#2563EB' }}>App In-App Alert</Text>
                         </Text>
                       </View>
+
                       <View style={{ backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: '#E2E8F0' }}>
                         <Text style={{ fontSize: 11, color: '#64748B' }}>
-                          📡 Channels: <Text style={{ fontWeight: '700', color: '#334155' }}>{n.channels}</Text>
-                        </Text>
-                      </View>
-                      <View style={{ backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                        <Text style={{ fontSize: 11, color: '#64748B' }}>
-                          👤 Sent By: <Text style={{ fontWeight: '700', color: '#334155' }}>{n.senderName || 'Super Admin'}</Text>
+                          👤 Sent By:{' '}
+                          <Text style={{ fontWeight: '700', color: isFromSuperAdmin ? '#B45309' : '#0284C7' }}>
+                            {n.senderName || (isFromSuperAdmin ? 'Super Administrator' : 'Manager')} ({n.senderRole === 'SUPER_ADMIN' ? 'Super Admin' : 'Manager'})
+                          </Text>
                         </Text>
                       </View>
                     </View>

@@ -448,3 +448,23 @@ model Refund {
   subscriber        Subscriber @relation(fields: [subscriberId], references: [id])
 }
 
+model Notification {
+  id             String   @id @default(uuid())
+  title          String
+  message        String
+  type           String   @default("GENERAL_ANNOUNCEMENT")
+  priority       String   @default("NORMAL")
+  targetType     String   // ALL_MANAGERS, SINGLE_MANAGER, ALL_STAFF, SINGLE_STAFF
+  targetId       String?
+  targetName     String?
+  channels       String   @default("IN_APP")
+  recipientCount Int      @default(1)
+  recipients     String?
+  senderId       String?
+  senderName     String?
+  senderRole     String?
+  companyId      String?
+  createdAt      DateTime @default(now())
+}
+
+
