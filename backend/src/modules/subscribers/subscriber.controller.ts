@@ -155,6 +155,86 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
     });
 
     if (existing) {
+      if (groupId) {
+        const targetGroup = await prisma.chitGroup.findUnique({
+          where: { id: groupId },
+          include: { members: true, staffAssignments: true },
+        });
+
+        if (!targetGroup) {
+          return res.status(404).json({ success: false, message: 'Specified chit group not found' });
+        }
+
+        // Role check: Staff can only enroll into their own assigned chit group
+        if (req.user?.role === 'COLLECTION_STAFF') {
+          const staffUserId = req.user.id;
+          const isAssigned =
+            targetGroup.assignedStaffId === staffUserId ||
+            targetGroup.staffAssignments.some((sa) => sa.staffId === staffUserId);
+          if (!isAssigned) {
+            return res.status(403).json({
+              success: false,
+              message: 'Forbidden: Staff can only enroll members into their own assigned chit group.',
+            });
+          }
+        }
+
+        // Check if member already enrolled in THIS group
+        const alreadyInGroup = targetGroup.members.some((m) => m.subscriberId === existing.id);
+        if (alreadyInGroup) {
+          return res.status(400).json({
+            success: false,
+            message: `Member "${existing.fullName}" (${existing.subscriberCode}) is already enrolled in chit group "${targetGroup.name}".`,
+          });
+        }
+
+        if (targetGroup.members.length >= targetGroup.maxMembers) {
+          return res.status(400).json({
+            success: false,
+            message: `Chit group ${targetGroup.name} has reached maximum member capacity (${targetGroup.maxMembers}).`,
+          });
+        }
+
+        const ticketNumber = targetGroup.members.length + 1;
+        await prisma.chitGroupMember.create({
+          data: {
+            groupId,
+            subscriberId: existing.id,
+            ticketNumber,
+          },
+        });
+
+        // Ensure staff linkage if needed
+        const staffToLink = targetGroup.assignedStaffId || (req.user?.role === 'COLLECTION_STAFF' ? req.user.id : null);
+        if (staffToLink && !existing.assignedStaffId) {
+          await prisma.subscriber.update({
+            where: { id: existing.id },
+            data: { assignedStaffId: staffToLink },
+          });
+        }
+
+        const updatedExisting = await prisma.subscriber.findUnique({
+          where: { id: existing.id },
+          include: {
+            branch: { select: { name: true, code: true } },
+            assignedStaff: { select: { fullName: true, phone: true } },
+            user: { select: { id: true, username: true, role: true } },
+            memberships: {
+              include: {
+                group: { select: { id: true, groupCode: true, name: true, monthlyInstallment: true, status: true } },
+              },
+            },
+          },
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: `Member "${existing.fullName}" (${existing.subscriberCode}) enrolled into group "${targetGroup.name}" with Ticket #${ticketNumber}!`,
+          data: updatedExisting,
+          alreadyRegistered: true,
+        });
+      }
+
       return res.status(409).json({
         success: false,
         message: `A member with phone ${cleanPhone} is already registered (${existing.subscriberCode} - ${existing.fullName}). The same member can be enrolled into any chit group!`,

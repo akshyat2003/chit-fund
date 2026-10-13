@@ -51,9 +51,16 @@ export const listChitGroups = async (req: AuthRequest, res: Response) => {
     const sanitizedGroups = groups.map((g) => {
       if (req.user?.role === 'COLLECTION_STAFF') {
         const staffUserId = req.user.id;
-        const assignedMembers = g.members.filter(
-          (m) => m.subscriber?.assignedStaffId === staffUserId
-        );
+        const isStaffGroup =
+          g.assignedStaffId === staffUserId ||
+          g.staffAssignments?.some((sa: any) => sa.staffId === staffUserId);
+
+        const assignedMembers = isStaffGroup
+          ? g.members
+          : g.members.filter(
+              (m: any) => m.subscriber?.assignedStaffId === staffUserId
+            );
+
         return {
           ...g,
           members: assignedMembers,
@@ -254,6 +261,21 @@ export const enrollSubscriber = async (req: AuthRequest, res: Response) => {
       },
     });
 
+    // Ensure subscriber is linked to the assigned staff of this group
+    const staffToLink = group.assignedStaffId || (req.user?.role === 'COLLECTION_STAFF' ? req.user.id : null);
+    if (staffToLink) {
+      const existingSub = await prisma.subscriber.findUnique({
+        where: { id: subscriberId },
+        select: { assignedStaffId: true },
+      });
+      if (existingSub && !existingSub.assignedStaffId) {
+        await prisma.subscriber.update({
+          where: { id: subscriberId },
+          data: { assignedStaffId: staffToLink },
+        });
+      }
+    }
+
     return res.status(201).json({ success: true, message: `Member assigned successfully to group ${group.name}`, data: membership });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
@@ -300,9 +322,15 @@ export const getChitGroupDetails = async (req: AuthRequest, res: Response) => {
 
     if (req.user?.role === 'COLLECTION_STAFF') {
       const staffUserId = req.user.id;
-      group.members = group.members.filter(
-        (m: any) => m.subscriber?.assignedStaffId === staffUserId
-      );
+      const isStaffGroup =
+        group.assignedStaffId === staffUserId ||
+        group.staffAssignments?.some((sa: any) => sa.staffId === staffUserId);
+
+      if (!isStaffGroup) {
+        group.members = group.members.filter(
+          (m: any) => m.subscriber?.assignedStaffId === staffUserId
+        );
+      }
     }
 
     return res.json({ success: true, data: group });

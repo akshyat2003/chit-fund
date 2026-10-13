@@ -29,14 +29,17 @@ export function ChitGroupsTab({ user }: { user: any }) {
   const [showEnrollModal, setShowEnrollModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showViewMembersModal, setShowViewMembersModal] = useState(false);
 
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
+  const [selectedViewGroup, setSelectedViewGroup] = useState<any>(null);
   const [groupToDelete, setGroupToDelete] = useState<any>(null);
   const [assignGroup, setAssignGroup] = useState<any>(null);
   const [scheduleData, setScheduleData] = useState<any>(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
 
   // Available staff members for assignment (at most 1 staff per chit group)
   const [staffMembers, setStaffMembers] = useState<any[]>([]);
@@ -360,13 +363,31 @@ export function ChitGroupsTab({ user }: { user: any }) {
         alert(`Member successfully enrolled with Ticket #${res.data.data.ticketNumber || res.data.data.ticketNo}`);
         setShowEnrollModal(false);
         setTicketNo('');
-        fetchGroups();
+        setSelectedSubscriberId('');
+        await fetchGroups();
+
+        // Open view members modal with updated data
+        const currentGroupId = selectedGroup.id;
+        const updatedRes = await api.get('/chit-groups').catch(() => null);
+        if (updatedRes?.data?.data) {
+          const updatedGrp = updatedRes.data.data.find((g: any) => g.id === currentGroupId);
+          if (updatedGrp) {
+            setSelectedViewGroup(updatedGrp);
+            setShowViewMembersModal(true);
+          }
+        }
       }
     } catch (e: any) {
       alert(e.response?.data?.message || 'Failed to enroll member');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Open Enrolled / Assigned Members View
+  const handleOpenViewMembers = (grp: any) => {
+    setSelectedViewGroup(grp);
+    setShowViewMembersModal(true);
   };
 
   // AC-07: View Installment Schedule
@@ -404,7 +425,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
     }
     try {
       setQuickRegistering(true);
-      // 1. Create Subscriber
+      // 1. Create Subscriber & Enroll into this group (pass groupId so backend automatically enrolls even if member exists)
       const subRes = await api.post('/subscribers', {
         fullName: quickFullName.trim(),
         phone: quickPhone.trim(),
@@ -412,21 +433,17 @@ export function ChitGroupsTab({ user }: { user: any }) {
         aadhaarNo: quickAadhaar.trim() || undefined,
         panNo: quickPan.trim().toUpperCase() || undefined,
         branchId: selectedGroup.branchId || branches[0]?.id || user.branchId || undefined,
-      });
-
-      const newSubscriber = subRes.data?.data;
-      if (!newSubscriber?.id) {
-        throw new Error('Could not retrieve created member record');
-      }
-
-      // 2. Enroll Subscriber into the Chit Group
-      await api.post('/chit-groups/enroll', {
         groupId: selectedGroup.id,
-        subscriberId: newSubscriber.id,
-        ticketNo: ticketNo ? Number(ticketNo) : undefined,
       });
 
-      alert(`Member "${newSubscriber.fullName}" (${newSubscriber.subscriberCode}) registered and enrolled into group "${selectedGroup.name}"!`);
+      const memberData = subRes.data?.data;
+      const isAlreadyRegistered = subRes.data?.alreadyRegistered;
+
+      alert(
+        isAlreadyRegistered
+          ? `Existing member "${memberData?.fullName}" (${memberData?.subscriberCode}) successfully enrolled into group "${selectedGroup.name}"!`
+          : `Member "${memberData?.fullName}" (${memberData?.subscriberCode}) registered and enrolled into group "${selectedGroup.name}"!`
+      );
       setShowEnrollModal(false);
       setIsQuickRegistering(false);
       setQuickFullName('');
@@ -434,7 +451,21 @@ export function ChitGroupsTab({ user }: { user: any }) {
       setQuickAadhaar('');
       setQuickPan('');
       setQuickAddress('');
-      fetchGroups();
+      setTicketNo('');
+
+      // Refresh groups list
+      await fetchGroups();
+
+      // Open assigned members view so staff can immediately view the list of members assigned to them!
+      const currentGroupId = selectedGroup.id;
+      const updatedRes = await api.get('/chit-groups').catch(() => null);
+      if (updatedRes?.data?.data) {
+        const updatedGrp = updatedRes.data.data.find((g: any) => g.id === currentGroupId);
+        if (updatedGrp) {
+          setSelectedViewGroup(updatedGrp);
+          setShowViewMembersModal(true);
+        }
+      }
     } catch (e: any) {
       setQuickError(e.response?.data?.message || e.message || 'Failed to register and enroll member');
     } finally {
@@ -733,10 +764,20 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     setSelectedGroup(grp);
                     setTicketNo(String(enrolledCount + 1));
                     setIsQuickRegistering(isStaff ? true : false);
+                    setMemberSearchQuery('');
                     setShowEnrollModal(true);
                   }}
                 >
                   <Text style={mStyles.primaryBtnText}>👤 Enroll Member</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[mStyles.secondaryBtn, { paddingVertical: 8, paddingHorizontal: 12, borderColor: '#0284C7', backgroundColor: '#F0F9FF' }]}
+                  onPress={() => handleOpenViewMembers(grp)}
+                >
+                  <Text style={[mStyles.secondaryBtnText, { color: '#0369A1', fontWeight: '700' }]}>
+                    👥 {isStaff ? 'Assigned Members' : 'View Members'}
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1210,102 +1251,99 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   </Text>
                 </View>
 
-                {/* Mode Selector: Managers can switch between Select Existing vs Register New; Staff only registers directly */}
+                {/* Manager: Directly selects registered member (Register & Enroll removed in Manager Dashboard) */}
                 {isManagerOrAdmin && (
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-                    <TouchableOpacity
-                      style={{
-                        flex: 1,
-                        paddingVertical: 9,
-                        borderRadius: 8,
-                        alignItems: 'center',
-                        backgroundColor: !isQuickRegistering ? '#0284C7' : '#F1F5F9',
-                      }}
-                      onPress={() => setIsQuickRegistering(false)}
-                    >
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: !isQuickRegistering ? '#FFF' : '#475569' }}>
-                        👤 Select Member
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={{
-                        flex: 1,
-                        paddingVertical: 9,
-                        borderRadius: 8,
-                        alignItems: 'center',
-                        backgroundColor: isQuickRegistering ? '#0284C7' : '#F1F5F9',
-                      }}
-                      onPress={() => setIsQuickRegistering(true)}
-                    >
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: isQuickRegistering ? '#FFF' : '#475569' }}>
-                        ➕ Register & Enroll
-                      </Text>
-                    </TouchableOpacity>
+                  <View style={{ marginBottom: 12, backgroundColor: '#F0FDF4', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#BBF7D0' }}>
+                    <Text style={{ fontWeight: '700', fontSize: 13, color: '#15803D' }}>
+                      👤 Select Registered Member to Enroll
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                      Pick an existing member from the registry. (Members can join multiple chit groups). To register brand new members globally, use the Members tab.
+                    </Text>
                   </View>
                 )}
 
+                {/* Staff: Registers and assigns member directly into this chit group */}
                 {isStaff && (
                   <View style={{ marginBottom: 12, backgroundColor: '#F0F9FF', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#BAE6FD' }}>
                     <Text style={{ fontWeight: '700', fontSize: 13, color: '#0369A1' }}>
                       ➕ Register & Enroll Member into {selectedGroup.name}
                     </Text>
                     <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
-                      Fill in the member particulars below to register and assign them to your group.
+                      Fill in the member particulars below to register and assign them to your group. (Members can join multiple chit groups).
                     </Text>
                   </View>
                 )}
 
-                {isManagerOrAdmin && !isQuickRegistering ? (
+                {isManagerOrAdmin ? (
                   <>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                       <Text style={mStyles.label}>Select Registered Member *</Text>
                       <Text style={{ fontSize: 11, color: '#0284C7', fontStyle: 'italic' }}>
                         (Members can join multiple chit groups)
                       </Text>
                     </View>
 
+                    {/* Quick Search for Registered Members */}
+                    <TextInput
+                      style={[mStyles.input, { marginBottom: 8, fontSize: 12, paddingVertical: 6 }]}
+                      placeholder="🔍 Search member by name, code, or phone..."
+                      placeholderTextColor="#94A3B8"
+                      value={memberSearchQuery}
+                      onChangeText={setMemberSearchQuery}
+                    />
+
                     <View style={{ maxHeight: 220, marginBottom: 14 }}>
                       <ScrollView nestedScrollEnabled style={{ borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8 }}>
-                        {subscribers.map((sub) => {
-                          const isAlreadyEnrolled =
-                            selectedGroup.members?.some((m: any) => m.subscriberId === sub.id) ||
-                            selectedGroup.memberships?.some((m: any) => m.subscriberId === sub.id);
-                          const isSelected = selectedSubscriberId === sub.id;
+                        {subscribers
+                          .filter((sub) => {
+                            if (!memberSearchQuery.trim()) return true;
+                            const q = memberSearchQuery.toLowerCase();
+                            return (
+                              sub.fullName?.toLowerCase().includes(q) ||
+                              sub.subscriberCode?.toLowerCase().includes(q) ||
+                              sub.phone?.includes(q)
+                            );
+                          })
+                          .map((sub) => {
+                            const isAlreadyEnrolled =
+                              selectedGroup.members?.some((m: any) => m.subscriberId === sub.id) ||
+                              selectedGroup.memberships?.some((m: any) => m.subscriberId === sub.id);
+                            const isSelected = selectedSubscriberId === sub.id;
 
-                          return (
-                            <TouchableOpacity
-                              key={sub.id}
-                              disabled={isAlreadyEnrolled}
-                              style={{
-                                padding: 10,
-                                borderBottomWidth: 1,
-                                borderBottomColor: '#F1F5F9',
-                                backgroundColor: isAlreadyEnrolled ? '#F8FAFC' : isSelected ? '#E0F2FE' : '#FFF',
-                                opacity: isAlreadyEnrolled ? 0.6 : 1,
-                              }}
-                              onPress={() => !isAlreadyEnrolled && setSelectedSubscriberId(sub.id)}
-                            >
-                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <Text style={{ fontWeight: isSelected ? '700' : '500', fontSize: 13, color: isAlreadyEnrolled ? '#94A3B8' : '#0F172A' }}>
-                                  {sub.fullName} [{sub.subscriberCode}]
-                                </Text>
-                                {isAlreadyEnrolled ? (
-                                  <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                    <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '700' }}>ALREADY ENROLLED</Text>
-                                  </View>
-                                ) : (
-                                  <Text style={{ fontSize: 11, color: '#16A34A', fontWeight: '600' }}>
-                                    {sub.memberships?.length ? `In ${sub.memberships.length} other group(s)` : 'Available'}
+                            return (
+                              <TouchableOpacity
+                                key={sub.id}
+                                disabled={isAlreadyEnrolled}
+                                style={{
+                                  padding: 10,
+                                  borderBottomWidth: 1,
+                                  borderBottomColor: '#F1F5F9',
+                                  backgroundColor: isAlreadyEnrolled ? '#F8FAFC' : isSelected ? '#E0F2FE' : '#FFF',
+                                  opacity: isAlreadyEnrolled ? 0.6 : 1,
+                                }}
+                                onPress={() => !isAlreadyEnrolled && setSelectedSubscriberId(sub.id)}
+                              >
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Text style={{ fontWeight: isSelected ? '700' : '500', fontSize: 13, color: isAlreadyEnrolled ? '#94A3B8' : '#0F172A' }}>
+                                    {sub.fullName} [{sub.subscriberCode}]
                                   </Text>
-                                )}
-                              </View>
-                              <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
-                                📱 {sub.phone} {sub.address ? `• 📍 ${sub.address}` : ''}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
+                                  {isAlreadyEnrolled ? (
+                                    <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                      <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '700' }}>ALREADY ENROLLED</Text>
+                                    </View>
+                                  ) : (
+                                    <Text style={{ fontSize: 11, color: '#16A34A', fontWeight: '600' }}>
+                                      {sub.memberships?.length ? `In ${sub.memberships.length} other group(s)` : 'Available'}
+                                    </Text>
+                                  )}
+                                </View>
+                                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                                  📱 {sub.phone} {sub.address ? `• 📍 ${sub.address}` : ''}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
                       </ScrollView>
                     </View>
 
@@ -1630,6 +1668,150 @@ export function ChitGroupsTab({ user }: { user: any }) {
                     ) : (
                       <Text style={mStyles.primaryBtnText}>✓ Save Assignments</Text>
                     )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- MODAL 7: VIEW GROUP MEMBERS (Assigned to Staff / Enrolled) --- */}
+      <Modal
+        visible={showViewMembersModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowViewMembersModal(false)}
+      >
+        <View style={mStyles.modalBackdrop}>
+          <View style={[mStyles.modalBox, { maxWidth: 650, maxHeight: '85%' }]}>
+            <View style={mStyles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={mStyles.modalTitle}>
+                  👥 {isStaff ? 'My Assigned Group Members' : 'Enrolled Chit Members'}
+                </Text>
+                {selectedViewGroup && (
+                  <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+                    Group: {selectedViewGroup.name} ({selectedViewGroup.groupCode}) • Scheme: ₹{(selectedViewGroup.chitValue ?? selectedViewGroup.totalChitValue)?.toLocaleString()}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity onPress={() => setShowViewMembersModal(false)}>
+                <Text style={mStyles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {selectedViewGroup && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {isManagerOrAdmin && (
+                  <View style={{ backgroundColor: '#F8FAFC', padding: 10, borderRadius: 8, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>
+                      Enrolled: {selectedViewGroup.members?.length || 0} / {selectedViewGroup.maxMembers} Members
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#64748B' }}>
+                      Monthly Installment: ₹{(selectedViewGroup.monthlyInstallment)?.toLocaleString()}
+                    </Text>
+                  </View>
+                )}
+
+                {isStaff && (
+                  <View style={{ backgroundColor: '#F0F9FF', padding: 10, borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: '#BAE6FD' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
+                      📋 Members assigned to you in this chit group:
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                      Monthly Installment: ₹{(selectedViewGroup.monthlyInstallment)?.toLocaleString()}
+                    </Text>
+                  </View>
+                )}
+
+                {(!selectedViewGroup.members || selectedViewGroup.members.length === 0) ? (
+                  <View style={{ padding: 24, alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 8, marginBottom: 14 }}>
+                    <Text style={{ fontSize: 13, color: '#64748B', fontWeight: '600' }}>
+                      No members enrolled in this chit group yet.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 8, marginBottom: 14 }}>
+                    {selectedViewGroup.members.map((m: any, idx: number) => {
+                      const sub = m.subscriber || m;
+                      const ticket = m.ticketNumber ?? m.ticketNo ?? (idx + 1);
+                      return (
+                        <View
+                          key={m.id || idx}
+                          style={{
+                            padding: 12,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: '#E2E8F0',
+                            backgroundColor: '#FFF',
+                          }}
+                        >
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <View style={{ backgroundColor: '#0284C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 }}>
+                                <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>
+                                  Ticket #{ticket}
+                                </Text>
+                              </View>
+                              <Text style={{ fontWeight: '700', fontSize: 14, color: '#0F172A' }}>
+                                {sub.fullName}
+                              </Text>
+                              <Text style={{ fontSize: 11, color: '#64748B' }}>
+                                [{sub.subscriberCode}]
+                              </Text>
+                            </View>
+                            <View
+                              style={{
+                                paddingHorizontal: 6,
+                                paddingVertical: 2,
+                                borderRadius: 4,
+                                backgroundColor: sub.kycStatus === 'VERIFIED' ? '#DCFCE7' : '#FEF3C7',
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: '700',
+                                  color: sub.kycStatus === 'VERIFIED' ? '#166534' : '#B45309',
+                                }}
+                              >
+                                {sub.kycStatus || 'VERIFIED'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <Text style={{ fontSize: 12, color: '#334155', marginTop: 2 }}>
+                            📱 {sub.phone} {sub.email ? `• ✉️ ${sub.email}` : ''}
+                          </Text>
+                          {sub.address ? (
+                            <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                              📍 {sub.address}
+                            </Text>
+                          ) : null}
+                          {(sub.aadhaarNo || sub.panNo) ? (
+                            <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                              {sub.aadhaarNo ? `Aadhaar: ${sub.aadhaarNo} ` : ''}
+                              {sub.panNo ? `• PAN: ${sub.panNo}` : ''}
+                            </Text>
+                          ) : null}
+                          {m.enrolledAt ? (
+                            <Text style={{ fontSize: 10, color: '#94A3B8', marginTop: 4 }}>
+                              Enrolled on: {new Date(m.enrolledAt).toLocaleDateString('en-IN')}
+                            </Text>
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
+                  <TouchableOpacity
+                    style={mStyles.secondaryBtn}
+                    onPress={() => setShowViewMembersModal(false)}
+                  >
+                    <Text style={mStyles.secondaryBtnText}>Close</Text>
                   </TouchableOpacity>
                 </View>
               </ScrollView>
