@@ -468,28 +468,151 @@ export const deleteCompany = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: 'Company not found.' });
     }
 
-    const txCount = await prisma.paymentTransaction.count({ where: { companyId: id } });
-    if (txCount > 0) {
-      // Retain ledger records for regulatory compliance, mark company DELETED so it is completely hidden
-      await prisma.company.update({
-        where: { id },
-        data: { status: 'DELETED' },
-      });
-      // Revoke sessions of all its users
-      const users = await prisma.user.findMany({ where: { companyId: id }, select: { id: true } });
+    // Comprehensive cascade deletion of all child records in topological order
+    await prisma.$transaction(async (tx) => {
+      // 1. Gather all related entity IDs
+      const branches = await tx.branch.findMany({ where: { companyId: id }, select: { id: true } });
+      const branchIds = branches.map((b) => b.id);
+
+      const chitGroups = await tx.chitGroup.findMany({ where: { companyId: id }, select: { id: true } });
+      const chitGroupIds = chitGroups.map((g) => g.id);
+
+      const subscribers = await tx.subscriber.findMany({ where: { companyId: id }, select: { id: true } });
+      const subscriberIds = subscribers.map((s) => s.id);
+
+      const users = await tx.user.findMany({ where: { companyId: id }, select: { id: true } });
       const userIds = users.map((u) => u.id);
-      if (userIds.length > 0) {
-        await prisma.refreshToken.deleteMany({ where: { userId: { in: userIds } } });
+
+      // 2. Delete payouts (references auction & subscriber)
+      if (subscriberIds.length > 0) {
+        await tx.payout.deleteMany({
+          where: { subscriberId: { in: subscriberIds } },
+        });
       }
-    } else {
-      // No financial ledger attached: hard delete all branches, users, and company record
-      await prisma.$transaction(async (tx) => {
-        await tx.user.deleteMany({ where: { companyId: id } });
-        await tx.branch.deleteMany({ where: { companyId: id } });
-        await tx.auditLog.deleteMany({ where: { companyId: id } });
-        await tx.company.delete({ where: { id } });
+
+      // 3. Delete auction bids, auctions, schedules, group staff, group members, installment schedules
+      if (chitGroupIds.length > 0) {
+        await tx.auctionBid.deleteMany({
+          where: {
+            OR: [
+              { auction: { groupId: { in: chitGroupIds } } },
+              ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
+            ],
+          },
+        });
+        await tx.auction.deleteMany({
+          where: { groupId: { in: chitGroupIds } },
+        });
+        await tx.chitGroupStaff.deleteMany({
+          where: { groupId: { in: chitGroupIds } },
+        });
+        await tx.chitGroupMember.deleteMany({
+          where: { groupId: { in: chitGroupIds } },
+        });
+        await tx.installmentSchedule.deleteMany({
+          where: { groupId: { in: chitGroupIds } },
+        });
+      }
+
+      // 4. Delete receipts and payment transactions
+      const txns = await tx.paymentTransaction.findMany({
+        where: {
+          OR: [
+            { companyId: id },
+            ...(branchIds.length > 0 ? [{ branchId: { in: branchIds } }] : []),
+            ...(chitGroupIds.length > 0 ? [{ groupId: { in: chitGroupIds } }] : []),
+            ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
+          ],
+        },
+        select: { id: true },
       });
-    }
+      const txnIds = txns.map((t) => t.id);
+      if (txnIds.length > 0) {
+        await tx.receipt.deleteMany({
+          where: { transactionId: { in: txnIds } },
+        });
+      }
+
+      await tx.paymentTransaction.deleteMany({
+        where: {
+          OR: [
+            { companyId: id },
+            ...(branchIds.length > 0 ? [{ branchId: { in: branchIds } }] : []),
+            ...(chitGroupIds.length > 0 ? [{ groupId: { in: chitGroupIds } }] : []),
+            ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
+          ],
+        },
+      });
+
+      // 5. Delete refunds
+      await tx.refund.deleteMany({
+        where: {
+          OR: [
+            { companyId: id },
+            ...(branchIds.length > 0 ? [{ branchId: { in: branchIds } }] : []),
+            ...(chitGroupIds.length > 0 ? [{ groupId: { in: chitGroupIds } }] : []),
+            ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
+          ],
+        },
+      });
+
+      // 6. Delete cash handovers & expenses
+      if (branchIds.length > 0) {
+        await tx.cashHandover.deleteMany({
+          where: { branchId: { in: branchIds } },
+        });
+        await tx.expense.deleteMany({
+          where: { branchId: { in: branchIds } },
+        });
+      }
+
+      // 7. Delete notifications
+      await tx.notification.deleteMany({
+        where: { companyId: id },
+      });
+
+      // 8. Delete accounting records (journal lines, journals, vouchers, accounts)
+      const journals = await tx.journalEntry.findMany({
+        where: { companyId: id },
+        select: { id: true },
+      });
+      const journalIds = journals.map((j) => j.id);
+      if (journalIds.length > 0) {
+        await tx.journalEntryLine.deleteMany({
+          where: { journalEntryId: { in: journalIds } },
+        });
+      }
+      await tx.journalEntry.deleteMany({ where: { companyId: id } });
+      await tx.voucher.deleteMany({ where: { companyId: id } });
+      await tx.account.deleteMany({ where: { companyId: id } });
+
+      // 9. Delete chit groups & subscribers
+      await tx.chitGroup.deleteMany({ where: { companyId: id } });
+      await tx.subscriber.deleteMany({ where: { companyId: id } });
+
+      // 10. Revoke user refresh tokens
+      if (userIds.length > 0) {
+        await tx.refreshToken.deleteMany({ where: { userId: { in: userIds } } });
+      }
+
+      // 11. Preserve SUPER_ADMIN users (like akshyatraj) by clearing company/branch, delete other company users
+      await tx.user.updateMany({
+        where: { companyId: id, role: 'SUPER_ADMIN' },
+        data: { companyId: null, branchId: null },
+      });
+      await tx.user.deleteMany({
+        where: { companyId: id, role: { not: 'SUPER_ADMIN' } },
+      });
+
+      // 12. Delete branches
+      await tx.branch.deleteMany({ where: { companyId: id } });
+
+      // 13. Delete audit logs referencing this company
+      await tx.auditLog.deleteMany({ where: { companyId: id } });
+
+      // 14. Finally delete the company
+      await tx.company.delete({ where: { id } });
+    });
 
     companySettingsStore.delete(id);
 

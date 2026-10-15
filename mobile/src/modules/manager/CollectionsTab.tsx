@@ -534,7 +534,7 @@ export function CollectionsTab({ user }: { user: any }) {
       <View style={mStyles.headerRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Image
-            source={require('../../../../assets/logo.png')}
+            source={require('../../../assets/logo.png')}
             style={{ width: 44, height: 44, borderRadius: 10, borderWidth: 1, borderColor: '#F59E0B' }}
             resizeMode="contain"
           />
@@ -1431,7 +1431,7 @@ export function CollectionsTab({ user }: { user: any }) {
             <View style={mStyles.modalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Image
-                  source={require('../../../../assets/logo.png')}
+                  source={require('../../../assets/logo.png')}
                   style={{ width: 28, height: 28, borderRadius: 6 }}
                   resizeMode="contain"
                 />
@@ -1448,7 +1448,7 @@ export function CollectionsTab({ user }: { user: any }) {
                   {/* ChitKart Receipt Header */}
                   <View style={{ alignItems: 'center', marginBottom: 14 }}>
                     <Image
-                      source={require('../../../../assets/logo.png')}
+                      source={require('../../../assets/logo.png')}
                       style={{ width: 56, height: 56, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#F59E0B' }}
                       resizeMode="contain"
                     />
