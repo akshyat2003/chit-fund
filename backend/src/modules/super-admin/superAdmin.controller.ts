@@ -948,18 +948,31 @@ export const listSubscriptionPlans = async (req: AuthRequest, res: Response) => 
  */
 export const getAuditLogs = async (req: AuthRequest, res: Response) => {
   try {
-    const { companyId, action, limit = 100, page = 1 } = req.query;
+    const { companyId, action, search, limit = 10, page = 1 } = req.query;
     const where: any = {};
 
-    if (companyId && typeof companyId === 'string') {
+    if (companyId && typeof companyId === 'string' && companyId !== 'ALL') {
       where.companyId = companyId;
     }
-    if (action && typeof action === 'string') {
-      where.action = action;
+    if (action && typeof action === 'string' && action !== 'ALL') {
+      where.action = { contains: action };
     }
 
-    const take = Math.min(Number(limit) || 100, 200);
-    const skip = ((Number(page) || 1) - 1) * take;
+    if (search && typeof search === 'string' && search.trim()) {
+      const q = search.trim();
+      where.OR = [
+        { action: { contains: q, mode: 'insensitive' } },
+        { entity: { contains: q, mode: 'insensitive' } },
+        { ipAddress: { contains: q, mode: 'insensitive' } },
+        { details: { contains: q, mode: 'insensitive' } },
+        { user: { fullName: { contains: q, mode: 'insensitive' } } },
+        { user: { username: { contains: q, mode: 'insensitive' } } },
+      ];
+    }
+
+    const take = Math.min(Number(limit) || 10, 200);
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const skip = (currentPage - 1) * take;
 
     const [total, rawLogs] = await Promise.all([
       prisma.auditLog.count({ where }),
@@ -974,6 +987,8 @@ export const getAuditLogs = async (req: AuthRequest, res: Response) => {
         skip,
       }),
     ]);
+
+    const totalPages = Math.ceil(total / take) || 1;
 
     const logs = (rawLogs as any[]).map((log) => {
       let parsedDetails: any = null;
@@ -997,8 +1012,9 @@ export const getAuditLogs = async (req: AuthRequest, res: Response) => {
       success: true,
       data: {
         total,
-        page: Number(page) || 1,
+        page: currentPage,
         pageSize: take,
+        totalPages,
         logs,
       },
     });
