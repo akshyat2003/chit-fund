@@ -211,7 +211,6 @@ function MainApp() {
             )}
 
             {/* Manager cum Accountant Module Tabs (AC-01 through AC-34 & FR-COMP-001 through FR-COMP-011) */}
-            {/* Manager cum Accountant Module Tabs (AC-01 through AC-34 & FR-COMP-001 through FR-COMP-011) */}
             {user.role === 'MANAGER' && (
               <>
                 <TouchableOpacity
@@ -449,12 +448,14 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
     setShowForgotModal(true);
   };
 
-  const handleSendOtp = async () => {
+  const executeSendOtp = async (isResend: boolean = false) => {
     if (!forgotInput.trim()) {
       setForgotError('Please enter your registered email or username');
       return;
     }
     setForgotError('');
+    setForgotSuccess('');
+    if (isResend) setForgotOtp('');
     setForgotLoading(true);
     try {
       const res = await api.post('/auth/forgot-password', {
@@ -466,9 +467,13 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
           setForgotOtp(res.data.otp);
         }
         setForgotStep(2);
-        setForgotSuccess(res.data.message || 'Verification OTP code sent to your email!');
+        setForgotSuccess(
+          isResend
+            ? 'New 6-digit verification code sent immediately to your email!'
+            : res.data.message || 'Verification OTP code sent to your email!'
+        );
       } else {
-        setForgotError(res.data.message || 'Failed to send OTP');
+        setForgotError(res.data.message || (isResend ? 'Failed to resend OTP' : 'Failed to send OTP'));
       }
     } catch (err: any) {
       setForgotError(err.response?.data?.message || err.message || 'Network error sending OTP');
@@ -477,34 +482,8 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
     }
   };
 
-  const handleResendOtp = async () => {
-    if (!forgotInput.trim()) {
-      setForgotError('Please enter your registered email or username');
-      return;
-    }
-    setForgotError('');
-    setForgotSuccess('');
-    setForgotOtp('');
-    setForgotLoading(true);
-    try {
-      const res = await api.post('/auth/forgot-password', {
-        emailOrUsername: forgotInput.trim(),
-      });
-      if (res.data.success) {
-        setMaskedEmail(res.data.maskedEmail || forgotInput.trim());
-        if (res.data.otp) {
-          setForgotOtp(res.data.otp);
-        }
-        setForgotSuccess('New 6-digit verification code sent immediately to your email!');
-      } else {
-        setForgotError(res.data.message || 'Failed to resend OTP');
-      }
-    } catch (err: any) {
-      setForgotError(err.response?.data?.message || err.message || 'Failed to resend OTP');
-    } finally {
-      setForgotLoading(false);
-    }
-  };
+  const handleSendOtp = () => executeSendOtp(false);
+  const handleResendOtp = () => executeSendOtp(true);
 
   const handleResetPassword = async () => {
     const cleanOtp = forgotOtp.replace(/[^0-9]/g, '').trim();

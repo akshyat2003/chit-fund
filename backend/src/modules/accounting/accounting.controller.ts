@@ -44,19 +44,17 @@ const DEFAULT_CHART_OF_ACCOUNTS = [
 async function ensureStandardAccounts(companyId: string) {
   const count = await prisma.account.count({ where: { companyId } });
   if (count === 0) {
-    for (const acc of DEFAULT_CHART_OF_ACCOUNTS) {
-      await prisma.account.create({
-        data: {
-          companyId,
-          code: acc.code,
-          name: acc.name,
-          type: acc.type,
-          openingBalance: acc.openingBalance,
-          currentBalance: acc.openingBalance,
-          isActive: true,
-        },
-      });
-    }
+    await prisma.account.createMany({
+      data: DEFAULT_CHART_OF_ACCOUNTS.map((acc) => ({
+        companyId,
+        code: acc.code,
+        name: acc.name,
+        type: acc.type,
+        openingBalance: acc.openingBalance,
+        currentBalance: acc.openingBalance,
+        isActive: true,
+      })),
+    });
   }
 }
 

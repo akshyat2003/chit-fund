@@ -86,7 +86,7 @@ export function AuctionsPayoutsTab({ user }: { user: any }) {
     try {
       const res = await api.get(`/chit-groups/${grp.id}`);
       if (res.data.success) {
-        const memberships = res.data.data.memberships || [];
+        const memberships = res.data.data.members || res.data.data.memberships || [];
         setEnrolledMembers(memberships);
         // Default winner to first non-prized member
         const nonPrized = memberships.find((m: any) => !m.isPrized);
@@ -100,10 +100,10 @@ export function AuctionsPayoutsTab({ user }: { user: any }) {
   };
 
   // Calculations (AC-24, AC-25)
-  const chitValue = selectedGroup?.totalChitValue || 100000;
+  const chitValue = selectedGroup?.chitValue || selectedGroup?.totalChitValue || 100000;
   const numMembers = selectedGroup?.maxMembers || 20;
   const discount = Number(winningDiscount) || 0;
-  const commissionRate = selectedGroup?.foremanCommissionRate || 5;
+  const commissionRate = selectedGroup?.foremanCommissionPct || selectedGroup?.foremanCommissionRate || 5;
   const foremanCommission = (chitValue * commissionRate) / 100; // 5%
   const totalDividend = Math.max(0, discount - foremanCommission);
   const dividendPerMember = numMembers > 0 ? totalDividend / numMembers : 0;
