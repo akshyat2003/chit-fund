@@ -10,7 +10,10 @@ import {
   SafeAreaView,
   StatusBar,
   Modal,
+  Alert,
+  Image,
 } from 'react-native';
+import * as Updates from 'expo-updates';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { api } from './src/services/api';
 import { MembersTab } from './src/modules/manager/MembersTab';
@@ -56,6 +59,35 @@ function MainApp() {
     }
   }, [user?.id]);
 
+  useEffect(() => {
+    async function checkForOtaUpdates() {
+      try {
+        if (!__DEV__ && Updates && Updates.isEnabled) {
+          const update = await Updates.checkForUpdateAsync();
+          if (update.isAvailable) {
+            await Updates.fetchUpdateAsync();
+            Alert.alert(
+              'Update Ready',
+              'A new update with the latest modules is downloaded. Restart the app now to apply changes?',
+              [
+                { text: 'Later', style: 'cancel' },
+                {
+                  text: 'Restart Now',
+                  onPress: async () => {
+                    await Updates.reloadAsync();
+                  },
+                },
+              ]
+            );
+          }
+        }
+      } catch (e) {
+        // Silently continue if offline or running in unsupported environment
+      }
+    }
+    checkForOtaUpdates();
+  }, []);
+
   // Reset activeTab to dashboard whenever user or role changes
   useEffect(() => {
     setActiveTab('dashboard');
@@ -90,11 +122,18 @@ function MainApp() {
       {/* Header Bar */}
       <View style={styles.header}>
         <View style={styles.headerInner}>
-          <View style={{ flex: 1, marginRight: 12 }}>
-            <Text style={styles.headerTitle} numberOfLines={1}>{user.company?.name?.toUpperCase() || 'CHITKART'}</Text>
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
-              {(user.role ? user.role.replace('_', ' ') : 'USER')} • {user.fullName || ''}
-            </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, marginRight: 12 }}>
+            <Image
+              source={require('./assets/logo.png')}
+              style={{ width: 38, height: 38, borderRadius: 8, borderWidth: 1, borderColor: '#F59E0B' }}
+              resizeMode="contain"
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.headerTitle} numberOfLines={1}>{user.company?.name?.toUpperCase() || 'CHITKART'}</Text>
+              <Text style={styles.headerSubtitle} numberOfLines={1}>
+                {(user.role ? user.role.replace('_', ' ') : 'USER')} • {user.fullName || ''}
+              </Text>
+            </View>
           </View>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <TouchableOpacity style={styles.profileBtn} onPress={() => setShowProfileModal(true)}>
@@ -528,9 +567,14 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
       <ScrollView style={styles.refScrollView} contentContainerStyle={styles.refContentContainer} keyboardShouldPersistTaps="handled">
         {/* Title Section */}
         <View style={styles.refHeader}>
+          <Image
+            source={require('./assets/logo.png')}
+            style={{ width: 88, height: 88, borderRadius: 18, marginBottom: 14, alignSelf: 'center', borderWidth: 2, borderColor: '#F59E0B' }}
+            resizeMode="contain"
+          />
           <Text style={styles.chitKartBrand}>CHITKART</Text>
           <Text style={styles.refTitle}>Welcome Back!</Text>
-          <Text style={styles.refSubtitle}>Sign in with your account</Text>
+          <Text style={styles.refSubtitle}>Sign in with your ChitKart account</Text>
         </View>
 
         {inactivityMessage ? (

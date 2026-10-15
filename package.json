@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "cd backend && npm run dev",
-    "build": "cd backend && npm install && npx prisma generate && npm run build && cd ../mobile && npm install && npm run build"
+    "build": "cd backend && npm install && npx prisma generate && npm run build && cd ../mobile && npm install && npm run build",
+    "build:apk": "cd mobile && npm run build:apk",
+    "update": "cd mobile && npm run update"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

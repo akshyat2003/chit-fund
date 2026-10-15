@@ -24,10 +24,18 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: 'Missing required payment details' });
     }
 
-    if ((paymentMode === 'BANK_TRANSFER' || paymentMode === 'UPI') && (!externalRef || !externalRef.trim())) {
+    // Remark is mandatory for all collections (Cash, UPI, Bank Transfer, Split, etc.)
+    if (!notes || !notes.trim()) {
       return res.status(400).json({
         success: false,
-        message: 'Transaction Reference ID is required for Bank Transfer and UPI / QR payments.',
+        message: 'Remark is mandatory for all payment collections. For cash, state cash collection details; for UPI, Bank Transfer or Split payments, specify payment references and breakdown.',
+      });
+    }
+
+    if ((paymentMode === 'BANK_TRANSFER' || paymentMode === 'UPI' || paymentMode === 'SPLIT') && (!externalRef || !externalRef.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Transaction Reference ID / UTR is required for Bank Transfer, UPI, and Split payments.',
       });
     }
 
@@ -58,9 +66,9 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
     const totalCount = await prisma.paymentTransaction.count({ where: { companyId } });
     const receiptNo = `${prefix}-${new Date().getFullYear()}-${String(totalCount + 1).padStart(5, '0')}`;
 
-    // If staff submits a digital payment (BANK_TRANSFER or UPI), it goes to PENDING_VERIFICATION for manager approval
-    const isDigital = paymentMode === 'BANK_TRANSFER' || paymentMode === 'UPI';
-    const verificationStatus = isDigital && userRole === 'COLLECTION_STAFF' ? 'PENDING_VERIFICATION' : 'VERIFIED';
+    // Staff can only collect and send collection receipt to manager for approval (PENDING_VERIFICATION)
+    // Managers can directly collect, receive and approve payment (VERIFIED)
+    const verificationStatus = userRole === 'COLLECTION_STAFF' ? 'PENDING_VERIFICATION' : 'VERIFIED';
 
     // Execute in Database Transaction
     const result = await prisma.$transaction(async (tx) => {
@@ -80,7 +88,7 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
           recordedByUserId,
           idempotencyKey: idempotencyKey || null,
           verificationStatus,
-          notes: notes || null,
+          notes: notes.trim(),
         },
       });
 
@@ -105,6 +113,7 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
             installmentType,
             verificationStatus,
             subscriberId,
+            notes: notes.trim(),
           }),
         },
       });
@@ -116,8 +125,8 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
       success: true,
       message:
         verificationStatus === 'PENDING_VERIFICATION'
-          ? 'Receipt submitted successfully and forwarded to manager for verification.'
-          : 'Payment recorded successfully.',
+          ? 'Receipt submitted successfully and forwarded to manager for approval.'
+          : 'Payment recorded and approved successfully.',
       data: {
         ...result.transaction,
         receipt: result.receipt,
@@ -158,16 +167,10 @@ export const listTransactions = async (req: AuthRequest, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    const digitalCount = transactions.filter((t) => t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI').length;
-    const pendingCount = transactions.filter(
-      (t) => (t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI') && t.verificationStatus === 'PENDING_VERIFICATION'
-    ).length;
-    const approvedCount = transactions.filter(
-      (t) => (t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI') && t.verificationStatus === 'VERIFIED'
-    ).length;
-    const rejectedCount = transactions.filter(
-      (t) => (t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI') && t.verificationStatus === 'REJECTED'
-    ).length;
+    const digitalCount = transactions.filter((t) => t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI' || t.paymentMode === 'SPLIT').length;
+    const pendingCount = transactions.filter((t) => t.verificationStatus === 'PENDING_VERIFICATION').length;
+    const approvedCount = transactions.filter((t) => t.verificationStatus === 'VERIFIED').length;
+    const rejectedCount = transactions.filter((t) => t.verificationStatus === 'REJECTED').length;
     const cashCount = transactions.filter((t) => t.paymentMode === 'CASH').length;
 
     return res.json({

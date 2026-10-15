@@ -61,6 +61,24 @@ This will automatically create all 16 relational database tables inside your Sup
 Run:
 ```powershell
 cd mobile
-npx eas build -p android --profile preview
+npm run build:apk
 ```
-Download the resulting `.apk` file link and send it directly to your field officers via WhatsApp!
+Download the resulting `.apk` direct link and send it directly to your users or field officers via WhatsApp or Google Drive. They can tap to install without needing Google Play Store!
+
+---
+
+## 4. Instant Over-The-Air (OTA) Updates (Zero Re-install)
+
+When you add new screens, modules, or fix bugs, you **do not** need users to download a new `.apk`.
+
+Run:
+```powershell
+cd mobile
+npm run update -- -m "Added new loan module"
+```
+Or for a specific channel:
+```powershell
+npm run update:preview -- -m "Updated collections view"
+```
+
+The next time users open the installed ChitKart app, it checks for updates automatically, downloads the new modules, and updates seamlessly!
