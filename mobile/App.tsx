@@ -12,6 +12,8 @@ import {
   Modal,
   Alert,
   Image,
+  Platform,
+  RefreshControl,
 } from 'react-native';
 import * as Updates from 'expo-updates';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
@@ -50,7 +52,7 @@ function MainApp() {
   const [kycDismissed, setKycDismissed] = useState(false);
 
   useEffect(() => {
-    if (user?.id && typeof window !== 'undefined') {
+    if (user?.id && Platform.OS === 'web' && typeof window !== 'undefined') {
       try {
         if (window.localStorage?.getItem(`staff_kyc_completed_${user.id}`) === 'true') {
           setKycDismissed(true);
@@ -348,7 +350,7 @@ function MainApp() {
                     style={{ paddingVertical: 8, paddingHorizontal: 10, borderRadius: 6, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A' }}
                     onPress={() => {
                       setKycDismissed(true);
-                      if (typeof window !== 'undefined' && user?.id) {
+                      if (Platform.OS === 'web' && typeof window !== 'undefined' && user?.id) {
                         try {
                           window.localStorage?.setItem(`staff_kyc_completed_${user.id}`, 'true');
                         } catch (e) {}
@@ -846,69 +848,484 @@ function LoginView({ onLogin }: { onLogin: (u: string, p: string) => Promise<any
 function DashboardTab({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab: any, action?: string) => void }) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  const role = (stats?.role || user?.role || '').toUpperCase();
+  const isSuperAdmin = role === 'SUPER_ADMIN' || role.includes('ADMIN');
+  const isManager = role === 'MANAGER';
+  const isStaff = role === 'COLLECTION_STAFF' || role.includes('STAFF');
 
-  const fetchStats = async () => {
+  const fetchStats = async (isManual = false) => {
     try {
-      setLoading(true);
+      if (isManual) setRefreshing(true);
+      else setLoading(true);
+      setFetchError(null);
       const res = await api.get('/reports/dashboard');
-      setStats(res.data.data);
+      if (res.data?.success && res.data?.data) {
+        setStats(res.data.data);
+      } else {
+        setStats(res.data?.data || null);
+      }
     } catch (e: any) {
-      console.error(e);
+      console.warn('Dashboard stats fetch failed:', e?.message);
+      setFetchError(e.response?.data?.message || 'Unable to sync real-time metrics');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  if (loading) {
-    return <ActivityIndicator style={{ marginTop: 40 }} size="large" color="#0A2540" />;
+  useEffect(() => {
+    fetchStats();
+  }, [user?.id, user?.role]);
+
+  if (loading && !stats) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 60 }}>
+        <ActivityIndicator size="large" color="#0A2540" />
+        <Text style={{ marginTop: 14, color: '#64748B', fontSize: 13, fontWeight: '600' }}>
+          Loading dashboard metrics...
+        </Text>
+      </View>
+    );
+  }
+
+  // Role Display Customization
+  let roleTitle = 'Platform Member';
+  let roleIcon = '👤';
+  let roleColor = '#2563EB';
+  let roleBg = '#EFF6FF';
+  let roleBorder = '#BFDBFE';
+  let roleDesc = 'Chit Fund Operations & Management';
+
+  if (isSuperAdmin) {
+    roleTitle = 'Super Administrator';
+    roleIcon = '👑';
+    roleColor = '#7C3AED';
+    roleBg = '#F5F3FF';
+    roleBorder = '#DDD6FE';
+    roleDesc = 'Platform-wide Governance, Companies Management & System Security';
+  } else if (isManager) {
+    roleTitle = 'Branch Manager & Accountant';
+    roleIcon = '🏢';
+    roleColor = '#0070BA';
+    roleBg = '#F0F9FF';
+    roleBorder = '#BAE6FD';
+    roleDesc = 'Branch Operations, Chit Groups, Subscriber KYC & Financial Ledgers';
+  } else if (isStaff) {
+    roleTitle = 'Field Collection Staff';
+    roleIcon = '💳';
+    roleColor = '#059669';
+    roleBg = '#ECFDF5';
+    roleBorder = '#A7F3D0';
+    roleDesc = 'Doorstep Collections, Digital Receipts & Subscriber Management';
   }
 
   return (
-    <ScrollView style={styles.tabScroll}>
-      <Text style={styles.sectionTitle}>Dashboard ({stats?.role || user.role})</Text>
+    <ScrollView
+      style={styles.tabScroll}
+      contentContainerStyle={{ paddingBottom: 40 }}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => fetchStats(true)}
+          colors={['#2563EB', '#0A2540']}
+        />
+      }
+    >
+      {/* Hero Welcome Card */}
+      <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          <View style={{ flex: 1, marginRight: 10 }}>
+            <Text style={styles.heroGreeting} numberOfLines={1}>
+              Welcome, {user?.fullName || user?.username || 'Team Member'}!
+            </Text>
+            <Text style={styles.heroCompany} numberOfLines={1}>
+              🏢 {user?.company?.name?.toUpperCase() || 'CHITKART PLATFORM'}{user?.branch?.name ? ` • ${user.branch.name}` : ''}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.refreshPill}
+            onPress={() => fetchStats(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.refreshPillText}>↻ Refresh</Text>
+          </TouchableOpacity>
+        </View>
 
-      {(stats?.role || user.role) === 'SUPER_ADMIN' && (
-        <View style={styles.gridRow}>
-          <MetricCard title="Active Companies" value={stats?.activeCompanies || 0} color="#0070BA" />
-          <MetricCard title="Active Users" value={stats?.activeUsers ?? stats?.totalUsers ?? 0} color="#10B981" />
-          <MetricCard title="Total Platform Users" value={stats?.totalUsers || 0} color="#2563EB" />
-          <MetricCard title="System Engine Status" value={stats?.systemStatus || 'ONLINE'} color="#16A34A" />
+        <View style={[styles.roleBadge, { backgroundColor: roleBg, borderColor: roleBorder }]}>
+          <Text style={{ fontSize: 14 }}>{roleIcon}</Text>
+          <Text style={[styles.roleBadgeText, { color: roleColor }]}>{roleTitle}</Text>
+        </View>
+
+        <Text style={styles.heroDesc}>{roleDesc}</Text>
+      </View>
+
+      {/* Network / Error Notice */}
+      {fetchError && (
+        <View style={styles.dashboardErrorCard}>
+          <Text style={styles.dashboardErrorText}>⚠️ {fetchError}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => fetchStats(true)}>
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       )}
 
-      {(stats?.role || user.role) === 'MANAGER' && (
+      {/* Section Title */}
+      <Text style={styles.sectionTitle}>📊 Live Metrics & Performance</Text>
+
+      {/* 1. SUPER ADMIN METRICS */}
+      {isSuperAdmin && (
         <View style={styles.gridRow}>
-          <MetricCard title="Today's Collections" value={`₹${(stats?.todayTotalCollected || 0).toLocaleString()}`} color="#27AE60" />
-          <MetricCard title="Cash Collected" value={`₹${(stats?.todayCashCollected || 0).toLocaleString()}`} color="#0070BA" />
-          <MetricCard title="Bank/UPI Collections" value={`₹${(stats?.todayBankUpiCollected || 0).toLocaleString()}`} color="#D35400" />
-          <MetricCard title="Active Chit Groups" value={stats?.activeGroups || 0} color="#8E44AD" />
-          <MetricCard title="Active Subscribers" value={stats?.activeSubscribers || 0} color="#2D3748" />
-          <MetricCard title="Pending Payouts" value={stats?.pendingPayouts || 0} color="#C0392B" />
+          <MetricCard
+            title="Active Companies"
+            value={stats?.activeCompanies ?? 0}
+            color="#0070BA"
+            icon="🏢"
+          />
+          <MetricCard
+            title="Active Users"
+            value={stats?.activeUsers ?? stats?.totalUsers ?? 0}
+            color="#10B981"
+            icon="👥"
+          />
+          <MetricCard
+            title="Total Platform Users"
+            value={stats?.totalUsers ?? 0}
+            color="#2563EB"
+            icon="🛡️"
+          />
+          <MetricCard
+            title="Active Chit Groups"
+            value={stats?.activeGroups ?? 0}
+            color="#8E44AD"
+            icon="💰"
+          />
+          <MetricCard
+            title="Total Subscribers"
+            value={stats?.totalSubscribers ?? 0}
+            color="#2D3748"
+            icon="👤"
+          />
+          <MetricCard
+            title="System Engine Status"
+            value={stats?.systemStatus || 'ONLINE'}
+            color="#16A34A"
+            icon="🖥️"
+          />
         </View>
       )}
 
-      {(stats?.role || user.role) === 'COLLECTION_STAFF' && (
+      {/* 2. MANAGER METRICS */}
+      {isManager && (
         <View style={styles.gridRow}>
-          <MetricCard title="Assigned Subscribers" value={stats?.assignedSubscribers || 0} color="#0070BA" />
-          <MetricCard title="Today's Collections Count" value={stats?.todayCollectionsCount || 0} color="#8E44AD" />
-          <MetricCard title="Amount Collected" value={`₹${(stats?.todayAmountCollected || 0).toLocaleString()}`} color="#27AE60" />
-          <MetricCard title="Cash in Hand" value={`₹${(stats?.cashInHand || 0).toLocaleString()}`} color="#D35400" />
+          <MetricCard
+            title="Today's Collections"
+            value={`₹${Number(stats?.todayTotalCollected || 0).toLocaleString('en-IN')}`}
+            color="#27AE60"
+            icon="💵"
+          />
+          <MetricCard
+            title="Cash Collected Today"
+            value={`₹${Number(stats?.todayCashCollected || 0).toLocaleString('en-IN')}`}
+            color="#0070BA"
+            icon="💰"
+          />
+          <MetricCard
+            title="Bank/UPI Collections"
+            value={`₹${Number(stats?.todayBankUpiCollected || 0).toLocaleString('en-IN')}`}
+            color="#D35400"
+            icon="💳"
+          />
+          <MetricCard
+            title="Today's Receipts"
+            value={stats?.todayTxnCount ?? 0}
+            color="#6366F1"
+            icon="🧾"
+          />
+          <MetricCard
+            title="Active Chit Groups"
+            value={stats?.activeGroups ?? 0}
+            color="#8E44AD"
+            icon="💰"
+          />
+          <MetricCard
+            title="Active Subscribers"
+            value={stats?.activeSubscribers ?? 0}
+            color="#2D3748"
+            icon="👥"
+          />
+          <MetricCard
+            title="Pending Payouts"
+            value={stats?.pendingPayouts ?? 0}
+            color="#C0392B"
+            icon="⏳"
+          />
+          <MetricCard
+            title="Active Field Staff"
+            value={`${stats?.activeStaff ?? 0} / ${stats?.totalStaff ?? 0}`}
+            color="#0D9488"
+            icon="🛡️"
+          />
         </View>
       )}
+
+      {/* 3. COLLECTION STAFF METRICS */}
+      {isStaff && (
+        <View style={styles.gridRow}>
+          <MetricCard
+            title="Assigned Subscribers"
+            value={stats?.assignedSubscribers ?? 0}
+            color="#0070BA"
+            icon="👥"
+          />
+          <MetricCard
+            title="Today's Receipts Count"
+            value={stats?.todayCollectionsCount ?? 0}
+            color="#8E44AD"
+            icon="🧾"
+          />
+          <MetricCard
+            title="Today's Collected Amount"
+            value={`₹${Number(stats?.todayAmountCollected || 0).toLocaleString('en-IN')}`}
+            color="#27AE60"
+            icon="💵"
+          />
+          <MetricCard
+            title="Cash in Hand"
+            value={`₹${Number(stats?.cashInHand || 0).toLocaleString('en-IN')}`}
+            color="#D35400"
+            icon="💼"
+          />
+        </View>
+      )}
+
+      {/* QUICK ACTIONS SECTION (Module shortcuts with deep-navigation) */}
+      <Text style={styles.subSectionTitle}>⚡ Quick Actions & Modules</Text>
+
+      {isSuperAdmin && (
+        <View style={styles.quickActionGrid}>
+          <QuickActionCard
+            title="Companies Management"
+            desc="Register, edit & suspend companies"
+            icon="🏢"
+            color="#0070BA"
+            onPress={() => onNavigateTab?.('companies')}
+          />
+          <QuickActionCard
+            title="Users & Credentials"
+            desc="Provision admin accounts & reset passwords"
+            icon="🛡️"
+            color="#10B981"
+            onPress={() => onNavigateTab?.('admins')}
+          />
+          <QuickActionCard
+            title="Audits & Security Logs"
+            desc="Inspect immutable system activity trails"
+            icon="📜"
+            color="#D97706"
+            onPress={() => onNavigateTab?.('audits')}
+          />
+          <QuickActionCard
+            title="System Health & Monitoring"
+            desc="Real-time CPU, RAM & database status"
+            icon="🖥️"
+            color="#8B5CF6"
+            onPress={() => onNavigateTab?.('system')}
+          />
+          <QuickActionCard
+            title="Backups & Data Export"
+            desc="Export JSON database backups & audits"
+            icon="💾"
+            color="#0D9488"
+            onPress={() => onNavigateTab?.('backups')}
+          />
+          <QuickActionCard
+            title="Notification Center"
+            desc="Broadcast alerts to managers and staff"
+            icon="🔔"
+            color="#EC4899"
+            onPress={() => onNavigateTab?.('notifications')}
+          />
+        </View>
+      )}
+
+      {isManager && (
+        <View style={styles.quickActionGrid}>
+          <QuickActionCard
+            title="Collections & Receipts"
+            desc="Collect member dues & issue receipts"
+            icon="💳"
+            color="#27AE60"
+            onPress={() => onNavigateTab?.('collections')}
+          />
+          <QuickActionCard
+            title="Members & KYC"
+            desc="Register subscribers & verify Aadhaar/PAN"
+            icon="👥"
+            color="#0070BA"
+            onPress={() => onNavigateTab?.('members')}
+          />
+          <QuickActionCard
+            title="Chit Groups"
+            desc="Manage chits, cycles, auction dates & slots"
+            icon="💰"
+            color="#8E44AD"
+            onPress={() => onNavigateTab?.('chit_groups')}
+          />
+          <QuickActionCard
+            title="Accounting & Ledgers"
+            desc="Daybook, cash vouchers & ledger accounts"
+            icon="📚"
+            color="#D35400"
+            onPress={() => onNavigateTab?.('accounting')}
+          />
+          <QuickActionCard
+            title="Auctions & Payouts"
+            desc="Conduct chit auctions & approve winner payouts"
+            icon="🏷️"
+            color="#C0392B"
+            onPress={() => onNavigateTab?.('auctions')}
+          />
+          <QuickActionCard
+            title="Staff & Collectors"
+            desc="Manage collection staff & performance"
+            icon="🛡️"
+            color="#0D9488"
+            onPress={() => onNavigateTab?.('staff')}
+          />
+          <QuickActionCard
+            title="Compliance & Reports"
+            desc="Generate Form-I/II state regulatory reports"
+            icon="📑"
+            color="#2563EB"
+            onPress={() => onNavigateTab?.('compliance')}
+          />
+          <QuickActionCard
+            title="Branch Governance"
+            desc="Configure branch policies & cash ceilings"
+            icon="🏛️"
+            color="#475569"
+            onPress={() => onNavigateTab?.('branches')}
+          />
+        </View>
+      )}
+
+      {isStaff && (
+        <View style={styles.quickActionGrid}>
+          <QuickActionCard
+            title="Collect Installment"
+            desc="Record doorstep cash/UPI collection & receipt"
+            icon="💳"
+            color="#27AE60"
+            onPress={() => onNavigateTab?.('collections')}
+          />
+          <QuickActionCard
+            title="My Assigned Subscribers"
+            desc="View assigned members, balance & contact"
+            icon="👥"
+            color="#0070BA"
+            onPress={() => onNavigateTab?.('members')}
+          />
+          <QuickActionCard
+            title="Assigned Chit Groups"
+            desc="Review active chit groups & schedule dues"
+            icon="💰"
+            color="#8E44AD"
+            onPress={() => onNavigateTab?.('chit_groups')}
+          />
+          <QuickActionCard
+            title="Notifications & Alerts"
+            desc="Check daily collection announcements"
+            icon="🔔"
+            color="#EC4899"
+            onPress={() => onNavigateTab?.('notifications')}
+          />
+        </View>
+      )}
+
+      {/* Role-Specific Guidance Banner */}
+      <View style={styles.guidanceBanner}>
+        <Text style={{ fontSize: 20 }}>💡</Text>
+        {isStaff && (
+          <Text style={styles.guidanceText}>
+            <Text style={{ fontWeight: '800' }}>Field Collector Note: </Text>
+            Always verify member identity and count physical cash carefully before recording. Share the digital receipt with the subscriber immediately via WhatsApp/SMS, and deposit daily collections with the Branch Manager.
+          </Text>
+        )}
+        {isManager && (
+          <Text style={styles.guidanceText}>
+            <Text style={{ fontWeight: '800' }}>Manager Protocol: </Text>
+            Verify daily cash receipts before approving disbursements. Ensure all auctions have formal documentation and regulatory Form-I/II reports are maintained for branch audits.
+          </Text>
+        )}
+        {isSuperAdmin && (
+          <Text style={styles.guidanceText}>
+            <Text style={{ fontWeight: '800' }}>Super Administrator Governance: </Text>
+            Multi-company multi-tenant environment is fully active. Review system health monitors, verify company licenses, and check security audit logs periodically.
+          </Text>
+        )}
+        {!isStaff && !isManager && !isSuperAdmin && (
+          <Text style={styles.guidanceText}>
+            Welcome to the ChitKart platform. Use the top navigation tabs to access your authorized modules.
+          </Text>
+        )}
+      </View>
     </ScrollView>
   );
 }
 
-function MetricCard({ title, value, color }: { title: string; value: any; color: string }) {
+function MetricCard({
+  title,
+  value,
+  color,
+  icon,
+}: {
+  title: string;
+  value: any;
+  color: string;
+  icon?: string;
+}) {
   return (
     <View style={[styles.card, { borderLeftColor: color, borderLeftWidth: 5 }]}>
-      <Text style={styles.cardTitle}>{title}</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={styles.cardTitle}>{title}</Text>
+        {icon ? <Text style={{ fontSize: 16 }}>{icon}</Text> : null}
+      </View>
       <Text style={[styles.cardValue, { color }]}>{value}</Text>
     </View>
+  );
+}
+
+function QuickActionCard({
+  title,
+  desc,
+  icon,
+  color,
+  onPress,
+}: {
+  title: string;
+  desc: string;
+  icon: string;
+  color: string;
+  onPress?: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={styles.quickActionCard}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.quickActionIconWrap, { backgroundColor: `${color}18`, borderColor: `${color}40` }]}>
+        <Text style={{ fontSize: 22 }}>{icon}</Text>
+      </View>
+      <View style={{ flex: 1, marginRight: 8 }}>
+        <Text style={styles.quickActionTitle}>{title}</Text>
+        <Text style={styles.quickActionDesc} numberOfLines={2}>{desc}</Text>
+      </View>
+      <Text style={{ color: color, fontSize: 18, fontWeight: '700' }}>➔</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -4912,7 +5329,7 @@ function ProfileModal({
       });
 
       setProfileSuccess(res.data?.message || 'Profile & KYC details saved successfully!');
-      if (typeof window !== 'undefined' && user?.id) {
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && user?.id) {
         try {
           window.localStorage?.setItem(`staff_kyc_completed_${user.id}`, 'true');
         } catch (e) {}
@@ -5280,11 +5697,74 @@ function ProfileModal({
   );
 }
 
+// --- ERROR BOUNDARY (Prevents Blank White Screen on Mobile) ---
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error('[ChitKart Mobile] ErrorBoundary caught error:', error, errorInfo);
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#0A2540', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#1E293B', padding: 24, borderRadius: 16, width: '100%', maxWidth: 450, borderWidth: 1, borderColor: '#334155' }}>
+            <Text style={{ fontSize: 40, textAlign: 'center', marginBottom: 12 }}>⚠️</Text>
+            <Text style={{ color: '#F8FAFC', fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 8 }}>
+              Application Recovered
+            </Text>
+            <Text style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', marginBottom: 16, lineHeight: 18 }}>
+              An unexpected issue occurred while rendering the screen. Tap below to reload the app interface.
+            </Text>
+            {this.state.error?.message ? (
+              <View style={{ backgroundColor: '#0F172A', padding: 12, borderRadius: 8, marginBottom: 20 }}>
+                <Text style={{ color: '#EF4444', fontSize: 12 }}>
+                  {this.state.error.message}
+                </Text>
+              </View>
+            ) : null}
+            <TouchableOpacity
+              style={{ backgroundColor: '#2563EB', paddingVertical: 14, borderRadius: 10, alignItems: 'center' }}
+              onPress={this.handleReset}
+            >
+              <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 15 }}>Reload App</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <MainApp />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -6245,5 +6725,163 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: '800',
     fontSize: 13,
+  },
+  heroCard: {
+    backgroundColor: '#0A2540',
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 20,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  heroGreeting: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFF',
+    letterSpacing: -0.2,
+  },
+  heroCompany: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 3,
+    fontWeight: '500',
+  },
+  refreshPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  refreshPillText: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  roleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  roleBadgeText: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  heroDesc: {
+    fontSize: 12,
+    color: '#CBD5E1',
+    lineHeight: 18,
+  },
+
+  quickActionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 20,
+    width: '100%',
+  },
+  quickActionCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 14,
+    flexBasis: 280,
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  quickActionIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+  },
+  quickActionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  quickActionDesc: {
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 15,
+  },
+  guidanceBanner: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 12,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 24,
+  },
+  guidanceText: {
+    fontSize: 12,
+    color: '#1E40AF',
+    lineHeight: 18,
+    flex: 1,
+  },
+  dashboardErrorCard: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  dashboardErrorText: {
+    color: '#DC2626',
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 8,
+  },
+  retryBtn: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  retryBtnText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

@@ -97,7 +97,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && error.response?.data?.code === 'SESSION_TERMINATED') {
-      if (typeof window !== 'undefined' && (window as any).__chitkart_session_terminated_handler) {
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && (window as any).__chitkart_session_terminated_handler) {
         (window as any).__chitkart_session_terminated_handler(
           error.response?.data?.message || 'This account was logged in from another screen. You have been logged out.'
         );

@@ -33,7 +33,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 const getInitialAuth = () => {
-  if (typeof window !== 'undefined') {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
     // Purge any lingering tokens in localStorage to prevent session bleed to new tabs
     try {
       if (window.localStorage) {
@@ -91,13 +91,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Connect global session termination handler (triggered when this screen was superseded by a newer login with the same credentials)
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
       (window as any).__chitkart_session_terminated_handler = (msg: string) => {
         logout(msg);
       };
     }
     return () => {
-      if (typeof window !== 'undefined') {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
         delete (window as any).__chitkart_session_terminated_handler;
       }
     };
@@ -126,7 +126,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .then((res) => {
           if (res.data?.success && res.data?.data) {
             setUser(res.data.data);
-            if (typeof window !== 'undefined' && window.sessionStorage) {
+            if (Platform.OS !== 'web') {
+              SecureStore.setItemAsync('chitkart_auth_user', JSON.stringify(res.data.data)).catch(() => {});
+            } else if (typeof window !== 'undefined' && window.sessionStorage) {
               try {
                 window.sessionStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
               } catch (e) {}
@@ -192,7 +194,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await api.get('/auth/me');
       if (res.data.success && res.data.data) {
         setUser(res.data.data);
-        if (typeof window !== 'undefined' && window.sessionStorage) {
+        if (Platform.OS !== 'web') {
+          SecureStore.setItemAsync('chitkart_auth_user', JSON.stringify(res.data.data)).catch(() => {});
+        } else if (typeof window !== 'undefined' && window.sessionStorage) {
           try {
             window.sessionStorage.setItem('chitkart_auth_user', JSON.stringify(res.data.data));
           } catch (e) {}
@@ -235,11 +239,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // 5-Minute Inactivity Auto-Logout:
-  // If there is no mouse movement or user interaction for 5 minutes (300,000ms),
-  // automatically log out and return back to the login screen.
+  // 5-Minute Inactivity Auto-Logout (Web only):
+  // On web, if there is no mouse movement or interaction for 5 minutes, auto log out.
+  // On Native Mobile (Android/iOS), OS handles app lifecycle and native backgrounding.
   useEffect(() => {
-    if (!user) return;
+    if (!user || Platform.OS !== 'web') return;
 
     const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
     let lastActivityTime = Date.now();
@@ -267,7 +271,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 5000);
 
     // Listen to mouse movement and user interactions on web
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       let lastThrottle = 0;
       const onUserActivity = () => {
         const now = Date.now();
