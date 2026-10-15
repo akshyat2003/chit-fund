@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { api, setAuthToken } from '../services/api';
 
@@ -104,9 +104,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // Periodic heartbeat session monitor: verifies that this account has not been logged into from another screen
+  // Optimized to 45s and checks AppState to prevent battery drain and network lag at work
   useEffect(() => {
     if (!token || !user) return;
-    const interval = setInterval(() => {
+    const checkSession = () => {
+      if (Platform.OS !== 'web' && AppState.currentState !== 'active') return;
       api.get('/auth/me').catch((err) => {
         if (err.response?.status === 401 && err.response?.data?.code === 'SESSION_TERMINATED') {
           logout(
@@ -115,7 +117,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           );
         }
       });
-    }, 5000);
+    };
+
+    const interval = setInterval(checkSession, 45000);
     return () => clearInterval(interval);
   }, [token, user?.id]);
 

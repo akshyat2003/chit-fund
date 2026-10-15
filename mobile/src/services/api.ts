@@ -22,6 +22,7 @@ export const API_BASE_URL = getDefaultBaseUrl();
 export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
+  timeout: 12000, // 12-second timeout avoids hanging on weak office/mobile connections
   headers: {
     'Content-Type': 'application/json',
   },

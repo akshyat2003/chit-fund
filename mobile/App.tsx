@@ -3087,12 +3087,12 @@ function AuditsTab({ user }: { user: any }) {
     loadApiLogs();
   }, []);
 
-  // Periodic polling for live API traffic when active
+  // Periodic polling for live API traffic when active (throttled to 10s to prevent network lag)
   useEffect(() => {
     if (subTab !== 'api_traffic' || !autoRefresh) return;
     const interval = setInterval(() => {
       loadApiLogs(true);
-    }, 4000);
+    }, 10000);
     return () => clearInterval(interval);
   }, [subTab, autoRefresh]);
 
@@ -3686,20 +3686,20 @@ function SystemMonitoringTab({ user }: { user: any }) {
 
   useEffect(() => {
     loadHealth();
-    const interval = setInterval(loadHealth, 10000);
+    const interval = setInterval(() => loadHealth(true), 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const loadHealth = async () => {
+  const loadHealth = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await api.get('/super-admin/system-health');
       setHealth(res.data.data);
       setLastCheck(new Date().toLocaleTimeString());
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -3718,7 +3718,7 @@ function SystemMonitoringTab({ user }: { user: any }) {
         <Text style={styles.sectionTitle}>Full System Monitoring & Infrastructure Health</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <Text style={{ fontSize: 12, color: '#64748B' }}>Last verified: {lastCheck || 'Checking...'}</Text>
-          <TouchableOpacity style={styles.addBtn} onPress={loadHealth} disabled={loading}>
+          <TouchableOpacity style={styles.addBtn} onPress={() => loadHealth(false)} disabled={loading}>
             <Text style={styles.addBtnText}>🔄 REFRESH METRICS</Text>
           </TouchableOpacity>
         </View>
