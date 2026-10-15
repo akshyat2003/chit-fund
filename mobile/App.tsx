@@ -3806,36 +3806,6 @@ function SystemMonitoringTab({ user }: { user: any }) {
           </View>
         </View>
 
-        {/* Database Table Counts */}
-        <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569', marginTop: 16, marginBottom: 8 }}>
-          Live Database Records Count
-        </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          <View style={{ backgroundColor: '#EFF6FF', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, flex: 1, minWidth: 120 }}>
-            <Text style={{ fontSize: 11, color: '#1D4ED8', fontWeight: '700' }}>COMPANIES</Text>
-            <Text style={{ fontSize: 18, fontWeight: '900', color: '#1E40AF', marginTop: 2 }}>
-              {health?.database?.tableCounts?.companies ?? '-'}
-            </Text>
-          </View>
-          <View style={{ backgroundColor: '#F0FDF4', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, flex: 1, minWidth: 120 }}>
-            <Text style={{ fontSize: 11, color: '#15803D', fontWeight: '700' }}>USERS & ADMINS</Text>
-            <Text style={{ fontSize: 18, fontWeight: '900', color: '#166534', marginTop: 2 }}>
-              {health?.database?.tableCounts?.users ?? '-'}
-            </Text>
-          </View>
-          <View style={{ backgroundColor: '#FAF5FF', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, flex: 1, minWidth: 120 }}>
-            <Text style={{ fontSize: 11, color: '#7E22CE', fontWeight: '700' }}>AUDIT LOGS</Text>
-            <Text style={{ fontSize: 18, fontWeight: '900', color: '#6B21A8', marginTop: 2 }}>
-              {health?.database?.tableCounts?.auditLogs ?? '-'}
-            </Text>
-          </View>
-          <View style={{ backgroundColor: '#FFF7ED', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, flex: 1, minWidth: 120 }}>
-            <Text style={{ fontSize: 11, color: '#C2410C', fontWeight: '700' }}>SUBSCRIBERS</Text>
-            <Text style={{ fontSize: 18, fontWeight: '900', color: '#9A3412', marginTop: 2 }}>
-              {health?.database?.tableCounts?.subscribers ?? '-'}
-            </Text>
-          </View>
-        </View>
       </View>
 
       {/* Server Hardware & Architecture Specifications */}
@@ -4104,7 +4074,7 @@ function BackupsTab({ user }: { user: any }) {
               🛡️ Automated Database Backups & Disaster Recovery
             </Text>
             <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
-              PostgreSQL Point-in-Time Recovery (PITR) with continuous Write-Ahead Log archiving.
+              PostgreSQL database disaster recovery with automated scheduled snapshot archiving.
             </Text>
           </View>
           <TouchableOpacity
@@ -4134,36 +4104,6 @@ function BackupsTab({ user }: { user: any }) {
           </View>
         )}
 
-        {loadingBackup ? (
-          <ActivityIndicator color="#0A2540" />
-        ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            <View style={{ flex: 1, minWidth: 200, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8 }}>
-              <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '700' }}>BACKUP STRATEGY</Text>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', marginTop: 2 }}>
-                {backupInfo?.frequency || 'Continuous WAL + Daily Full Snapshot'}
-              </Text>
-            </View>
-            <View style={{ flex: 1, minWidth: 200, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8 }}>
-              <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '700' }}>RETENTION & RESTORE WINDOW</Text>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', marginTop: 2 }}>
-                {backupInfo?.recoveryWindow || '30 Days Point-in-Time Recovery'}
-              </Text>
-            </View>
-            <View style={{ flex: 1, minWidth: 200, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8 }}>
-              <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '700' }}>ENCRYPTION PROTOCOL</Text>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', marginTop: 2 }}>
-                {backupInfo?.encryption || 'AES-256 at Rest & TLS 1.3 In-Transit'}
-              </Text>
-            </View>
-            <View style={{ flex: 1, minWidth: 200, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8 }}>
-              <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '700' }}>LAST SUCCESSFUL BACKUP</Text>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#16A34A', marginTop: 2 }}>
-                {backupInfo?.lastSuccessfulBackup ? new Date(backupInfo.lastSuccessfulBackup).toLocaleString() : 'Recent'}
-              </Text>
-            </View>
-          </View>
-        )}
       </View>
 
       {/* SECTION 2: DATA EXPORT */}
@@ -5006,22 +4946,6 @@ function NotificationsTab({ user }: { user: any }) {
 
           {/* SECTION 3: APP-BASED DELIVERY CONFIRMATION & DISPATCH */}
           <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 18, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 3 }}>
-            <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A', marginBottom: 6 }}>
-              3. Delivery Mechanism
-            </Text>
-
-            {/* App Based Only Alert Notice - NO Email Toggle Button */}
-            <View style={{ backgroundColor: '#EFF6FF', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#BFDBFE', flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-              <Text style={{ fontSize: 20 }}>📱</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: '#1E40AF' }}>
-                  App-Based Direct In-App Notification (Push & Dashboard Alerts)
-                </Text>
-                <Text style={{ fontSize: 11, color: '#3B82F6', marginTop: 2 }}>
-                  Notifications are delivered instantly within the app to recipient dashboards and audit trails.
-                </Text>
-              </View>
-            </View>
 
             <TouchableOpacity
               style={[

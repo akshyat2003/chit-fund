@@ -1572,10 +1572,7 @@ export const getBackups = async (req: AuthRequest, res: Response) => {
     data: {
       provider: 'Supabase Managed Automated Snapshots',
       region: 'ap-northeast-1 (Tokyo, Japan)',
-      frequency: 'Continuous Write-Ahead Log (WAL) + Daily Full Snapshot',
-      recoveryWindow: '30 Days Point-in-Time Recovery (PITR)',
       lastSuccessfulBackup: new Date(Date.now() - 3600000).toISOString(),
-      encryption: 'AES-256 at Rest & In-Transit (TLS 1.3)',
       restorePolicy: 'Super Admin Authorization Only',
       status: 'HEALTHY',
     },
