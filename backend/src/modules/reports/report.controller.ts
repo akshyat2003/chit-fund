@@ -5,7 +5,11 @@ import { AuthRequest } from '../../middleware/auth.js';
 export const getDashboardStats = async (req: AuthRequest, res: Response) => {
   try {
     const role = req.user?.role;
-    const companyId = req.user?.companyId!;
+    let companyId = req.user?.companyId;
+    if (!companyId) {
+      const firstCo = await prisma.company.findFirst();
+      companyId = firstCo?.id!;
+    }
 
     if (role === 'SUPER_ADMIN') {
       const [activeCompanies, activeBranches, totalUsers, activeUsers, totalSubscribers, activeGroups] = await Promise.all([

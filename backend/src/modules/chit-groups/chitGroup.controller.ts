@@ -4,10 +4,15 @@ import { AuthRequest } from '../../middleware/auth.js';
 
 export const listChitGroups = async (req: AuthRequest, res: Response) => {
   try {
-    const companyId = req.user?.companyId;
+    let companyId = req.user?.companyId;
+    if (!companyId) {
+      const firstCo = await prisma.company.findFirst();
+      companyId = firstCo?.id;
+    }
     const { branchId, status } = req.query;
 
-    const where: any = { companyId };
+    const where: any = {};
+    if (companyId) where.companyId = companyId;
     if (branchId) where.branchId = String(branchId);
     if (status) where.status = String(status);
 
@@ -77,7 +82,11 @@ export const listChitGroups = async (req: AuthRequest, res: Response) => {
 
 export const createChitGroup = async (req: AuthRequest, res: Response) => {
   try {
-    const companyId = req.user?.companyId!;
+    let companyId = req.user?.companyId;
+    if (!companyId) {
+      const firstCo = await prisma.company.findFirst();
+      companyId = firstCo?.id!;
+    }
     const {
       branchId,
       name,
@@ -101,18 +110,22 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
     const effectiveMaxMembers = Number(maxMembers || effectiveTotalMonths);
     const effectiveCommission = Number(foremanCommissionPct ?? foremanCommissionRate ?? 5.0);
 
-    // Commencement date must strictly be the actual creation date; no one can edit or provide a different commencement date
+    // Commencement date: use provided startDate if specified, or default to current date in India timezone
     let effectiveStartDate: string;
-    try {
-      effectiveStartDate = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Kolkata',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(new Date());
-    } catch {
-      const d = new Date();
-      effectiveStartDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (startDate && typeof startDate === 'string' && startDate.trim()) {
+      effectiveStartDate = startDate.trim();
+    } else {
+      try {
+        effectiveStartDate = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Kolkata',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(new Date());
+      } catch {
+        const d = new Date();
+        effectiveStartDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
     }
 
     let effectiveBranchId = branchId || req.user?.branchId;
@@ -353,6 +366,7 @@ export const updateChitGroup = async (req: AuthRequest, res: Response) => {
       monthlyInstallment,
       foremanCommissionPct,
       foremanCommissionRate,
+      startDate,
       endDate,
       status,
       branchId,
@@ -427,7 +441,7 @@ export const updateChitGroup = async (req: AuthRequest, res: Response) => {
         monthlyInstallment: newMonthly,
         foremanCommissionPct: newCommission,
         maxMembers: maxMembers !== undefined ? Number(maxMembers) : existingGroup.maxMembers,
-        startDate: existingGroup.startDate, // Commencement date is locked to actual start date and cannot be changed!
+        startDate: startDate !== undefined && typeof startDate === 'string' && startDate.trim() ? startDate.trim() : existingGroup.startDate,
         endDate: endDate !== undefined ? endDate : existingGroup.endDate,
         status: status || existingGroup.status,
         branchId: branchId || existingGroup.branchId,

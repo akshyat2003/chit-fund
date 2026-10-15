@@ -91,9 +91,13 @@ export function ChitGroupsTab({ user }: { user: any }) {
 
   // Helper: Format commencement date to Indian standard (DD-MM-YYYY)
   const formatCommencementDate = (dateStr?: string): string => {
-    if (!dateStr) return '13-10-2026';
+    if (!dateStr) {
+      const d = new Date();
+      return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+    }
     if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) return dateStr;
-    const parts = dateStr.split('-');
+    const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+    const parts = cleanDate.split('-');
     if (parts.length === 3 && parts[0].length === 4) {
       const [y, m, d] = parts;
       return `${d}-${m}-${y}`;
@@ -108,7 +112,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
   const [monthlyInstallment, setMonthlyInstallment] = useState('5000');
   const [maxMembers, setMaxMembers] = useState('20');
   const [foremanCommissionRate, setForemanCommissionRate] = useState('5');
-  const [startDate] = useState(actualToday); // Actual date, fixed and cannot be changed
+  const [startDate, setStartDate] = useState(actualToday); // Actual date, editable
   const [selectedBranchId, setSelectedBranchId] = useState('');
 
   // Edit Group Form
@@ -208,7 +212,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
         monthlyInstallment: Number(monthlyInstallment),
         maxMembers: Number(maxMembers || durationMonths),
         foremanCommissionPct: Number(foremanCommissionRate),
-        startDate: actualToday, // Fixed to current actual date - cannot be changed
+        startDate: startDate || actualToday, // Actual commencement date
         branchId: selectedBranchId || branches[0]?.id || user.branchId || undefined,
         assignedStaffId: createStaffId || null,
         assignedStaffIds: createStaffId ? [createStaffId] : [],
@@ -268,6 +272,7 @@ export function ChitGroupsTab({ user }: { user: any }) {
         maxMembers: Number(editMaxMembers),
         foremanCommissionPct: Number(editForemanCommissionRate),
         status: editStatus,
+        startDate: editStartDate || actualToday,
         branchId: editBranchId || undefined,
         assignedStaffId: editStaffId || null,
         assignedStaffIds: editStaffId ? [editStaffId] : [],
@@ -939,18 +944,19 @@ export function ChitGroupsTab({ user }: { user: any }) {
 
               <View style={{ marginBottom: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <Text style={mStyles.label}>Commencement Date (Actual Date) *</Text>
-                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#B45309' }}>🔒 FIXED TO ACTUAL DATE</Text>
-                  </View>
+                  <Text style={mStyles.label}>Commencement Date (YYYY-MM-DD) *</Text>
+                  <TouchableOpacity onPress={() => setStartDate(actualToday)}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#0284C7' }}>⚡ Use Today ({formatCommencementDate(actualToday)})</Text>
+                  </TouchableOpacity>
                 </View>
-                <View style={[mStyles.input, { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1', justifyContent: 'center' }]}>
-                  <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: 14 }}>
-                    📅 {formatCommencementDate(actualToday)} (Actual Date)
-                  </Text>
-                </View>
+                <TextInput
+                  style={[mStyles.input, { fontWeight: '700', color: '#0F172A' }]}
+                  placeholder="YYYY-MM-DD e.g. 2026-10-15"
+                  value={startDate}
+                  onChangeText={setStartDate}
+                />
                 <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
-                  The commencement date is automatically locked to the actual inception date ({formatCommencementDate(actualToday)}) and cannot be edited.
+                  Formatted: {formatCommencementDate(startDate || actualToday)} (Actual scheme start date)
                 </Text>
               </View>
 
@@ -1115,15 +1121,18 @@ export function ChitGroupsTab({ user }: { user: any }) {
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={mStyles.label}>Commencement Date</Text>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#B45309' }}>🔒 FIXED</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={mStyles.label}>Commencement Date (YYYY-MM-DD)</Text>
                   </View>
-                  <View style={[mStyles.input, { backgroundColor: '#F1F5F9', borderColor: '#CBD5E1', justifyContent: 'center' }]}>
-                    <Text style={{ color: '#475569', fontWeight: '700', fontSize: 13 }}>
-                      📅 {formatCommencementDate(editStartDate || actualToday)} (Locked - Cannot be edited)
-                    </Text>
-                  </View>
+                  <TextInput
+                    style={[mStyles.input, { fontWeight: '700', color: '#0F172A' }]}
+                    placeholder="YYYY-MM-DD"
+                    value={editStartDate}
+                    onChangeText={setEditStartDate}
+                  />
+                  <Text style={{ fontSize: 10, color: '#64748B', marginTop: -6 }}>
+                    Actual: {formatCommencementDate(editStartDate || actualToday)}
+                  </Text>
                 </View>
               </View>
 

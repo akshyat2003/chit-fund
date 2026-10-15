@@ -1,10 +1,10 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
 const getDefaultBaseUrl = () => {
   // If running on Web
-  if (typeof window !== 'undefined' && window.location) {
-    // If running in local web development (e.g. Metro on port 8081 or 19006), point to local backend port 5000
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       if (window.location.port !== '5000') {
         return 'http://localhost:5000/api/v1';
@@ -27,31 +27,58 @@ export const api = axios.create({
   },
 });
 
+let inMemoryAuthToken: string | null = null;
+
 export const setAuthToken = (token: string | null) => {
+  inMemoryAuthToken = token;
   if (token) {
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        if (window.sessionStorage) window.sessionStorage.setItem('chitkart_auth_token', token);
+      } catch (e) {}
+    } else if (Platform.OS !== 'web') {
+      SecureStore.setItemAsync('chitkart_auth_token', token).catch(() => {});
+    }
   } else {
     delete api.defaults.headers.common['Authorization'];
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        if (window.sessionStorage) window.sessionStorage.removeItem('chitkart_auth_token');
+        if (window.localStorage) window.localStorage.removeItem('chitkart_auth_token');
+      } catch (e) {}
+    } else if (Platform.OS !== 'web') {
+      SecureStore.deleteItemAsync('chitkart_auth_token').catch(() => {});
+    }
   }
 };
 
-// Helper to retrieve tab-isolated token strictly from sessionStorage (new tabs start unauthenticated)
+// Retrieve stored token (in-memory first, then web storage)
 export const getStoredAuthToken = (): string | null => {
-  if (typeof window !== 'undefined' && window.sessionStorage) {
-    return window.sessionStorage.getItem('chitkart_auth_token');
+  if (inMemoryAuthToken) return inMemoryAuthToken;
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    try {
+      if (window.sessionStorage) {
+        const s = window.sessionStorage.getItem('chitkart_auth_token');
+        if (s) return s;
+      }
+      if (window.localStorage) {
+        return window.localStorage.getItem('chitkart_auth_token');
+      }
+    } catch (e) {}
   }
   return null;
 };
 
-// Ensure EVERY outgoing request carries the tab-specific Bearer token
+// Ensure EVERY outgoing request carries the Bearer token
 api.interceptors.request.use(
   (config) => {
-    const savedToken = getStoredAuthToken();
-    if (savedToken) {
+    const activeToken = inMemoryAuthToken || getStoredAuthToken();
+    if (activeToken) {
       if (config.headers && typeof (config.headers as any).set === 'function') {
-        (config.headers as any).set('Authorization', `Bearer ${savedToken}`);
+        (config.headers as any).set('Authorization', `Bearer ${activeToken}`);
       } else if (config.headers) {
-        config.headers['Authorization'] = `Bearer ${savedToken}`;
+        config.headers['Authorization'] = `Bearer ${activeToken}`;
       }
     }
     return config;
@@ -62,7 +89,7 @@ api.interceptors.request.use(
 // Immediately restore token upon tab launch or reload
 const initialToken = getStoredAuthToken();
 if (initialToken) {
-  api.defaults.headers.common['Authorization'] = `Bearer ${initialToken}`;
+  setAuthToken(initialToken);
 }
 
 // Global response interceptor: kick out screen if same account was logged into another screen

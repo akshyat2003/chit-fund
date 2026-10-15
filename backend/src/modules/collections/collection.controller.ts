@@ -142,10 +142,15 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
 
 export const listTransactions = async (req: AuthRequest, res: Response) => {
   try {
-    const companyId = req.user?.companyId;
+    let companyId = req.user?.companyId;
+    if (!companyId) {
+      const firstCo = await prisma.company.findFirst();
+      companyId = firstCo?.id;
+    }
     const { subscriberId, groupId, paymentMode, verificationStatus } = req.query;
 
-    const where: any = { companyId };
+    const where: any = {};
+    if (companyId) where.companyId = companyId;
 
     if (subscriberId) where.subscriberId = String(subscriberId);
     if (groupId) where.groupId = String(groupId);

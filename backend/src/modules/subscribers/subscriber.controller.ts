@@ -4,10 +4,15 @@ import { AuthRequest } from '../../middleware/auth.js';
 
 export const listSubscribers = async (req: AuthRequest, res: Response) => {
   try {
-    const companyId = req.user?.companyId;
+    let companyId = req.user?.companyId;
+    if (!companyId) {
+      const firstCo = await prisma.company.findFirst();
+      companyId = firstCo?.id;
+    }
     const { branchId, search, kycStatus, staffId } = req.query;
 
-    const where: any = { companyId };
+    const where: any = {};
+    if (companyId) where.companyId = companyId;
 
     if (branchId) where.branchId = String(branchId);
     if (kycStatus) where.kycStatus = String(kycStatus);

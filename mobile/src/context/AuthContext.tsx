@@ -1,4 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import { api, setAuthToken } from '../services/api';
 
 export interface User {
@@ -65,6 +67,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [inactivityMessage, setInactivityMessage] = useState<string | null>(null);
 
   const clearInactivityMessage = () => setInactivityMessage(null);
+
+  // Restore auth on Native Mobile devices from SecureStore
+  useEffect(() => {
+    async function restoreNativeSession() {
+      if (Platform.OS !== 'web') {
+        try {
+          const storedToken = await SecureStore.getItemAsync('chitkart_auth_token');
+          const storedUser = await SecureStore.getItemAsync('chitkart_auth_user');
+          if (storedToken && storedUser) {
+            const parsed = JSON.parse(storedUser);
+            if (parsed && parsed.id) {
+              setAuthToken(storedToken);
+              setToken(storedToken);
+              setUser(parsed as User);
+            }
+          }
+        } catch (e) {}
+      }
+    }
+    restoreNativeSession();
+  }, []);
 
   // Connect global session termination handler (triggered when this screen was superseded by a newer login with the same credentials)
   useEffect(() => {
@@ -133,8 +156,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(loggedUser);
         setAuthToken(accessToken);
 
-        // Store exclusively in sessionStorage so this tab is authenticated without leaking to new tabs
-        if (typeof window !== 'undefined') {
+        // Store in SecureStore on mobile, and sessionStorage on web
+        if (Platform.OS !== 'web') {
+          SecureStore.setItemAsync('chitkart_auth_token', accessToken).catch(() => {});
+          SecureStore.setItemAsync('chitkart_auth_user', JSON.stringify(loggedUser)).catch(() => {});
+        } else if (typeof window !== 'undefined') {
           try {
             if (window.sessionStorage) {
               window.sessionStorage.setItem('chitkart_auth_token', accessToken);
@@ -185,7 +211,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Ignore network errors on logout
     }
 
-    if (typeof window !== 'undefined') {
+    if (Platform.OS !== 'web') {
+      SecureStore.deleteItemAsync('chitkart_auth_token').catch(() => {});
+      SecureStore.deleteItemAsync('chitkart_auth_user').catch(() => {});
+    } else if (typeof window !== 'undefined') {
       try {
         if (window.sessionStorage) {
           window.sessionStorage.removeItem('chitkart_auth_token');
