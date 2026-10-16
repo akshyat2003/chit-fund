@@ -198,13 +198,6 @@ router.post('/super-admin/support-access', authenticateToken, requireRoles('SUPE
 router.get('/super-admin/admins', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listSuperAdmins);
 router.post('/super-admin/admins', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.createSuperAdmin);
 
-// SA-03: Branch Setup & Management
-router.get('/super-admin/branches', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listBranches);
-router.post('/super-admin/branches', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.createBranch);
-router.put('/super-admin/branches/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateBranch);
-router.patch('/super-admin/branches/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.updateBranch);
-router.delete('/super-admin/branches/:id', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.deleteBranch);
-router.get('/branches', authenticateToken, superAdminController.listBranches);
 
 // SA-05, SA-06: Role & Permission Management
 router.get('/super-admin/roles', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.listRolesAndPermissions);
@@ -233,7 +226,7 @@ router.post('/super-admin/financial-periods/close', authenticateToken, requireRo
 router.post('/super-admin/financial-periods/reopen', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.reopenFinancialPeriod);
 router.get('/super-admin/archival-policy', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getArchivalPolicy);
 
-// SA-21, SA-22: Multi-Branch Oversight & Exception Management
+// SA-21, SA-22: System Oversight & Exception Management
 router.get('/super-admin/exceptions', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getMultiBranchExceptions);
 
 // Universal In-App Notification System (Super Admin, Manager, Staff)

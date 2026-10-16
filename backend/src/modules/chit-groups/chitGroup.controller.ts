@@ -9,17 +9,24 @@ export const listChitGroups = async (req: AuthRequest, res: Response) => {
       const firstCo = await prisma.company.findFirst();
       companyId = firstCo?.id;
     }
-    const { branchId, status } = req.query;
+    const { status } = req.query;
 
     const where: any = {};
     if (companyId) where.companyId = companyId;
-    if (branchId) where.branchId = String(branchId);
     if (status) where.status = String(status);
+
+    // Collection staff can only list and see their assigned chit groups
+    if (req.user?.role === 'COLLECTION_STAFF') {
+      const staffUserId = req.user.id;
+      where.OR = [
+        { assignedStaffId: staffUserId },
+        { staffAssignments: { some: { staffId: staffUserId } } },
+      ];
+    }
 
     const groups = await prisma.chitGroup.findMany({
       where,
       include: {
-        branch: { select: { name: true, code: true } },
         assignedStaff: { select: { id: true, fullName: true, username: true, phone: true } },
         staffAssignments: {
           include: {
@@ -88,7 +95,6 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
       companyId = firstCo?.id!;
     }
     const {
-      branchId,
       name,
       chitValue,
       totalChitValue,
@@ -127,14 +133,7 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
         effectiveStartDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       }
     }
-
-    let effectiveBranchId = branchId || req.user?.branchId;
-    if (!effectiveBranchId) {
-      const defaultBranch = await prisma.branch.findFirst({ where: { companyId } });
-      effectiveBranchId = defaultBranch?.id;
-    }
-
-    if (!name || !effectiveChitValue || !effectiveMaxMembers || !effectiveTotalMonths || !effectiveBranchId) {
+    if (!name || !effectiveChitValue || !effectiveMaxMembers || !effectiveTotalMonths) {
       return res.status(400).json({
         success: false,
         message: 'Missing required chit group configuration parameters (name, monthlyInstallment or chitValue, totalMonths, maxMembers)',
@@ -151,7 +150,6 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
     const group = await prisma.chitGroup.create({
       data: {
         companyId,
-        branchId: effectiveBranchId,
         groupCode,
         name: name.trim(),
         chitValue: effectiveChitValue,
@@ -164,7 +162,6 @@ export const createChitGroup = async (req: AuthRequest, res: Response) => {
         assignedStaffId: singleStaffId,
       },
       include: {
-        branch: { select: { name: true, code: true } },
         assignedStaff: { select: { id: true, fullName: true, username: true, phone: true } },
       },
     });
@@ -301,7 +298,6 @@ export const getChitGroupDetails = async (req: AuthRequest, res: Response) => {
     const group = await prisma.chitGroup.findUnique({
       where: { id },
       include: {
-        branch: true,
         assignedStaff: { select: { id: true, fullName: true, username: true, phone: true } },
         staffAssignments: {
           include: {
@@ -340,9 +336,10 @@ export const getChitGroupDetails = async (req: AuthRequest, res: Response) => {
         group.staffAssignments?.some((sa: any) => sa.staffId === staffUserId);
 
       if (!isStaffGroup) {
-        group.members = group.members.filter(
-          (m: any) => m.subscriber?.assignedStaffId === staffUserId
-        );
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden: Staff can only access chit groups assigned to them.',
+        });
       }
     }
 
@@ -369,7 +366,6 @@ export const updateChitGroup = async (req: AuthRequest, res: Response) => {
       startDate,
       endDate,
       status,
-      branchId,
       assignedStaffId,
       assignedStaffIds,
       staffIds,
@@ -444,13 +440,11 @@ export const updateChitGroup = async (req: AuthRequest, res: Response) => {
         startDate: startDate !== undefined && typeof startDate === 'string' && startDate.trim() ? startDate.trim() : existingGroup.startDate,
         endDate: endDate !== undefined ? endDate : existingGroup.endDate,
         status: status || existingGroup.status,
-        branchId: branchId || existingGroup.branchId,
         ...(singleStaffId !== undefined
           ? { assignedStaffId: singleStaffId || null }
           : {}),
       },
       include: {
-        branch: { select: { name: true, code: true } },
         assignedStaff: { select: { id: true, fullName: true, username: true, phone: true } },
         staffAssignments: {
           include: {
@@ -535,7 +529,6 @@ export const assignStaffToGroup = async (req: AuthRequest, res: Response) => {
       where: { id },
       data: { assignedStaffId: singleStaffId || null },
       include: {
-        branch: { select: { name: true, code: true } },
         assignedStaff: { select: { id: true, fullName: true, username: true, phone: true } },
         staffAssignments: {
           include: {

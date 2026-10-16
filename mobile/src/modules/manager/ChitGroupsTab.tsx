@@ -14,7 +14,6 @@ import { mStyles } from './commonStyles';
 export function ChitGroupsTab({ user }: { user: any }) {
   const [groups, setGroups] = useState<any[]>([]);
   const [subscribers, setSubscribers] = useState<any[]>([]);
-  const [branches, setBranches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'UPCOMING' | 'COMPLETED' | 'CLOSED'>('ALL');
@@ -113,7 +112,6 @@ export function ChitGroupsTab({ user }: { user: any }) {
   const [maxMembers, setMaxMembers] = useState('20');
   const [foremanCommissionRate, setForemanCommissionRate] = useState('5');
   const [startDate, setStartDate] = useState(actualToday); // Actual date, editable
-  const [selectedBranchId, setSelectedBranchId] = useState('');
 
   // Edit Group Form
   const [editGroupId, setEditGroupId] = useState<string | null>(null);
@@ -125,7 +123,6 @@ export function ChitGroupsTab({ user }: { user: any }) {
   const [editForemanCommissionRate, setEditForemanCommissionRate] = useState('5');
   const [editStartDate, setEditStartDate] = useState('');
   const [editStatus, setEditStatus] = useState('ACTIVE');
-  const [editBranchId, setEditBranchId] = useState('');
 
   // Enroll Member Form (AC-03)
   const [selectedSubscriberId, setSelectedSubscriberId] = useState('');
@@ -134,10 +131,9 @@ export function ChitGroupsTab({ user }: { user: any }) {
   const fetchGroups = async () => {
     try {
       setLoading(true);
-      const [gRes, sRes, bRes, staffRes] = await Promise.all([
+      const [gRes, sRes, staffRes] = await Promise.all([
         api.get('/chit-groups'),
         api.get('/subscribers'),
-        api.get('/branches').catch(() => ({ data: { data: [] } })),
         api.get('/auth/users').catch(() => ({ data: { data: [] } })),
       ]);
       if (gRes.data.success) {
@@ -147,12 +143,6 @@ export function ChitGroupsTab({ user }: { user: any }) {
         setSubscribers(sRes.data.data || []);
         if (sRes.data.data.length > 0 && !selectedSubscriberId) {
           setSelectedSubscriberId(sRes.data.data[0].id);
-        }
-      }
-      if (bRes.data.success) {
-        setBranches(bRes.data.data || []);
-        if (bRes.data.data.length > 0 && !selectedBranchId) {
-          setSelectedBranchId(bRes.data.data[0].id);
         }
       }
       if (staffRes.data.success) {
@@ -213,7 +203,6 @@ export function ChitGroupsTab({ user }: { user: any }) {
         maxMembers: Number(maxMembers || durationMonths),
         foremanCommissionPct: Number(foremanCommissionRate),
         startDate: startDate || actualToday, // Actual commencement date
-        branchId: selectedBranchId || branches[0]?.id || user.branchId || undefined,
         assignedStaffId: createStaffId || null,
         assignedStaffIds: createStaffId ? [createStaffId] : [],
       });
@@ -243,7 +232,6 @@ export function ChitGroupsTab({ user }: { user: any }) {
     setEditForemanCommissionRate(String(grp.foremanCommissionPct ?? grp.foremanCommissionRate ?? 5));
     setEditStartDate(grp.startDate || actualToday);
     setEditStatus(grp.status || 'ACTIVE');
-    setEditBranchId(grp.branchId || branches[0]?.id || '');
 
     // Current assigned staff ID (at most 1 staff per chit group)
     const currentAssignedId =
@@ -273,7 +261,6 @@ export function ChitGroupsTab({ user }: { user: any }) {
         foremanCommissionPct: Number(editForemanCommissionRate),
         status: editStatus,
         startDate: editStartDate || actualToday,
-        branchId: editBranchId || undefined,
         assignedStaffId: editStaffId || null,
         assignedStaffIds: editStaffId ? [editStaffId] : [],
       });
@@ -436,8 +423,6 @@ export function ChitGroupsTab({ user }: { user: any }) {
         phone: quickPhone.trim(),
         address: quickAddress.trim() || undefined,
         aadhaarNo: quickAadhaar.trim() || undefined,
-        panNo: quickPan.trim().toUpperCase() || undefined,
-        branchId: selectedGroup.branchId || branches[0]?.id || user.branchId || undefined,
         groupId: selectedGroup.id,
       });
 
@@ -702,11 +687,6 @@ export function ChitGroupsTab({ user }: { user: any }) {
                         <Text style={{ fontSize: 11, color: '#166534', fontWeight: '800' }}>⭐ Assigned to You ({enrolledCount} Enrolled)</Text>
                       </View>
                     )}
-                    {grp.branch?.name && (
-                      <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
-                        <Text style={{ fontSize: 11, color: '#475569', fontWeight: '600' }}>🏛️ {grp.branch.name}</Text>
-                      </View>
-                    )}
                     <View
                       style={[
                         mStyles.badge,
@@ -790,19 +770,21 @@ export function ChitGroupsTab({ user }: { user: any }) {
 
               {/* Action Buttons: Enroll (Staff & Manager), Schedule (Both), Manager Only (Assign Staff, Edit, Delete) */}
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-                <TouchableOpacity
-                  style={[mStyles.primaryBtn, { paddingVertical: 8, paddingHorizontal: 12 }, isFull && { opacity: 0.5 }]}
-                  disabled={isFull}
-                  onPress={() => {
-                    setSelectedGroup(grp);
-                    setTicketNo(String(enrolledCount + 1));
-                    setIsQuickRegistering(isStaff ? true : false);
-                    setMemberSearchQuery('');
-                    setShowEnrollModal(true);
-                  }}
-                >
-                  <Text style={mStyles.primaryBtnText}>👤 Enroll Member</Text>
-                </TouchableOpacity>
+                {(!isStaff || isGroupAssignedToUser(grp)) && (
+                  <TouchableOpacity
+                    style={[mStyles.primaryBtn, { paddingVertical: 8, paddingHorizontal: 12 }, isFull && { opacity: 0.5 }]}
+                    disabled={isFull}
+                    onPress={() => {
+                      setSelectedGroup(grp);
+                      setTicketNo(String(enrolledCount + 1));
+                      setIsQuickRegistering(isStaff ? true : false);
+                      setMemberSearchQuery('');
+                      setShowEnrollModal(true);
+                    }}
+                  >
+                    <Text style={mStyles.primaryBtnText}>👤 Enroll Member</Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   style={[mStyles.secondaryBtn, { paddingVertical: 8, paddingHorizontal: 12, borderColor: '#0284C7', backgroundColor: '#F0F9FF' }]}
@@ -870,31 +852,6 @@ export function ChitGroupsTab({ user }: { user: any }) {
                 onChangeText={setGroupName}
               />
 
-              {branches.length > 0 && (
-                <>
-                  <Text style={mStyles.label}>Branch Office *</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                    {branches.map((b) => (
-                      <TouchableOpacity
-                        key={b.id}
-                        style={{
-                          paddingHorizontal: 12,
-                          paddingVertical: 6,
-                          borderRadius: 6,
-                          borderWidth: 1,
-                          borderColor: selectedBranchId === b.id ? '#0284C7' : '#CBD5E1',
-                          backgroundColor: selectedBranchId === b.id ? '#E0F2FE' : '#FFF',
-                        }}
-                        onPress={() => setSelectedBranchId(b.id)}
-                      >
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: selectedBranchId === b.id ? '#0369A1' : '#334155' }}>
-                          {b.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </>
-              )}
 
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1 }}>

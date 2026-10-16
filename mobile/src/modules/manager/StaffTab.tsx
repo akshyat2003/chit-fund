@@ -21,7 +21,6 @@ export function StaffTab({
   onModalDismissed?: () => void;
 }) {
   const [staffList, setStaffList] = useState<any[]>([]);
-  const [branches, setBranches] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
@@ -37,7 +36,6 @@ export function StaffTab({
   const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [branchId, setBranchId] = useState('');
   const [aadhaarNo, setAadhaarNo] = useState('');
   const [panNo, setPanNo] = useState('');
   const [address, setAddress] = useState('');
@@ -61,16 +59,10 @@ export function StaffTab({
   const fetchStaffData = async () => {
     try {
       setLoading(true);
-      const [usersRes, branchesRes] = await Promise.all([
-        api.get('/auth/users?role=COLLECTION_STAFF'),
-        api.get('/branches').catch(() => ({ data: { data: [] } })),
-      ]);
+      const usersRes = await api.get('/auth/users?role=COLLECTION_STAFF');
 
       if (usersRes.data.success) {
         setStaffList(usersRes.data.data || []);
-      }
-      if (branchesRes.data.success) {
-        setBranches(branchesRes.data.data || []);
       }
     } catch (e: any) {
       console.error('Failed to load staff list:', e);
@@ -101,7 +93,6 @@ export function StaffTab({
     setUsername('');
     setPhone('');
     setEmail('');
-    setBranchId(branches[0]?.id || user.branchId || '');
     setAadhaarNo('');
     setPanNo('');
     setAddress('');
@@ -120,7 +111,6 @@ export function StaffTab({
     setUsername(staff.username || '');
     setPhone(staff.phone || '');
     setEmail(staff.email || '');
-    setBranchId(staff.branchId || '');
     setAadhaarNo(staff.aadhaarNo || '');
     setPanNo(staff.panNo || '');
     setAddress(staff.address || '');
@@ -182,7 +172,6 @@ export function StaffTab({
           password: password.trim(),
           role: 'COLLECTION_STAFF',
           companyId: user.company?.id,
-          branchId: branchId || undefined,
           aadhaarNo: aadhaarNo.trim() || undefined,
           panNo: panNo.trim().toUpperCase() || undefined,
           address: address.trim() || undefined,
@@ -207,7 +196,6 @@ export function StaffTab({
           username: username.trim(),
           phone: phone.trim(),
           email: email.trim() || null,
-          branchId: branchId || null,
           aadhaarNo: aadhaarNo.trim() || null,
           panNo: panNo.trim().toUpperCase() || null,
           address: address.trim() || null,
@@ -394,11 +382,6 @@ export function StaffTab({
                     {staff.email ? `  •  ✉️ ${staff.email}` : ''}
                   </Text>
 
-                  {staff.branch?.name && (
-                    <Text style={[mStyles.cardSubtitle, { marginTop: 4, color: '#0284C7' }]}>
-                      🏛️ Branch: {staff.branch.name} ({staff.branch.code || ''})
-                    </Text>
-                  )}
 
                   {/* KYC & Personal Identification Summary */}
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8, backgroundColor: '#F8FAFC', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' }}>
@@ -554,17 +537,11 @@ export function StaffTab({
                 </View>
               </View>
 
-              {/* Section 3: Branch & Employment */}
+              {/* Section 3: Employment */}
               <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                🏢 Branch & Employment Details
+                💼 Employment Details
               </Text>
               <View style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
-                  <Text style={{ fontSize: 13, color: '#64748B' }}>Assigned Branch</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
-                    {inspectingStaff?.branch?.name ? `${inspectingStaff.branch.name} (${inspectingStaff.branch.code || ''})` : 'Company HQ / All'}
-                  </Text>
-                </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
                   <Text style={{ fontSize: 13, color: '#64748B' }}>Account Created</Text>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
@@ -691,29 +668,6 @@ export function StaffTab({
                 onChangeText={setEmail}
               />
 
-              {/* Branch Selection */}
-              {branches.length > 0 && (
-                <>
-                  <Text style={mStyles.label}>Assigned Branch</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-                    {branches.map((b) => (
-                      <TouchableOpacity
-                        key={b.id}
-                        style={[
-                          mStyles.chip,
-                          branchId === b.id && mStyles.chipActive,
-                          { paddingVertical: 8, paddingHorizontal: 12 },
-                        ]}
-                        onPress={() => setBranchId(b.id)}
-                      >
-                        <Text style={[mStyles.chipText, branchId === b.id && mStyles.chipTextActive]}>
-                          🏛️ {b.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </>
-              )}
 
               {/* KYC & Identity Section Header */}
               <View style={{ marginTop: 8, marginBottom: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 12 }}>

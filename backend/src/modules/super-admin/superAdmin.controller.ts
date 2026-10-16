@@ -24,7 +24,6 @@ let subscriptionPlans = [
   {
     id: 'plan_starter',
     name: 'Starter Plan',
-    maxBranches: 2,
     maxUsers: 5,
     maxSubscribers: 100,
     pricePerMonth: 2999,
@@ -33,7 +32,6 @@ let subscriptionPlans = [
   {
     id: 'plan_pro',
     name: 'Professional Plan',
-    maxBranches: 10,
     maxUsers: 25,
     maxSubscribers: 1000,
     pricePerMonth: 7999,
@@ -42,7 +40,6 @@ let subscriptionPlans = [
   {
     id: 'plan_enterprise',
     name: 'Enterprise Plan',
-    maxBranches: 999,
     maxUsers: 999,
     maxSubscribers: 100000,
     pricePerMonth: 19999,
@@ -61,7 +58,6 @@ export const getCompanySubscription = (companyId: string) => {
     companySettingsStore.set(companyId, {
       planId: 'plan_pro',
       planName: 'Professional Plan',
-      maxBranches: 10,
       maxUsers: 25,
       maxSubscribers: 1000,
       renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -86,7 +82,6 @@ export const getPlatformDashboard = async (req: AuthRequest, res: Response) => {
       totalCompanies,
       activeCompanies,
       suspendedCompanies,
-      totalBranches,
       totalUsers,
       totalSubscribers,
       totalGroups,
@@ -95,7 +90,6 @@ export const getPlatformDashboard = async (req: AuthRequest, res: Response) => {
       prisma.company.count(),
       prisma.company.count({ where: { status: 'ACTIVE' } }),
       prisma.company.count({ where: { status: 'SUSPENDED' } }),
-      prisma.branch.count(),
       prisma.user.count(),
       prisma.subscriber.count(),
       prisma.chitGroup.count(),
@@ -113,7 +107,6 @@ export const getPlatformDashboard = async (req: AuthRequest, res: Response) => {
           totalCompanies,
           activeCompanies,
           suspendedCompanies,
-          totalBranches,
           totalUsers,
           totalSubscribers,
           totalGroups,
@@ -164,7 +157,6 @@ export const listCompanies = async (req: AuthRequest, res: Response) => {
       include: {
         _count: {
           select: {
-            branches: true,
             users: true,
             subscribers: true,
             chitGroups: true,
@@ -186,7 +178,6 @@ export const listCompanies = async (req: AuthRequest, res: Response) => {
         status: c.status,
         createdAt: c.createdAt,
         usage: {
-          branchesCount: c._count.branches,
           usersCount: c._count.users,
           subscribersCount: c._count.subscribers,
           groupsCount: c._count.chitGroups,
@@ -194,7 +185,6 @@ export const listCompanies = async (req: AuthRequest, res: Response) => {
         subscription: {
           planName: sub.planName,
           limits: {
-            maxBranches: sub.maxBranches,
             maxUsers: sub.maxUsers,
             maxSubscribers: sub.maxSubscribers,
           },
@@ -302,8 +292,8 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
 
     const passwordHash = await bcrypt.hash(adminPassword, 10);
 
-    // Atomic transaction: Company, Branch, and Admin are created together. If any fails, 0 records are inserted.
-    const { newCompany, defaultBranch, createdAdmin } = await prisma.$transaction(async (tx) => {
+    // Atomic transaction: Company and Admin are created together. If any fails, 0 records are inserted.
+    const { newCompany, createdAdmin } = await prisma.$transaction(async (tx) => {
       const comp = await tx.company.create({
         data: {
           code: cleanCode,
@@ -316,21 +306,9 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
         },
       });
 
-      const branch = await tx.branch.create({
-        data: {
-          companyId: comp.id,
-          code: `${comp.code}-HQ`,
-          name: 'Head Office',
-          location: cleanAddress,
-          phone: cleanCompanyPhone,
-          status: 'ACTIVE',
-        },
-      });
-
       const admin = await tx.user.create({
         data: {
           companyId: comp.id,
-          branchId: branch.id,
           username: cleanAdminUsername,
           fullName: cleanAdminFullName,
           phone: cleanAdminPhone,
@@ -341,7 +319,7 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
         },
       });
 
-      return { newCompany: comp, defaultBranch: branch, createdAdmin: admin };
+      return { newCompany: comp, createdAdmin: admin };
     });
 
     // Initialize Subscription Limits
@@ -349,7 +327,6 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
     companySettingsStore.set(newCompany.id, {
       planId: selectedPlan.id,
       planName: selectedPlan.name,
-      maxBranches: selectedPlan.maxBranches,
       maxUsers: selectedPlan.maxUsers,
       maxSubscribers: selectedPlan.maxSubscribers,
       renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -385,7 +362,7 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
       emailErrorMessage = emailErr.message;
     }
 
-    // FR-SA-017: Record Company and Branch Audit Logs
+    // FR-SA-017: Record Company Audit Logs
     try {
       await prisma.auditLog.create({
         data: {
@@ -410,28 +387,6 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
           ipAddress: req.ip || 'unknown',
         },
       });
-
-      await prisma.auditLog.create({
-        data: {
-          companyId: newCompany.id,
-          userId: req.user?.id || null,
-          action: 'BRANCH_CREATED',
-          entity: 'Branch',
-          entityId: defaultBranch.id,
-          details: JSON.stringify({
-            companyCode: newCompany.code,
-            companyName: newCompany.name,
-            branchCode: defaultBranch.code,
-            branchName: defaultBranch.name,
-            location: defaultBranch.location,
-            phone: defaultBranch.phone,
-            status: defaultBranch.status,
-            isDefaultHQ: true,
-            createdBy: req.user?.fullName || req.user?.phone || req.user?.id,
-          }),
-          ipAddress: req.ip || 'unknown',
-        },
-      });
     } catch (e) {}
 
     return res.status(201).json({
@@ -441,7 +396,6 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
         : `Company created successfully! Notice: Credentials email dispatch pending: ${emailErrorMessage || 'check SMTP configuration'}`,
       data: {
         company: newCompany,
-        defaultBranch,
         initialAdmin: {
           id: createdAdmin.id,
           username: createdAdmin.username,
@@ -471,9 +425,6 @@ export const deleteCompany = async (req: AuthRequest, res: Response) => {
     // Comprehensive cascade deletion of all child records in topological order
     await prisma.$transaction(async (tx) => {
       // 1. Gather all related entity IDs
-      const branches = await tx.branch.findMany({ where: { companyId: id }, select: { id: true } });
-      const branchIds = branches.map((b) => b.id);
-
       const chitGroups = await tx.chitGroup.findMany({ where: { companyId: id }, select: { id: true } });
       const chitGroupIds = chitGroups.map((g) => g.id);
 
@@ -519,7 +470,6 @@ export const deleteCompany = async (req: AuthRequest, res: Response) => {
         where: {
           OR: [
             { companyId: id },
-            ...(branchIds.length > 0 ? [{ branchId: { in: branchIds } }] : []),
             ...(chitGroupIds.length > 0 ? [{ groupId: { in: chitGroupIds } }] : []),
             ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
           ],
@@ -537,7 +487,6 @@ export const deleteCompany = async (req: AuthRequest, res: Response) => {
         where: {
           OR: [
             { companyId: id },
-            ...(branchIds.length > 0 ? [{ branchId: { in: branchIds } }] : []),
             ...(chitGroupIds.length > 0 ? [{ groupId: { in: chitGroupIds } }] : []),
             ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
           ],
@@ -549,7 +498,6 @@ export const deleteCompany = async (req: AuthRequest, res: Response) => {
         where: {
           OR: [
             { companyId: id },
-            ...(branchIds.length > 0 ? [{ branchId: { in: branchIds } }] : []),
             ...(chitGroupIds.length > 0 ? [{ groupId: { in: chitGroupIds } }] : []),
             ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
           ],
@@ -557,14 +505,12 @@ export const deleteCompany = async (req: AuthRequest, res: Response) => {
       });
 
       // 6. Delete cash handovers & expenses
-      if (branchIds.length > 0) {
-        await tx.cashHandover.deleteMany({
-          where: { branchId: { in: branchIds } },
-        });
-        await tx.expense.deleteMany({
-          where: { branchId: { in: branchIds } },
-        });
-      }
+      await tx.cashHandover.deleteMany({
+        where: { companyId: id },
+      });
+      await tx.expense.deleteMany({
+        where: { companyId: id },
+      });
 
       // 7. Delete notifications
       await tx.notification.deleteMany({
@@ -595,22 +541,19 @@ export const deleteCompany = async (req: AuthRequest, res: Response) => {
         await tx.refreshToken.deleteMany({ where: { userId: { in: userIds } } });
       }
 
-      // 11. Preserve SUPER_ADMIN users (like akshyatraj) by clearing company/branch, delete other company users
+      // 11. Preserve SUPER_ADMIN users (like akshyatraj) by clearing company, delete other company users
       await tx.user.updateMany({
         where: { companyId: id, role: 'SUPER_ADMIN' },
-        data: { companyId: null, branchId: null },
+        data: { companyId: null },
       });
       await tx.user.deleteMany({
         where: { companyId: id, role: { not: 'SUPER_ADMIN' } },
       });
 
-      // 12. Delete branches
-      await tx.branch.deleteMany({ where: { companyId: id } });
-
-      // 13. Delete audit logs referencing this company
+      // 12. Delete audit logs referencing this company
       await tx.auditLog.deleteMany({ where: { companyId: id } });
 
-      // 14. Finally delete the company
+      // 13. Finally delete the company
       await tx.company.delete({ where: { id } });
     });
 
@@ -652,10 +595,8 @@ export const getCompanyDetails = async (req: AuthRequest, res: Response) => {
     const company = await prisma.company.findUnique({
       where: { id },
       include: {
-        branches: { select: { id: true, code: true, name: true, location: true, status: true } },
         _count: {
           select: {
-            branches: true,
             users: true,
             subscribers: true,
             chitGroups: true,
@@ -685,10 +626,8 @@ export const getCompanyDetails = async (req: AuthRequest, res: Response) => {
           status: company.status,
           createdAt: company.createdAt,
         },
-        branches: company.branches,
         // FR-SA-008: Operational statistics without exposing sensitive transaction financials
         operationalStats: {
-          branchesCount: company._count.branches,
           usersCount: company._count.users,
           subscribersCount: company._count.subscribers,
           chitGroupsCount: company._count.chitGroups,
@@ -882,7 +821,7 @@ export const updateCompanyStatus = async (req: AuthRequest, res: Response) => {
 export const updateCompanySettings = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { planId, maxBranches, maxUsers, maxSubscribers, renewalDate, features } = req.body;
+    const { planId, maxUsers, maxSubscribers, renewalDate, features } = req.body;
 
     const company = await prisma.company.findUnique({ where: { id } });
     if (!company) {
@@ -893,7 +832,6 @@ export const updateCompanySettings = async (req: AuthRequest, res: Response) => 
     const updatedSub = {
       ...current,
       planId: planId || current.planId,
-      maxBranches: maxBranches !== undefined ? Number(maxBranches) : current.maxBranches,
       maxUsers: maxUsers !== undefined ? Number(maxUsers) : current.maxUsers,
       maxSubscribers: maxSubscribers !== undefined ? Number(maxSubscribers) : current.maxSubscribers,
       renewalDate: renewalDate || current.renewalDate,
@@ -1207,258 +1145,6 @@ export const rejectFinancialRecordMutation = async (req: AuthRequest, res: Respo
 };
 
 // ==========================================
-// SA-03: BRANCH SETUP & MULTI-BRANCH OVERSIGHT
-// ==========================================
-export const listBranches = async (req: AuthRequest, res: Response) => {
-  try {
-    const { companyId, status, search } = req.query;
-    const where: any = {};
-    if (companyId && typeof companyId === 'string') where.companyId = companyId;
-    if (status && typeof status === 'string') where.status = status;
-    if (search && typeof search === 'string') {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { code: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-    const branches = await prisma.branch.findMany({
-      where,
-      include: {
-        company: { select: { id: true, code: true, name: true } },
-        _count: {
-          select: { users: true, subscribers: true, chitGroups: true },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    return res.json({ success: true, data: branches });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-export const createBranch = async (req: AuthRequest, res: Response) => {
-  try {
-    const { companyId, code, name, location, phone } = req.body;
-    if (!companyId || !code || !name) {
-      return res.status(400).json({ success: false, message: 'companyId, code, and name are required' });
-    }
-
-    const company = await prisma.company.findUnique({ where: { id: companyId } });
-    if (!company) {
-      return res.status(404).json({ success: false, message: 'Company not found' });
-    }
-
-    const branch = await prisma.branch.create({
-      data: {
-        companyId,
-        code: code.trim().toUpperCase(),
-        name: name.trim(),
-        location: location ? location.trim() : null,
-        phone: phone ? phone.trim() : null,
-        status: 'ACTIVE',
-      },
-    });
-
-    try {
-      await prisma.auditLog.create({
-        data: {
-          companyId: branch.companyId,
-          userId: req.user?.id || null,
-          action: 'BRANCH_CREATED',
-          entity: 'Branch',
-          entityId: branch.id,
-          details: JSON.stringify({
-            companyCode: company.code,
-            companyName: company.name,
-            branchCode: branch.code,
-            branchName: branch.name,
-            location: branch.location,
-            phone: branch.phone,
-            status: branch.status,
-            createdBy: req.user?.fullName || req.user?.phone || req.user?.id,
-          }),
-          ipAddress: req.ip || 'unknown',
-        },
-      });
-    } catch (e) {
-      console.error('[createBranch] Audit log error:', e);
-    }
-
-    return res.status(201).json({ success: true, message: 'Branch created successfully', data: branch });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-export const updateBranch = async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { name, code, location, phone, status } = req.body;
-
-    const existingBranch = await prisma.branch.findUnique({
-      where: { id },
-      include: { company: true },
-    });
-    if (!existingBranch) {
-      return res.status(404).json({ success: false, message: 'Branch not found' });
-    }
-
-    const branch = await prisma.branch.update({
-      where: { id },
-      data: {
-        ...(name && { name: name.trim() }),
-        ...(code && { code: code.trim().toUpperCase() }),
-        ...(location !== undefined && { location: location ? location.trim() : null }),
-        ...(phone !== undefined && { phone: phone ? phone.trim() : null }),
-        ...(status && { status }),
-      },
-    });
-
-    const changedFields: Record<string, { previous: any; current: any }> = {};
-    if (name && existingBranch.name !== branch.name) {
-      changedFields.name = { previous: existingBranch.name, current: branch.name };
-    }
-    if (code && existingBranch.code !== branch.code) {
-      changedFields.code = { previous: existingBranch.code, current: branch.code };
-    }
-    if (location !== undefined && existingBranch.location !== branch.location) {
-      changedFields.location = { previous: existingBranch.location, current: branch.location };
-    }
-    if (phone !== undefined && existingBranch.phone !== branch.phone) {
-      changedFields.phone = { previous: existingBranch.phone, current: branch.phone };
-    }
-    if (status && existingBranch.status !== branch.status) {
-      changedFields.status = { previous: existingBranch.status, current: branch.status };
-    }
-
-    try {
-      await prisma.auditLog.create({
-        data: {
-          companyId: branch.companyId,
-          userId: req.user?.id || null,
-          action: 'BRANCH_UPDATED',
-          entity: 'Branch',
-          entityId: branch.id,
-          details: JSON.stringify({
-            companyCode: existingBranch.company?.code,
-            companyName: existingBranch.company?.name,
-            branchCode: branch.code,
-            branchName: branch.name,
-            changedFields,
-            previous: {
-              code: existingBranch.code,
-              name: existingBranch.name,
-              location: existingBranch.location,
-              phone: existingBranch.phone,
-              status: existingBranch.status,
-            },
-            updated: {
-              code: branch.code,
-              name: branch.name,
-              location: branch.location,
-              phone: branch.phone,
-              status: branch.status,
-            },
-            updatedBy: req.user?.fullName || req.user?.phone || req.user?.id,
-          }),
-          ipAddress: req.ip || 'unknown',
-        },
-      });
-    } catch (e) {
-      console.error('[updateBranch] Audit log error:', e);
-    }
-
-    return res.json({ success: true, message: 'Branch updated successfully', data: branch });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-export const deleteBranch = async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const branch = await prisma.branch.findUnique({
-      where: { id },
-      include: {
-        company: true,
-        _count: {
-          select: { users: true, subscribers: true, chitGroups: true },
-        },
-      },
-    });
-    if (!branch) {
-      return res.status(404).json({ success: false, message: 'Branch not found' });
-    }
-
-    const hasLinkedData = (branch._count.users || 0) > 0 || (branch._count.subscribers || 0) > 0 || (branch._count.chitGroups || 0) > 0;
-    if (hasLinkedData) {
-      const updated = await prisma.branch.update({
-        where: { id },
-        data: { status: 'INACTIVE' },
-      });
-
-      try {
-        await prisma.auditLog.create({
-          data: {
-            companyId: branch.companyId,
-            userId: req.user?.id || null,
-            action: 'BRANCH_DEACTIVATED',
-            entity: 'Branch',
-            entityId: branch.id,
-            details: JSON.stringify({
-              companyCode: branch.company?.code,
-              companyName: branch.company?.name,
-              branchCode: branch.code,
-              branchName: branch.name,
-              reason: 'Branch has active users, subscribers, or chit groups; set to INACTIVE',
-              activeCounts: branch._count,
-              deactivatedBy: req.user?.fullName || req.user?.phone || req.user?.id,
-            }),
-            ipAddress: req.ip || 'unknown',
-          },
-        });
-      } catch (e) {}
-
-      return res.json({
-        success: true,
-        message: `Branch "${branch.name}" (${branch.code}) has linked records and has been set to INACTIVE.`,
-        data: updated,
-      });
-    }
-
-    await prisma.branch.delete({ where: { id } });
-
-    try {
-      await prisma.auditLog.create({
-        data: {
-          companyId: branch.companyId,
-          userId: req.user?.id || null,
-          action: 'BRANCH_DELETED',
-          entity: 'Branch',
-          entityId: branch.id,
-          details: JSON.stringify({
-            companyCode: branch.company?.code,
-            companyName: branch.company?.name,
-            branchCode: branch.code,
-            branchName: branch.name,
-            deletedBy: req.user?.fullName || req.user?.phone || req.user?.id,
-          }),
-          ipAddress: req.ip || 'unknown',
-        },
-      });
-    } catch (e) {}
-
-    return res.json({
-      success: true,
-      message: `Branch "${branch.name}" (${branch.code}) deleted successfully.`,
-    });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// ==========================================
 // SA-05, SA-06: ROLE & PERMISSION MANAGEMENT
 // ==========================================
 let rolesPermissionsStore = [
@@ -1470,7 +1156,7 @@ let rolesPermissionsStore = [
   },
   {
     role: 'MANAGER',
-    description: 'Company Admin cum Branch Manager with operational control',
+    description: 'Company Admin / Manager with operational control',
     permissions: ['view', 'create', 'update', 'approve', 'export'],
     userCount: 5,
   },
@@ -1595,7 +1281,6 @@ export const triggerManualBackup = async (req: AuthRequest, res: Response) => {
 // Helper mapping for table icons & human-friendly descriptions
 const TABLE_LABEL_MAP: Record<string, { label: string; icon: string }> = {
   Company: { label: 'Companies', icon: '🏢' },
-  Branch: { label: 'Branches', icon: '🏛️' },
   User: { label: 'Users & Admins', icon: '👥' },
   Subscriber: { label: 'Subscribers', icon: '👤' },
   ChitGroup: { label: 'Chit Groups', icon: '📊' },
@@ -1760,8 +1445,6 @@ export const exportData = async (req: AuthRequest, res: Response) => {
       company: 'Company',
       users: 'User',
       user: 'User',
-      branches: 'Branch',
-      branch: 'Branch',
       subscribers: 'Subscriber',
       subscriber: 'Subscriber',
       'chit-groups': 'ChitGroup',
@@ -1866,19 +1549,19 @@ export const getArchivalPolicy = async (req: AuthRequest, res: Response) => {
 };
 
 // ==========================================
-// SA-21, SA-22: MULTI-BRANCH OVERSIGHT & EXCEPTION MANAGEMENT
+// SA-21, SA-22: SYSTEM OVERSIGHT & EXCEPTION MANAGEMENT
 // ==========================================
 export const getMultiBranchExceptions = async (req: AuthRequest, res: Response) => {
   try {
     const [pendingHandovers, reversedTransactions, suspendedCompanies] = await Promise.all([
       prisma.cashHandover.findMany({
         where: { status: 'PENDING' },
-        include: { branch: true, staff: { select: { fullName: true } } },
+        include: { company: true, staff: { select: { fullName: true } } },
         take: 10,
       }),
       prisma.paymentTransaction.findMany({
         where: { verificationStatus: 'REVERSED' },
-        include: { subscriber: true, branch: true },
+        include: { subscriber: true, company: true },
         take: 10,
       }),
       prisma.company.count({ where: { status: 'SUSPENDED' } }),

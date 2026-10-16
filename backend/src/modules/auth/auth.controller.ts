@@ -93,7 +93,6 @@ export const login = async (req: AuthRequest, res: Response) => {
       },
       include: {
         company: true,
-        branch: true,
       },
     });
 
@@ -182,7 +181,7 @@ export const login = async (req: AuthRequest, res: Response) => {
     const refreshSecret = process.env.REFRESH_TOKEN_SECRET || 'chitfund_refresh_token_secret_key_2026!$%';
 
     const accessToken = jwt.sign(
-      { userId: user.id, sessionId, role: user.role, companyId: user.companyId, branchId: user.branchId },
+      { userId: user.id, sessionId, role: user.role, companyId: user.companyId },
       secret,
       { expiresIn: '1d' }
     );
@@ -222,7 +221,7 @@ export const login = async (req: AuthRequest, res: Response) => {
       });
     } catch (e) {}
 
-    // FR-AUTH-002: Identify role, company, and permitted branches
+    // FR-AUTH-002: Identify role and company
     return res.json({
       success: true,
       data: {
@@ -240,13 +239,6 @@ export const login = async (req: AuthRequest, res: Response) => {
                 id: user.company.id,
                 name: user.company.name,
                 code: user.company.code,
-              }
-            : null,
-          branch: user.branch
-            ? {
-                id: user.branch.id,
-                name: user.branch.name,
-                code: user.branch.code,
               }
             : null,
         },
@@ -352,7 +344,6 @@ export const refreshToken = async (req: Request, res: Response) => {
         sessionId: storedToken.id,
         role: storedToken.user.role,
         companyId: storedToken.user.companyId,
-        branchId: storedToken.user.branchId,
       },
       secret,
       { expiresIn: '1d' }
@@ -386,7 +377,6 @@ export const me = async (req: AuthRequest, res: Response) => {
       where: { id: userId },
       include: {
         company: true,
-        branch: true,
       },
     });
 
@@ -413,13 +403,6 @@ export const me = async (req: AuthRequest, res: Response) => {
               id: user.company.id,
               name: user.company.name,
               code: user.company.code,
-            }
-          : null,
-        branch: user.branch
-          ? {
-              id: user.branch.id,
-              name: user.branch.name,
-              code: user.branch.code,
             }
           : null,
       },
@@ -480,7 +463,6 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
       data: updateData,
       include: {
         company: true,
-        branch: true,
       },
     });
 
@@ -500,7 +482,6 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         emergencyContact: updatedUser.emergencyContact,
         dateOfBirth: updatedUser.dateOfBirth,
         company: updatedUser.company ? { id: updatedUser.company.id, name: updatedUser.company.name, code: updatedUser.company.code } : null,
-        branch: updatedUser.branch ? { id: updatedUser.branch.id, name: updatedUser.branch.name, code: updatedUser.branch.code } : null,
       },
     });
   } catch (err: any) {
@@ -928,9 +909,6 @@ export const listUsers = async (req: AuthRequest, res: Response) => {
 
     if (!isSuperAdmin) {
       if (req.user?.companyId) whereClause.companyId = req.user.companyId;
-      if (req.query.branchId && typeof req.query.branchId === 'string' && req.query.branchId !== 'ALL') {
-        whereClause.branchId = req.query.branchId;
-      }
     } else {
       if (companyId && typeof companyId === 'string' && companyId !== 'ALL') {
         whereClause.companyId = companyId;
@@ -962,7 +940,6 @@ export const listUsers = async (req: AuthRequest, res: Response) => {
         role: true,
         status: true,
         companyId: true,
-        branchId: true,
         aadhaarNo: true,
         panNo: true,
         address: true,
@@ -970,7 +947,6 @@ export const listUsers = async (req: AuthRequest, res: Response) => {
         dateOfBirth: true,
         createdAt: true,
         company: { select: { id: true, name: true, code: true, status: true } },
-        branch: { select: { id: true, name: true, code: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -994,7 +970,6 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       password,
       role,
       companyId,
-      branchId,
       aadhaarNo,
       panNo,
       address,
@@ -1046,7 +1021,6 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         passwordHash,
         role,
         companyId: companyId || req.user?.companyId || null,
-        branchId: branchId || req.user?.branchId || null,
         status: 'ACTIVE',
         aadhaarNo: aadhaarNo ? String(aadhaarNo).trim() : null,
         panNo: panNo ? String(panNo).trim().toUpperCase() : null,
@@ -1056,7 +1030,6 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       },
       include: {
         company: true,
-        branch: true,
       },
     });
 
@@ -1257,7 +1230,7 @@ export const revokeUserSessions = async (req: AuthRequest, res: Response) => {
 
 /**
  * Super Admin & Admin: Update Any User Credential
- * Allows updating fullName, username, phone, email, role, status, company, branch, KYC fields, and direct password reset
+ * Allows updating fullName, username, phone, email, role, status, company, KYC fields, and direct password reset
  */
 export const updateUser = async (req: AuthRequest, res: Response) => {
   try {
@@ -1271,7 +1244,6 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       email,
       role,
       companyId,
-      branchId,
       status,
       password,
       aadhaarNo,
@@ -1329,7 +1301,6 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     if (role) updateData.role = role;
     if (status) updateData.status = status;
     if (companyId !== undefined) updateData.companyId = companyId || null;
-    if (branchId !== undefined) updateData.branchId = branchId || null;
     if (aadhaarNo !== undefined) updateData.aadhaarNo = aadhaarNo ? String(aadhaarNo).trim() : null;
     if (panNo !== undefined) updateData.panNo = panNo ? String(panNo).trim().toUpperCase() : null;
     if (address !== undefined) updateData.address = address ? String(address).trim() : null;
@@ -1352,7 +1323,6 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       data: updateData,
       include: {
         company: { select: { id: true, name: true, code: true } },
-        branch: { select: { id: true, name: true, code: true } },
       },
     });
 

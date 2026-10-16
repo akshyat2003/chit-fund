@@ -5,7 +5,7 @@ import { AuthRequest } from '../../middleware/auth.js';
 export const submitCashHandover = async (req: AuthRequest, res: Response) => {
   try {
     const staffUserId = req.user?.id!;
-    const branchId = req.user?.branchId!;
+    const companyId = req.user?.companyId!;
     const { handoverDate, actualCash, notes } = req.body;
 
     if (!handoverDate || actualCash === undefined) {
@@ -31,7 +31,7 @@ export const submitCashHandover = async (req: AuthRequest, res: Response) => {
 
     const handover = await prisma.cashHandover.create({
       data: {
-        branchId,
+        companyId,
         staffUserId,
         handoverDate,
         expectedCash,
@@ -55,13 +55,10 @@ export const submitCashHandover = async (req: AuthRequest, res: Response) => {
 export const listHandovers = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user?.companyId;
-    const { branchId, status } = req.query;
+    const { status } = req.query;
 
-    const where: any = {
-      branch: { companyId },
-    };
+    const where: any = companyId ? { companyId } : {};
 
-    if (branchId) where.branchId = String(branchId);
     if (status) where.status = String(status);
 
     if (req.user?.role === 'COLLECTION_STAFF') {
@@ -73,7 +70,6 @@ export const listHandovers = async (req: AuthRequest, res: Response) => {
       include: {
         staff: { select: { fullName: true, phone: true } },
         verifiedBy: { select: { fullName: true } },
-        branch: { select: { name: true, code: true } },
       },
       orderBy: { createdAt: 'desc' },
     });

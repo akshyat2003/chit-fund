@@ -82,7 +82,6 @@ export const listRefunds = async (req: AuthRequest, res: Response) => {
       where,
       include: {
         subscriber: { select: { fullName: true, subscriberCode: true, phone: true } },
-        branch: { select: { name: true, code: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -111,7 +110,6 @@ export const createRefundRequest = async (req: AuthRequest, res: Response) => {
     const refund = await prisma.refund.create({
       data: {
         companyId,
-        branchId: subscriber.branchId,
         subscriberId,
         groupId,
         amount: Number(amount),

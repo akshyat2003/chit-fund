@@ -21,7 +21,6 @@ async function clean() {
   await prisma.auditLog.deleteMany();
   await prisma.refreshToken.deleteMany();
   await prisma.user.deleteMany();
-  await prisma.branch.deleteMany();
   await prisma.company.deleteMany();
 
   // 2. Create the sole Super Admin user

@@ -1191,7 +1191,7 @@ export function AccountingTab({ user }: { user: any }) {
               <Text style={mStyles.label}>Narration / Justification *</Text>
               <TextInput
                 style={mStyles.input}
-                placeholder="Payment voucher for monthly branch rent / contra transfer..."
+                placeholder="Payment voucher for monthly office rent / contra transfer..."
                 value={voucherNarration}
                 onChangeText={setVoucherNarration}
               />

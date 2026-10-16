@@ -30,7 +30,7 @@ const DEFAULT_CHART_OF_ACCOUNTS = [
   { code: '4004', name: 'Bank Interest & Fixed Deposit Yield', type: 'INCOME', openingBalance: 0 },
 
   // Expenses (5000s)
-  { code: '5001', name: 'Branch Office Rent', type: 'EXPENSE', openingBalance: 0 },
+  { code: '5001', name: 'Office Rent', type: 'EXPENSE', openingBalance: 0 },
   { code: '5002', name: 'Staff Salaries & Field Collection Incentives', type: 'EXPENSE', openingBalance: 0 },
   { code: '5003', name: 'Printing, Stationery & Passbook Supplies', type: 'EXPENSE', openingBalance: 0 },
   { code: '5004', name: 'Legal, Audit & Regulatory Filing Fees', type: 'EXPENSE', openingBalance: 0 },
@@ -96,7 +96,7 @@ export const listAccounts = async (req: AuthRequest, res: Response) => {
 export const createAccount = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user?.companyId || req.body.companyId;
-    const { code, name, type, openingBalance = 0, branchId } = req.body;
+    const { code, name, type, openingBalance = 0 } = req.body;
 
     if (!companyId || !code || !name || !type) {
       return res.status(400).json({ success: false, message: 'companyId, code, name, and type are required' });
@@ -116,7 +116,6 @@ export const createAccount = async (req: AuthRequest, res: Response) => {
     const account = await prisma.account.create({
       data: {
         companyId,
-        branchId: branchId || req.user?.branchId || null,
         code: code.trim(),
         name: name.trim(),
         type,
@@ -152,7 +151,6 @@ export const createAccount = async (req: AuthRequest, res: Response) => {
 export const getCashbook = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user?.companyId || (req.query.companyId as string);
-    const branchId = req.user?.branchId || (req.query.branchId as string);
     const { startDate, endDate } = req.query;
 
     if (!companyId) {
@@ -170,11 +168,9 @@ export const getCashbook = async (req: AuthRequest, res: Response) => {
       verificationStatus: 'VERIFIED',
       isReversed: false,
     };
-    if (branchId) cashTxnsWhere.branchId = branchId;
 
     // Filter expenses paid in cash
-    const expensesWhere: any = {};
-    if (branchId) expensesWhere.branchId = branchId;
+    const expensesWhere: any = { companyId };
 
     // Filter payouts paid in cash
     const payoutsWhere: any = {
@@ -197,7 +193,7 @@ export const getCashbook = async (req: AuthRequest, res: Response) => {
         include: { subscriber: { select: { fullName: true, subscriberCode: true } } },
       }),
       prisma.cashHandover.findMany({
-        where: branchId ? { branchId } : {},
+        where: { companyId },
         include: { staff: { select: { fullName: true } } },
         orderBy: { createdAt: 'desc' },
       }),
@@ -235,7 +231,6 @@ export const getCashbook = async (req: AuthRequest, res: Response) => {
 export const getBankbook = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user?.companyId || (req.query.companyId as string);
-    const branchId = req.user?.branchId || (req.query.branchId as string);
 
     if (!companyId) {
       return res.status(400).json({ success: false, message: 'Company ID required' });
@@ -247,7 +242,6 @@ export const getBankbook = async (req: AuthRequest, res: Response) => {
       verificationStatus: 'VERIFIED',
       isReversed: false,
     };
-    if (branchId) bankTxnsWhere.branchId = branchId;
 
     const bankPayoutsWhere: any = {
       status: 'DISBURSED',
@@ -353,7 +347,6 @@ export const createJournalEntry = async (req: AuthRequest, res: Response) => {
       const entry = await tx.journalEntry.create({
         data: {
           companyId,
-          branchId: req.user?.branchId || null,
           entryNo,
           date: entryDate,
           narration: narration.trim(),
@@ -412,10 +405,9 @@ export const createJournalEntry = async (req: AuthRequest, res: Response) => {
  */
 export const listExpenses = async (req: AuthRequest, res: Response) => {
   try {
-    const branchId = req.user?.branchId || (req.query.branchId as string);
+    const companyId = req.user?.companyId;
     const { category, search } = req.query;
-    const where: any = {};
-    if (branchId) where.branchId = branchId;
+    const where: any = companyId ? { companyId } : {};
     if (category && typeof category === 'string' && category !== 'ALL') where.category = category;
     if (search && typeof search === 'string') {
       where.OR = [
@@ -445,16 +437,16 @@ export const listExpenses = async (req: AuthRequest, res: Response) => {
 
 export const createExpense = async (req: AuthRequest, res: Response) => {
   try {
-    const { branchId, category, amount, description, expenseDate } = req.body;
-    const targetBranch = branchId || req.user?.branchId;
+    const companyId = req.user?.companyId || req.body.companyId;
+    const { category, amount, description, expenseDate } = req.body;
 
-    if (!targetBranch || !category || !amount || !description) {
-      return res.status(400).json({ success: false, message: 'branchId, category, amount, and description are required' });
+    if (!companyId || !category || !amount || !description) {
+      return res.status(400).json({ success: false, message: 'category, amount, and description are required' });
     }
 
     const expense = await prisma.expense.create({
       data: {
-        branchId: targetBranch,
+        companyId,
         category,
         amount: Number(amount),
         description: description.trim(),
@@ -523,7 +515,6 @@ export const createVoucher = async (req: AuthRequest, res: Response) => {
     const voucher = await prisma.voucher.create({
       data: {
         companyId,
-        branchId: req.user?.branchId || null,
         voucherNo,
         voucherType,
         voucherDate: voucherDate || new Date().toISOString().split('T')[0],
@@ -685,7 +676,7 @@ export const getFinancialStatements = async (req: AuthRequest, res: Response) =>
         _sum: { amount: true },
       }),
       prisma.expense.aggregate({
-        where: { branch: { companyId } },
+        where: { companyId },
         _sum: { amount: true },
       }),
     ]);
@@ -717,7 +708,7 @@ export const getFinancialStatements = async (req: AuthRequest, res: Response) =>
           ],
           totalIncome,
           expenses: [
-            { label: 'Branch Operating Expenses & Supplies', amount: operationalExpenses },
+            { label: 'Operating Expenses & Supplies', amount: operationalExpenses },
           ],
           totalExpenses: operationalExpenses,
           netProfit,

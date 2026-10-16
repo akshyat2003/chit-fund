@@ -12,9 +12,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     }
 
     if (role === 'SUPER_ADMIN') {
-      const [activeCompanies, activeBranches, totalUsers, activeUsers, totalSubscribers, activeGroups] = await Promise.all([
+      const [activeCompanies, totalUsers, activeUsers, totalSubscribers, activeGroups] = await Promise.all([
         prisma.company.count({ where: { status: 'ACTIVE' } }),
-        prisma.branch.count({ where: { status: 'ACTIVE' } }),
         prisma.user.count(),
         prisma.user.count({ where: { status: 'ACTIVE' } }),
         prisma.subscriber.count({ where: { status: 'ACTIVE' } }),
@@ -26,7 +25,6 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
         data: {
           role,
           activeCompanies,
-          activeBranches,
           totalUsers,
           activeUsers,
           totalSubscribers,
@@ -36,18 +34,16 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const branchId = req.user?.branchId;
-    const whereBranch = branchId ? { branchId } : {};
     const whereCompany = companyId ? { companyId } : {};
     const todayStr = new Date().toISOString().split('T')[0];
 
     if (role === 'MANAGER') {
       const [activeGroups, activeSubscribers, todayTransactions, pendingPayouts, activeStaff, totalStaff] = await Promise.all([
         prisma.chitGroup.count({
-          where: { ...whereCompany, status: 'ACTIVE', ...whereBranch },
+          where: { ...whereCompany, status: 'ACTIVE' },
         }),
         prisma.subscriber.count({
-          where: { ...whereCompany, status: 'ACTIVE', ...whereBranch },
+          where: { ...whereCompany, status: 'ACTIVE' },
         }),
         prisma.paymentTransaction.findMany({
           where: {

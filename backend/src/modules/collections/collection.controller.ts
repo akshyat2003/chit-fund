@@ -60,6 +60,28 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: 'Chit group not found' });
     }
 
+    // Role check: Staff can only record collections for their assigned chit group
+    if (userRole === 'COLLECTION_STAFF') {
+      const staffUserId = req.user!.id;
+      const isStaffGroup =
+        group.assignedStaffId === staffUserId ||
+        (await prisma.chitGroupStaff.findUnique({
+          where: {
+            groupId_staffId: {
+              groupId: group.id,
+              staffId: staffUserId,
+            },
+          },
+        }));
+
+      if (!isStaffGroup) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden: Staff can only record collections for their assigned chit group.',
+        });
+      }
+    }
+
     // Generate Unique Receipt Number with Company Prefix (FR-COMP-011) e.g. REC-2026-00001
     const company = await prisma.company.findUnique({ where: { id: companyId }, select: { receiptPrefix: true } });
     const prefix = company?.receiptPrefix || 'RCT';
@@ -75,7 +97,6 @@ export const recordPayment = async (req: AuthRequest, res: Response) => {
       const transaction = await tx.paymentTransaction.create({
         data: {
           companyId,
-          branchId: subscriber.branchId,
           subscriberId,
           groupId,
           installmentNo: Number(installmentNo),
@@ -205,7 +226,6 @@ export const getReceiptDetails = async (req: AuthRequest, res: Response) => {
         group: true,
         recordedBy: { select: { fullName: true, phone: true } },
         company: true,
-        branch: true,
         receipt: true,
       },
     });
@@ -232,7 +252,6 @@ export const reprintReceipt = async (req: AuthRequest, res: Response) => {
             subscriber: true,
             group: true,
             company: true,
-            branch: true,
           },
         },
       },

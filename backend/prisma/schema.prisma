@@ -25,7 +25,6 @@ model Company {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  branches              Branch[]
   users                 User[]
   subscribers           Subscriber[]
   chitGroups            ChitGroup[]
@@ -35,38 +34,13 @@ model Company {
   vouchers              Voucher[]
   journalEntries        JournalEntry[]
   refunds               Refund[]
-}
-
-model Branch {
-  id            String   @id @default(uuid())
-  companyId     String
-  code          String   @unique
-  name          String
-  location      String?
-  phone         String?
-  managerUserId String?
-  closureReason String?
-  status        String   @default("ACTIVE")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  users         User[]
-  subscribers   Subscriber[]
-  chitGroups    ChitGroup[]
-  transactions  PaymentTransaction[]
-  handovers     CashHandover[]
-  expenses      Expense[]
-  accounts      Account[]
-  vouchers      Voucher[]
-  journalEntries JournalEntry[]
-  refunds       Refund[]
+  handovers             CashHandover[]
+  expenses              Expense[]
 }
 
 model User {
   id           String   @id @default(uuid())
   companyId    String?
-  branchId     String?
   role         String   // SUPER_ADMIN, MANAGER, COLLECTION_STAFF
   username     String   @unique
   fullName     String
@@ -83,7 +57,6 @@ model User {
   updatedAt    DateTime @updatedAt
 
   company      Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  branch       Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
   
   assignedSubscribers Subscriber[] @relation("AssignedStaff")
   assignedChitGroups   ChitGroup[] @relation("ChitGroupStaff")
@@ -100,7 +73,6 @@ model User {
 model Subscriber {
   id                  String   @id @default(uuid())
   companyId           String
-  branchId            String
   assignedStaffId     String?
   userId              String?
   subscriberCode      String   @unique
@@ -125,7 +97,6 @@ model Subscriber {
   updatedAt           DateTime @updatedAt
 
   company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch         Branch   @relation(fields: [branchId], references: [id])
   assignedStaff  User?    @relation("AssignedStaff", fields: [assignedStaffId], references: [id])
   user           User?    @relation("UserSubscriber", fields: [userId], references: [id], onDelete: SetNull)
 
@@ -140,7 +111,6 @@ model Subscriber {
 model ChitGroup {
   id                   String   @id @default(uuid())
   companyId            String
-  branchId             String
   groupCode            String   @unique
   name                 String
   chitValue            Float    // Total Pool Amount e.g. 500000.00
@@ -156,7 +126,6 @@ model ChitGroup {
   updatedAt            DateTime @updatedAt
 
   company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch               Branch   @relation(fields: [branchId], references: [id])
   assignedStaffId      String?
   assignedStaff        User?    @relation("ChitGroupStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
 
@@ -211,7 +180,6 @@ model InstallmentSchedule {
 model PaymentTransaction {
   id                  String   @id @default(uuid())
   companyId           String
-  branchId            String
   subscriberId        String
   groupId             String
   installmentNo       Int
@@ -231,7 +199,6 @@ model PaymentTransaction {
   createdAt           DateTime @default(now())
 
   company             Company    @relation(fields: [companyId], references: [id])
-  branch              Branch     @relation(fields: [branchId], references: [id])
   subscriber          Subscriber @relation(fields: [subscriberId], references: [id])
   group               ChitGroup  @relation(fields: [groupId], references: [id])
   recordedBy          User       @relation("RecordedBy", fields: [recordedByUserId], references: [id])
@@ -307,7 +274,7 @@ model Payout {
 
 model CashHandover {
   id                   String   @id @default(uuid())
-  branchId             String
+  companyId            String
   staffUserId          String
   handoverDate         String   // YYYY-MM-DD
   expectedCash         Float
@@ -319,14 +286,14 @@ model CashHandover {
   verifiedAt           DateTime?
   createdAt            DateTime @default(now())
 
-  branch               Branch @relation(fields: [branchId], references: [id])
+  company              Company @relation(fields: [companyId], references: [id])
   staff                User   @relation("StaffHandover", fields: [staffUserId], references: [id])
   verifiedBy           User?  @relation("ManagerVerification", fields: [verifiedByUserId], references: [id])
 }
 
 model Expense {
   id           String   @id @default(uuid())
-  branchId     String
+  companyId    String
   category     String   // RENT, UTILITIES, SALARY, TRAVEL, MISC
   amount       Float
   expenseDate  String   // YYYY-MM-DD
@@ -334,7 +301,7 @@ model Expense {
   recordedBy   String
   createdAt    DateTime @default(now())
 
-  branch       Branch   @relation(fields: [branchId], references: [id])
+  company      Company  @relation(fields: [companyId], references: [id])
 }
 
 model AuditLog {
@@ -365,7 +332,6 @@ model RefreshToken {
 model Account {
   id             String    @id @default(uuid())
   companyId      String
-  branchId       String?
   code           String    // e.g. "1001", "1002", "2001", "3001", "4001", "5001"
   name           String    // e.g. "Cash on Hand", "Bank Account", "Chit Subscriptions", "Salaries"
   type           String    // ASSET, LIABILITY, EQUITY, INCOME, EXPENSE
@@ -376,7 +342,6 @@ model Account {
   updatedAt      DateTime  @updatedAt
 
   company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch         Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
   lines          JournalEntryLine[]
 
   @@unique([companyId, code])
@@ -385,7 +350,6 @@ model Account {
 model Voucher {
   id              String    @id @default(uuid())
   companyId       String
-  branchId        String?
   voucherNo       String    // e.g. "RV-2026-001", "PV-2026-001", "JV-2026-001"
   voucherType     String    // RECEIPT, PAYMENT, JOURNAL, CONTRA
   voucherDate     String    // YYYY-MM-DD
@@ -398,14 +362,12 @@ model Voucher {
   updatedAt       DateTime  @updatedAt
 
   company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch          Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
   journalEntries  JournalEntry[]
 }
 
 model JournalEntry {
   id          String   @id @default(uuid())
   companyId   String
-  branchId    String?
   voucherId   String?
   entryNo     String   @unique
   date        String   // YYYY-MM-DD
@@ -415,7 +377,6 @@ model JournalEntry {
   createdAt   DateTime @default(now())
 
   company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch      Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
   voucher     Voucher? @relation(fields: [voucherId], references: [id], onDelete: SetNull)
   lines       JournalEntryLine[]
 }
@@ -435,7 +396,6 @@ model JournalEntryLine {
 model Refund {
   id                String     @id @default(uuid())
   companyId         String
-  branchId          String
   subscriberId      String
   groupId           String
   amount            Float
@@ -447,7 +407,6 @@ model Refund {
   createdAt         DateTime   @default(now())
 
   company           Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch            Branch     @relation(fields: [branchId], references: [id])
   subscriber        Subscriber @relation(fields: [subscriberId], references: [id])
 }
 
@@ -469,5 +428,3 @@ model Notification {
   companyId      String?
   createdAt      DateTime @default(now())
 }
-
-

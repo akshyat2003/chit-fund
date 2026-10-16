@@ -9,18 +9,17 @@ export const listSubscribers = async (req: AuthRequest, res: Response) => {
       const firstCo = await prisma.company.findFirst();
       companyId = firstCo?.id;
     }
-    const { branchId, search, kycStatus, staffId } = req.query;
+    const { search, kycStatus, staffId } = req.query;
 
     const where: any = {};
     if (companyId) where.companyId = companyId;
 
-    if (branchId) where.branchId = String(branchId);
     if (kycStatus) where.kycStatus = String(kycStatus);
     if (staffId) where.assignedStaffId = String(staffId);
 
     const andConditions: any[] = [];
 
-    // If Collection Staff, restrict to members belonging to their assigned chit groups or assigned to them
+    // If Collection Staff, strictly restrict to members belonging to their assigned chit groups
     if (req.user?.role === 'COLLECTION_STAFF') {
       const staffUserId = req.user.id;
       const staffGroups = await prisma.chitGroup.findMany({
@@ -35,11 +34,13 @@ export const listSubscribers = async (req: AuthRequest, res: Response) => {
       });
       const staffGroupIds = staffGroups.map((g) => g.id);
 
+      // Staff can ONLY see registered members of their own group assigned by the manager
       andConditions.push({
-        OR: [
-          { assignedStaffId: req.user.id },
-          { memberships: { some: { groupId: { in: staffGroupIds } } } },
-        ],
+        memberships: {
+          some: {
+            groupId: { in: staffGroupIds },
+          },
+        },
       });
     }
 
@@ -61,7 +62,6 @@ export const listSubscribers = async (req: AuthRequest, res: Response) => {
     const subscribers = await prisma.subscriber.findMany({
       where,
       include: {
-        branch: { select: { name: true, code: true } },
         assignedStaff: { select: { id: true, fullName: true, username: true, phone: true } },
         user: { select: { id: true, username: true, role: true, fullName: true, phone: true } },
         memberships: {
@@ -92,7 +92,6 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
     }
 
     const {
-      branchId,
       assignedStaffId,
       fullName,
       phone,
@@ -120,6 +119,14 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
 
     if (!cleanName || !cleanPhone) {
       return res.status(400).json({ success: false, message: 'Full name and phone number are required' });
+    }
+
+    // Staff can ONLY add new members for their assigned chit group
+    if (req.user?.role === 'COLLECTION_STAFF' && !groupId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Staff can only add new members for their assigned chit group. Please select an assigned chit group.',
+      });
     }
 
     // If a group assignment was specified, validate assignment permissions
@@ -221,7 +228,6 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
         const updatedExisting = await prisma.subscriber.findUnique({
           where: { id: existing.id },
           include: {
-            branch: { select: { name: true, code: true } },
             assignedStaff: { select: { fullName: true, phone: true } },
             user: { select: { id: true, username: true, role: true } },
             memberships: {
@@ -247,17 +253,6 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Resolve branch
-    let effectiveBranchId = branchId || req.user?.branchId;
-    if (!effectiveBranchId) {
-      const defaultBranch = await prisma.branch.findFirst({ where: { companyId } });
-      effectiveBranchId = defaultBranch?.id;
-    }
-
-    if (!effectiveBranchId) {
-      return res.status(400).json({ success: false, message: 'Valid branch office is required' });
-    }
-
     // Effective assigned staff (if Collection Staff is registering, assign to themselves by default)
     const effectiveStaffId =
       assignedStaffId ||
@@ -270,7 +265,6 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
     const subscriber = await prisma.subscriber.create({
       data: {
         companyId,
-        branchId: effectiveBranchId,
         assignedStaffId: effectiveStaffId,
         userId: userId || null,
         subscriberCode,
@@ -289,7 +283,6 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
         kycStatus: 'VERIFIED',
       },
       include: {
-        branch: { select: { name: true, code: true } },
         assignedStaff: { select: { fullName: true, phone: true } },
         user: { select: { id: true, username: true, role: true } },
       },
@@ -317,7 +310,6 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
     const freshSubscriber = await prisma.subscriber.findUnique({
       where: { id: subscriber.id },
       include: {
-        branch: { select: { name: true, code: true } },
         assignedStaff: { select: { fullName: true, phone: true } },
         user: { select: { id: true, username: true, role: true } },
         memberships: {
@@ -357,7 +349,6 @@ export const getSubscriberById = async (req: AuthRequest, res: Response) => {
     const subscriber = await prisma.subscriber.findUnique({
       where: { id },
       include: {
-        branch: true,
         assignedStaff: { select: { fullName: true, phone: true } },
         memberships: {
           include: {
@@ -379,6 +370,28 @@ export const getSubscriberById = async (req: AuthRequest, res: Response) => {
 
     if (!subscriber) {
       return res.status(404).json({ success: false, message: 'Subscriber not found' });
+    }
+
+    // Role check: Staff can only access members of their own assigned chit groups
+    if (req.user?.role === 'COLLECTION_STAFF') {
+      const staffUserId = req.user.id;
+      const staffGroups = await prisma.chitGroup.findMany({
+        where: {
+          OR: [
+            { assignedStaffId: staffUserId },
+            { staffAssignments: { some: { staffId: staffUserId } } },
+          ],
+        },
+        select: { id: true },
+      });
+      const staffGroupIds = staffGroups.map((g) => g.id);
+      const isMember = subscriber.memberships.some((m) => staffGroupIds.includes(m.groupId));
+      if (!isMember) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden: Staff can only access members of their own assigned chit groups.',
+        });
+      }
     }
 
     return res.json({ success: true, data: subscriber });
@@ -460,6 +473,28 @@ export const getMemberLedger = async (req: AuthRequest, res: Response) => {
 
     if (!subscriber) return res.status(404).json({ success: false, message: 'Subscriber not found' });
 
+    // Role check: Staff can only access ledger for members of their own assigned chit groups
+    if (req.user?.role === 'COLLECTION_STAFF') {
+      const staffUserId = req.user.id;
+      const staffGroups = await prisma.chitGroup.findMany({
+        where: {
+          OR: [
+            { assignedStaffId: staffUserId },
+            { staffAssignments: { some: { staffId: staffUserId } } },
+          ],
+        },
+        select: { id: true },
+      });
+      const staffGroupIds = staffGroups.map((g) => g.id);
+      const isMember = subscriber.memberships.some((m) => staffGroupIds.includes(m.groupId));
+      if (!isMember) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden: Staff can only access ledger for members of their own assigned chit groups.',
+        });
+      }
+    }
+
     // Calculate aggregated ledger lines
     let totalScheduled = 0;
     let totalDividends = 0;
@@ -539,7 +574,6 @@ export const getMemberStatement = async (req: AuthRequest, res: Response) => {
     const subscriber = await prisma.subscriber.findUnique({
       where: { id },
       include: {
-        branch: { select: { name: true, code: true, phone: true } },
         memberships: {
           include: { group: { select: { groupCode: true, name: true, chitValue: true, startDate: true } } },
         },
@@ -553,6 +587,28 @@ export const getMemberStatement = async (req: AuthRequest, res: Response) => {
     });
 
     if (!subscriber) return res.status(404).json({ success: false, message: 'Subscriber not found' });
+
+    // Role check: Staff can only access statement for members of their own assigned chit groups
+    if (req.user?.role === 'COLLECTION_STAFF') {
+      const staffUserId = req.user.id;
+      const staffGroups = await prisma.chitGroup.findMany({
+        where: {
+          OR: [
+            { assignedStaffId: staffUserId },
+            { staffAssignments: { some: { staffId: staffUserId } } },
+          ],
+        },
+        select: { id: true },
+      });
+      const staffGroupIds = staffGroups.map((g) => g.id);
+      const isMember = subscriber.memberships.some((m) => staffGroupIds.includes(m.groupId));
+      if (!isMember) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden: Staff can only access statements for members of their own assigned chit groups.',
+        });
+      }
+    }
 
     const totalPaid = subscriber.transactions.reduce((sum, t) => sum + t.amount, 0);
 
@@ -577,14 +633,32 @@ export const getMemberStatement = async (req: AuthRequest, res: Response) => {
 export const getMemberOutstanding = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user?.companyId;
-    const { branchId } = req.query;
     const where: any = { companyId, status: 'ACTIVE' };
-    if (branchId) where.branchId = String(branchId);
+
+    // Staff can only view outstanding for their assigned chit group members
+    if (req.user?.role === 'COLLECTION_STAFF') {
+      const staffUserId = req.user.id;
+      const staffGroups = await prisma.chitGroup.findMany({
+        where: {
+          ...(companyId ? { companyId } : {}),
+          OR: [
+            { assignedStaffId: staffUserId },
+            { staffAssignments: { some: { staffId: staffUserId } } },
+          ],
+        },
+        select: { id: true },
+      });
+      const staffGroupIds = staffGroups.map((g) => g.id);
+      where.memberships = {
+        some: {
+          groupId: { in: staffGroupIds },
+        },
+      };
+    }
 
     const subscribers = await prisma.subscriber.findMany({
       where,
       include: {
-        branch: { select: { name: true } },
         memberships: {
           include: {
             group: {
@@ -619,7 +693,6 @@ export const getMemberOutstanding = async (req: AuthRequest, res: Response) => {
         subscriberCode: sub.subscriberCode,
         fullName: sub.fullName,
         phone: sub.phone,
-        branchName: sub.branch.name,
         enrolledGroupsCount: sub.memberships.length,
         totalDue,
         totalPaid,
@@ -658,7 +731,6 @@ export const updateSubscriber = async (req: AuthRequest, res: Response) => {
       nomineeName,
       nomineeRelation,
       nomineePhone,
-      branchId,
       dateOfBirth,
     } = req.body;
 
@@ -689,7 +761,7 @@ export const updateSubscriber = async (req: AuthRequest, res: Response) => {
         staffGroupIds.includes(m.groupId)
       );
 
-      if (subscriber.assignedStaffId !== staffUserId && !isMemberOfStaffGroup) {
+      if (!isMemberOfStaffGroup) {
         return res.status(403).json({
           success: false,
           message: 'Forbidden: Staff can only update members belonging to their assigned chit group.',
@@ -712,11 +784,9 @@ export const updateSubscriber = async (req: AuthRequest, res: Response) => {
         ...(nomineeName !== undefined ? { nomineeName: nomineeName ? String(nomineeName).trim() : null } : {}),
         ...(nomineeRelation !== undefined ? { nomineeRelation: nomineeRelation ? String(nomineeRelation).trim() : null } : {}),
         ...(nomineePhone !== undefined ? { nomineePhone: nomineePhone ? String(nomineePhone).trim() : null } : {}),
-        ...(branchId ? { branchId } : {}),
         ...(dateOfBirth !== undefined ? { dateOfBirth: dateOfBirth ? String(dateOfBirth).trim() : null } : {}),
       },
       include: {
-        branch: { select: { name: true, code: true } },
         assignedStaff: { select: { fullName: true, phone: true } },
         user: { select: { id: true, username: true, role: true } },
         memberships: {

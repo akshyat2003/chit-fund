@@ -653,7 +653,7 @@ export function CollectionsTab({ user }: { user: any }) {
                     ✓ Selected: {selectedSubscriber.fullName} [{selectedSubscriber.subscriberCode}]
                   </Text>
                   <Text style={{ fontSize: 11, color: '#0C4A6E', marginTop: 2 }}>
-                    Phone: {selectedSubscriber.phone} • Branch: {selectedSubscriber.branch?.name || 'Main Branch'}
+                    Phone: {selectedSubscriber.phone}
                   </Text>
                 </View>
                 <TouchableOpacity onPress={() => setSelectedSubscriberId('')}>
@@ -946,7 +946,7 @@ export function CollectionsTab({ user }: { user: any }) {
 
             <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 8 }}>
               {paymentMode === 'CASH'
-                ? 'Specify cash details (e.g. "Cash collected by staff at subscriber home / branch counter").'
+                ? 'Specify cash details (e.g. "Cash collected by staff at subscriber home / office counter").'
                 : paymentMode === 'SPLIT'
                 ? 'Specify split breakdown (e.g. "Cash ₹X received + Online ₹Y via UPI Ref...").'
                 : 'Specify digital transfer remarks and confirmation details.'}
@@ -972,8 +972,8 @@ export function CollectionsTab({ user }: { user: any }) {
                   <TouchableOpacity style={localStyles.quickChip} onPress={() => applyQuickRemark(`Paid via GooglePay / PhonePe (UTR: ${externalRef || '...'}`)}>
                     <Text style={localStyles.quickChipText}>+ GPay / PhonePe</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={localStyles.quickChip} onPress={() => applyQuickRemark('Scanned ChitKart branch QR code')}>
-                    <Text style={localStyles.quickChipText}>+ Branch QR Scan</Text>
+                  <TouchableOpacity style={localStyles.quickChip} onPress={() => applyQuickRemark('Scanned ChitKart QR code')}>
+                    <Text style={localStyles.quickChipText}>+ QR Scan</Text>
                   </TouchableOpacity>
                 </>
               )}

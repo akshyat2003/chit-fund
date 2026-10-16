@@ -23,7 +23,6 @@ import { ChitGroupsTab } from './src/modules/manager/ChitGroupsTab';
 import { CollectionsTab } from './src/modules/manager/CollectionsTab';
 import { AccountingTab } from './src/modules/manager/AccountingTab';
 import { AuctionsPayoutsTab } from './src/modules/manager/AuctionsPayoutsTab';
-import { BranchGovernanceTab } from './src/modules/manager/BranchGovernanceTab';
 import { ComplianceReportsTab } from './src/modules/manager/ComplianceReportsTab';
 import { StaffTab } from './src/modules/manager/StaffTab';
 
@@ -43,7 +42,6 @@ function MainApp() {
     | 'collections'
     | 'accounting'
     | 'auctions'
-    | 'branches'
     | 'compliance'
     | 'staff'
   >('dashboard');
@@ -112,7 +110,7 @@ function MainApp() {
   // Allowed tabs per role with automatic fallback to 'dashboard' to prevent blank screens
   const allowedTabsByRole: Record<string, string[]> = {
     SUPER_ADMIN: ['dashboard', 'companies', 'admins', 'audits', 'system', 'backups', 'notifications'],
-    MANAGER: ['dashboard', 'members', 'chit_groups', 'collections', 'accounting', 'auctions', 'branches', 'compliance', 'staff', 'notifications'],
+    MANAGER: ['dashboard', 'members', 'chit_groups', 'collections', 'accounting', 'auctions', 'compliance', 'staff', 'notifications'],
     COLLECTION_STAFF: ['dashboard', 'chit_groups', 'collections', 'members', 'notifications'],
   };
   const roleAllowed = allowedTabsByRole[user.role] || ['dashboard'];
@@ -259,13 +257,6 @@ function MainApp() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.navItem, effectiveTab === 'branches' && styles.navItemActive]}
-                  onPress={() => setActiveTab('branches')}
-                >
-                  <Text style={[styles.navText, effectiveTab === 'branches' && styles.navTextActive]}>🏛️ Branch Governance</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
                   style={[styles.navItem, effectiveTab === 'compliance' && styles.navItemActive]}
                   onPress={() => setActiveTab('compliance')}
                 >
@@ -376,7 +367,6 @@ function MainApp() {
           {effectiveTab === 'collections' && (user.role === 'MANAGER' || user.role === 'COLLECTION_STAFF') && <CollectionsTab user={user} />}
           {effectiveTab === 'accounting' && user.role === 'MANAGER' && <AccountingTab user={user} />}
           {effectiveTab === 'auctions' && user.role === 'MANAGER' && <AuctionsPayoutsTab user={user} />}
-          {effectiveTab === 'branches' && user.role === 'MANAGER' && <BranchGovernanceTab user={user} />}
           {effectiveTab === 'compliance' && user.role === 'MANAGER' && <ComplianceReportsTab user={user} />}
           {effectiveTab === 'staff' && user.role === 'MANAGER' && (
             <StaffTab
@@ -886,12 +876,12 @@ function DashboardTab({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab
     roleBorder = '#DDD6FE';
     roleDesc = 'Platform-wide Governance, Companies Management & System Security';
   } else if (isManager) {
-    roleTitle = 'Branch Manager & Accountant';
+    roleTitle = 'Manager & Accountant';
     roleIcon = '🏢';
     roleColor = '#0070BA';
     roleBg = '#F0F9FF';
     roleBorder = '#BAE6FD';
-    roleDesc = 'Branch Operations, Chit Groups, Subscriber KYC & Financial Ledgers';
+    roleDesc = 'Company Operations, Chit Groups, Subscriber KYC & Financial Ledgers';
   } else if (isStaff) {
     roleTitle = 'Field Collection Staff';
     roleIcon = '💳';
@@ -921,7 +911,7 @@ function DashboardTab({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab
               Welcome, {user?.fullName || user?.username || 'Team Member'}!
             </Text>
             <Text style={styles.heroCompany} numberOfLines={1}>
-              🏢 {user?.company?.name?.toUpperCase() || 'CHITKART PLATFORM'}{user?.branch?.name ? ` • ${user.branch.name}` : ''}
+              🏢 {user?.company?.name?.toUpperCase() || 'CHITKART PLATFORM'}
             </Text>
           </View>
           <TouchableOpacity
@@ -1146,16 +1136,6 @@ function CompaniesTab({ user }: { user: any }) {
   const [editError, setEditError] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // Manage Branches State
-  const [branchCompany, setBranchCompany] = useState<any>(null);
-  const [branches, setBranches] = useState<any[]>([]);
-  const [loadingBranches, setLoadingBranches] = useState(false);
-  const [newBranchCode, setNewBranchCode] = useState('');
-  const [newBranchName, setNewBranchName] = useState('');
-  const [newBranchLocation, setNewBranchLocation] = useState('');
-  const [newBranchPhone, setNewBranchPhone] = useState('');
-  const [branchError, setBranchError] = useState('');
-  const [savingBranch, setSavingBranch] = useState(false);
 
   useEffect(() => {
     loadCompanies();
@@ -1370,81 +1350,6 @@ function CompaniesTab({ user }: { user: any }) {
     }
   };
 
-  const handleOpenBranches = async (c: any) => {
-    setBranchCompany(c);
-    setBranchError('');
-    setNewBranchCode(`${c.code}-`);
-    setNewBranchName('');
-    setNewBranchLocation(c.address || '');
-    setNewBranchPhone(c.phone || '');
-    await loadBranchesForCompany(c.id);
-  };
-
-  const loadBranchesForCompany = async (companyId: string) => {
-    try {
-      setLoadingBranches(true);
-      const res = await api.get(`/super-admin/branches?companyId=${companyId}`);
-      setBranches(res.data.data || []);
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setLoadingBranches(false);
-    }
-  };
-
-  const handleCreateBranch = async () => {
-    if (!branchCompany) return;
-    setBranchError('');
-    if (!newBranchCode.trim() || !newBranchName.trim()) {
-      setBranchError('Branch Code and Branch Name are required.');
-      return;
-    }
-    try {
-      setSavingBranch(true);
-      await api.post('/super-admin/branches', {
-        companyId: branchCompany.id,
-        code: newBranchCode.trim().toUpperCase(),
-        name: newBranchName.trim(),
-        location: newBranchLocation.trim(),
-        phone: newBranchPhone.trim(),
-      });
-      alert(`Branch "${newBranchName.trim()}" created successfully! Recorded in the Audit Log.`);
-      setNewBranchCode(`${branchCompany.code}-`);
-      setNewBranchName('');
-      setNewBranchLocation('');
-      setNewBranchPhone('');
-      await loadBranchesForCompany(branchCompany.id);
-      loadCompanies();
-    } catch (err: any) {
-      setBranchError(err.response?.data?.message || err.message || 'Failed to create branch');
-    } finally {
-      setSavingBranch(false);
-    }
-  };
-
-  const handleToggleBranchStatus = async (branch: any) => {
-    try {
-      const nextStatus = branch.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-      await api.patch(`/super-admin/branches/${branch.id}`, { status: nextStatus });
-      await loadBranchesForCompany(branchCompany.id);
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to update branch status');
-    }
-  };
-
-  const handleDeleteBranch = async (branch: any) => {
-    const confirmMsg = `Are you sure you want to delete branch "${branch.name}" (${branch.code})? This will be recorded in the Audit Log.`;
-    if (!window.confirm ? !confirm(confirmMsg) : !window.confirm(confirmMsg)) return;
-    try {
-      const res = await api.delete(`/super-admin/branches/${branch.id}`);
-      alert(res.data?.message || `Branch "${branch.name}" removed.`);
-      await loadBranchesForCompany(branchCompany.id);
-      loadCompanies();
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to delete branch');
-    }
-  };
-
   return (
     <View style={styles.tabContainer}>
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
@@ -1506,7 +1411,6 @@ function CompaniesTab({ user }: { user: any }) {
                 {c.address ? <Text style={styles.companyMetaText}>Addr: {c.address}</Text> : null}
 
                 <View style={styles.companyStatsRow}>
-                  <Text style={styles.companyStatPill}>🏛 {c.stats?.branchesCount || 0} Branches</Text>
                   <Text style={styles.companyStatPill}>👤 {c.stats?.usersCount || 0} Users</Text>
                   <Text style={styles.companyStatPill}>👥 {c.stats?.subscribersCount || 0} Subs</Text>
                   <Text style={styles.companyStatPill}>💰 {c.stats?.groupsCount || 0} Groups</Text>
@@ -1534,24 +1438,6 @@ function CompaniesTab({ user }: { user: any }) {
                   >
                     <Text style={{ fontSize: 12, fontWeight: '700', color: '#1D4ED8' }}>
                       ✏️ Edit Info
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.statusToggleBtn,
-                      {
-                        flex: 1,
-                        marginTop: 0,
-                        borderColor: '#0284C7',
-                        backgroundColor: 'rgba(2, 132, 199, 0.08)',
-                      },
-                    ]}
-                    onPress={() => handleOpenBranches(c)}
-                    disabled={actionLoading}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
-                      🏛️ Branches
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1869,182 +1755,6 @@ function CompaniesTab({ user }: { user: any }) {
                   ) : (
                     <Text style={styles.primaryBtnText}>SAVE & AUDIT LOG CHANGES</Text>
                   )}
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Manage Branches Modal */}
-      <Modal visible={Boolean(branchCompany)} animationType="slide" transparent onRequestClose={() => setBranchCompany(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxWidth: 680, maxHeight: '90%' }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <View>
-                <Text style={styles.modalTitle}>🏛️ Branches — {branchCompany?.name}</Text>
-                <Text style={{ fontSize: 12, color: '#64748B' }}>
-                  Branch setup & modifications are tracked in the Audit Log
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setBranchCompany(null)}>
-                <Text style={{ fontSize: 22, color: '#64748B', fontWeight: '700' }}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {branchError ? (
-              <View style={styles.modalErrorBadge}>
-                <Text style={styles.modalErrorBadgeText}>⚠️ {branchError}</Text>
-              </View>
-            ) : null}
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Add New Branch Section */}
-              <View style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16 }}>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F2F52', marginBottom: 8 }}>
-                  + ADD NEW BRANCH
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>Branch Code *</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={newBranchCode}
-                      onChangeText={(t) => setNewBranchCode(t.toUpperCase())}
-                      placeholder="e.g. APEX-CHN"
-                      autoCapitalize="characters"
-                    />
-                  </View>
-                  <View style={{ flex: 2 }}>
-                    <Text style={styles.label}>Branch Name *</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={newBranchName}
-                      onChangeText={setNewBranchName}
-                      placeholder="e.g. Chennai Central"
-                    />
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>Location</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={newBranchLocation}
-                      onChangeText={setNewBranchLocation}
-                      placeholder="City / Area"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>Phone</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={newBranchPhone}
-                      onChangeText={setNewBranchPhone}
-                      placeholder="Contact Phone"
-                    />
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={[styles.primaryBtn, { marginTop: 6, alignSelf: 'flex-end', paddingHorizontal: 16 }]}
-                  onPress={handleCreateBranch}
-                  disabled={savingBranch}
-                >
-                  {savingBranch ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text style={styles.primaryBtnText}>+ CREATE & LOG BRANCH</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-              {/* Existing Branches List */}
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#1E293B', marginBottom: 8 }}>
-                EXISTING BRANCHES ({branches.length})
-              </Text>
-              {loadingBranches ? (
-                <ActivityIndicator size="small" color="#0A2540" style={{ marginVertical: 12 }} />
-              ) : branches.length === 0 ? (
-                <Text style={{ fontSize: 12, color: '#64748B', fontStyle: 'italic', marginVertical: 8 }}>
-                  No branches configured yet for this company.
-                </Text>
-              ) : (
-                branches.map((b) => (
-                  <View
-                    key={b.id}
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      backgroundColor: '#FFF',
-                      padding: 10,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: '#E2E8F0',
-                      marginBottom: 8,
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={{ fontWeight: '800', color: '#0F2F52', fontSize: 13 }}>
-                          {b.name}
-                        </Text>
-                        <Text style={[styles.companyCodeBadge, { fontSize: 10, paddingVertical: 1, paddingHorizontal: 6 }]}>
-                          {b.code}
-                        </Text>
-                        <View style={b.status === 'ACTIVE' ? styles.statusBadgeActive : styles.statusBadgeSuspended}>
-                          <Text style={b.status === 'ACTIVE' ? styles.statusTextActive : styles.statusTextSuspended}>
-                            {b.status}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
-                        {b.location ? `📍 ${b.location}` : 'No location'} {b.phone ? `| 📞 ${b.phone}` : ''}
-                      </Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 6 }}>
-                      <TouchableOpacity
-                        style={[
-                          styles.statusToggleBtn,
-                          {
-                            marginTop: 0,
-                            paddingVertical: 4,
-                            paddingHorizontal: 8,
-                            borderColor: b.status === 'ACTIVE' ? '#F59E0B' : '#16A34A',
-                            backgroundColor: b.status === 'ACTIVE' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(22, 163, 74, 0.08)',
-                          },
-                        ]}
-                        onPress={() => handleToggleBranchStatus(b)}
-                      >
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: b.status === 'ACTIVE' ? '#B45309' : '#16A34A' }}>
-                          {b.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.statusToggleBtn,
-                          {
-                            marginTop: 0,
-                            paddingVertical: 4,
-                            paddingHorizontal: 8,
-                            borderColor: '#EF4444',
-                            backgroundColor: 'rgba(239, 68, 68, 0.08)',
-                          },
-                        ]}
-                        onPress={() => handleDeleteBranch(b)}
-                      >
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#DC2626' }}>
-                          🗑️
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))
-              )}
-
-              <View style={{ marginTop: 12 }}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => setBranchCompany(null)}>
-                  <Text style={styles.cancelBtnText}>CLOSE</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -2442,7 +2152,6 @@ function SuperAdminsTab({ user }: { user: any }) {
                       ? 'N/A (Company Removed)'
                       : 'Platform Level (All Companies)'}
                   </Text>
-                  {u.branch && <Text style={styles.companyMetaText}>📍 Branch: {u.branch.name}</Text>}
 
                   {/* KYC & Identification Info */}
                   <View style={{ marginTop: 8, padding: 8, backgroundColor: '#F8FAFC', borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0', gap: 4 }}>
@@ -2608,12 +2317,6 @@ function SuperAdminsTab({ user }: { user: any }) {
                   <Text style={{ fontSize: 13, color: '#64748B' }}>Company</Text>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
                     {inspectingUser?.company ? `${inspectingUser.company.name} (${inspectingUser.company.code})` : 'Platform Level (All Companies)'}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontSize: 13, color: '#64748B' }}>Branch</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
-                    {inspectingUser?.branch?.name ? inspectingUser.branch.name : 'All Branches / HQ'}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -2987,9 +2690,9 @@ function AuditsTab({ user }: { user: any }) {
     const templates = [
       { action: 'SESSION_RENEW', entity: 'UserSession', desc: 'Secure OAuth/JWT bearer session extended' },
       { action: 'USER_LOGIN', entity: 'AdminSession', desc: 'Super administrator logged in successfully' },
-      { action: 'COMPANY_LICENSE_VERIFY', entity: 'CompanyLicense', desc: 'Verified tenant multi-branch license' },
+      { action: 'COMPANY_LICENSE_VERIFY', entity: 'CompanyLicense', desc: 'Verified tenant company license' },
       { action: 'AUDIT_EXPORT', entity: 'SystemAudits', desc: 'Exported immutable security compliance log' },
-      { action: 'BRANCH_CONFIG_SYNC', entity: 'BranchPolicy', desc: 'Synchronized operational branch cash policy' },
+      { action: 'COMPANY_CONFIG_SYNC', entity: 'CompanyPolicy', desc: 'Synchronized operational company cash policy' },
       { action: 'PASSWORD_POLICY_CHECK', entity: 'CredentialGuard', desc: 'Verified zero-trust password complexity' },
       { action: 'SYSTEM_HEALTH_PING', entity: 'ClusterMonitor', desc: 'Cluster heartbeat response: DB & pooler healthy' },
       { action: 'DATA_BACKUP_SNAPSHOT', entity: 'PostgresSnapshot', desc: 'Completed automated point-in-time snapshot' },
@@ -3147,7 +2850,7 @@ function AuditsTab({ user }: { user: any }) {
     if (act.includes('SESSION')) return { icon: '🔑', bg: '#E0F2FE', text: '#0369A1', border: '#0284C7' };
     if (act.includes('PASSWORD') || act.includes('SECURITY')) return { icon: '🛡️', bg: '#FEF3C7', text: '#B45309', border: '#F59E0B' };
     if (act.includes('EXPORT') || act.includes('DOWNLOAD')) return { icon: '📤', bg: '#F3E8FF', text: '#6B21A8', border: '#8B5CF6' };
-    if (act.includes('COMPANY') || act.includes('BRANCH')) return { icon: '🏢', bg: '#EEF2FF', text: '#3730A3', border: '#6366F1' };
+    if (act.includes('COMPANY')) return { icon: '🏢', bg: '#EEF2FF', text: '#3730A3', border: '#6366F1' };
     if (act.includes('USER') || act.includes('CREDENTIAL')) return { icon: '👤', bg: '#ECFDF5', text: '#047857', border: '#059669' };
     if (act.includes('DELETE') || act.includes('REVOKE') || act.includes('KILL')) return { icon: '⚠️', bg: '#FEE2E2', text: '#991B1B', border: '#EF4444' };
     return { icon: '📝', bg: '#F1F5F9', text: '#334155', border: '#94A3B8' };
@@ -3366,7 +3069,6 @@ function AuditsTab({ user }: { user: any }) {
                 { id: 'LOGIN', label: '🔐 Login & Auth' },
                 { id: 'PASSWORD', label: '🛡️ Credentials' },
                 { id: 'COMPANY', label: '🏢 Company Mgmt' },
-                { id: 'BRANCH', label: '🏛️ Branch Mgmt' },
                 { id: 'EXPORT', label: '📤 Data Exports' },
               ].map((act) => (
                 <TouchableOpacity
@@ -4143,7 +3845,6 @@ function BackupsTab({ user }: { user: any }) {
                   { id: 'all', tableName: 'all', name: '🌐 Entire Database (Full Dump)', isPrimary: true },
                   { id: 'Company', tableName: 'Company', name: '🏢 Companies' },
                   { id: 'User', tableName: 'User', name: '👥 Users & Admins' },
-                  { id: 'Branch', tableName: 'Branch', name: '🏛️ Branches' },
                   { id: 'Subscriber', tableName: 'Subscriber', name: '👤 Subscribers' },
                   { id: 'ChitGroup', tableName: 'ChitGroup', name: '📊 Chit Groups' },
                   { id: 'PaymentTransaction', tableName: 'PaymentTransaction', name: '💳 Payment Transactions' },
@@ -4482,7 +4183,6 @@ function NotificationsTab({ user }: { user: any }) {
       s.fullName?.toLowerCase().includes(q) ||
       s.username?.toLowerCase().includes(q) ||
       s.company?.name?.toLowerCase().includes(q) ||
-      s.branch?.name?.toLowerCase().includes(q) ||
       s.phone?.includes(q)
     );
   });
@@ -4501,14 +4201,14 @@ function NotificationsTab({ user }: { user: any }) {
           {isSuperAdmin
             ? 'Super Admin Notification Hub'
             : isManager
-            ? 'Branch Manager Notification Center'
+            ? 'Manager Notification Center'
             : 'Operational In-App Notification Feed'}
         </Text>
         <Text style={{ fontSize: 13, color: '#64748B', marginTop: 4 }}>
           {isSuperAdmin
             ? 'Dispatch instant in-app alerts to groups of managers, individual managers, groups of staff, or individual staff.'
             : isManager
-            ? 'Send direct in-app announcements and alerts to your branch staff team or individual staff members, and view incoming Super Admin alerts.'
+            ? 'Send direct in-app announcements and alerts to your staff team or individual staff members, and view incoming Super Admin alerts.'
             : 'Official real-time notices, security advisories, and administrative instructions dispatched to you.'}
         </Text>
       </View>
@@ -4798,7 +4498,7 @@ function NotificationsTab({ user }: { user: any }) {
                 {selectedRecipient && (
                   <View style={{ backgroundColor: '#DCFCE7', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#86EFAC', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Text style={{ fontSize: 12, fontWeight: '800', color: '#166534' }}>
-                      ✓ Selected Staff: {selectedRecipient.fullName} (@{selectedRecipient.username}) • {selectedRecipient.branch?.name || selectedRecipient.company?.name || 'Assigned Branch'}
+                      ✓ Selected Staff: {selectedRecipient.fullName} (@{selectedRecipient.username})
                     </Text>
                     <TouchableOpacity onPress={() => setTargetId('')}>
                       <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '800' }}>Change</Text>
@@ -4808,7 +4508,7 @@ function NotificationsTab({ user }: { user: any }) {
 
                 <TextInput
                   style={[styles.searchBar, { marginBottom: 0 }]}
-                  placeholder="🔍 Search staff member by name, username, branch, phone..."
+                  placeholder="🔍 Search staff member by name, username, phone..."
                   value={recipientSearch}
                   onChangeText={setRecipientSearch}
                 />
@@ -4840,7 +4540,7 @@ function NotificationsTab({ user }: { user: any }) {
                                 {s.fullName} (@{s.username})
                               </Text>
                               <Text style={{ fontSize: 11, color: isSelected ? '#94A3B8' : '#64748B' }}>
-                                Branch: {s.branch?.name || '-'} • Phone: {s.phone || '-'}
+                                Phone: {s.phone || '-'}
                               </Text>
                             </View>
                             <View style={{ backgroundColor: isSelected ? '#334155' : '#DCFCE7', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4 }}>
@@ -5330,12 +5030,6 @@ function ProfileModal({
                   <Text style={styles.profileDetailLabel}>Company</Text>
                   <Text style={styles.profileDetailValue}>
                     {user?.company ? `${user.company.name} (${user.company.code})` : 'Platform Level'}
-                  </Text>
-                </View>
-                <View style={styles.profileDetailItem}>
-                  <Text style={styles.profileDetailLabel}>Branch</Text>
-                  <Text style={styles.profileDetailValue}>
-                    {user?.branch ? `${user.branch.name} (${user.branch.code})` : 'All Branches / HQ'}
                   </Text>
                 </View>
                 <View style={[styles.profileDetailItem, { flexBasis: '100%' }]}>

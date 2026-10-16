@@ -84,7 +84,6 @@ export const getRecipients = async (req: AuthRequest, res: Response) => {
           phone: true,
           email: true,
           company: { select: { name: true, code: true } },
-          branch: { select: { name: true } },
         },
         orderBy: { fullName: 'asc' },
       });
@@ -99,7 +98,6 @@ export const getRecipients = async (req: AuthRequest, res: Response) => {
           phone: true,
           email: true,
           company: { select: { name: true, code: true } },
-          branch: { select: { name: true } },
         },
         orderBy: { fullName: 'asc' },
       });
@@ -133,7 +131,6 @@ export const getRecipients = async (req: AuthRequest, res: Response) => {
           role: true,
           phone: true,
           email: true,
-          branch: { select: { name: true } },
         },
         orderBy: { fullName: 'asc' },
       });

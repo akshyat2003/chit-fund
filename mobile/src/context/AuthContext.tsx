@@ -16,7 +16,6 @@ export interface User {
   emergencyContact?: string | null;
   dateOfBirth?: string | null;
   company: { id: string; name: string; code: string } | null;
-  branch?: { id: string; name: string; code: string } | null;
 }
 
 interface AuthContextType {

@@ -6,7 +6,6 @@ export interface AuthRequest extends Request {
   user?: {
     id: string;
     companyId?: string | null;
-    branchId?: string | null;
     role: string;
     phone: string;
     fullName: string;
@@ -46,7 +45,6 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
       select: {
         id: true,
         companyId: true,
-        branchId: true,
         role: true,
         phone: true,
         fullName: true,
@@ -80,7 +78,6 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
     req.user = {
       id: user.id,
       companyId: user.companyId,
-      branchId: user.branchId,
       role: user.role,
       phone: user.phone,
       fullName: user.fullName,

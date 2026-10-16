@@ -14,7 +14,6 @@ import { mStyles } from './commonStyles';
 
 export function MembersTab({ user }: { user: any }) {
   const [subscribers, setSubscribers] = useState<any[]>([]);
-  const [branches, setBranches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [kycFilter, setKycFilter] = useState<'ALL' | 'VERIFIED' | 'PENDING' | 'REJECTED'>('ALL');
@@ -57,7 +56,6 @@ export function MembersTab({ user }: { user: any }) {
   const [panNumber, setPanNumber] = useState('');
   const [nomineeName, setNomineeName] = useState('');
   const [nomineeRelation, setNomineeRelation] = useState('');
-  const [branchId, setBranchId] = useState('');
   const [registerGroupId, setRegisterGroupId] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -71,7 +69,6 @@ export function MembersTab({ user }: { user: any }) {
   const [editPanNumber, setEditPanNumber] = useState('');
   const [editNomineeName, setEditNomineeName] = useState('');
   const [editNomineeRelation, setEditNomineeRelation] = useState('');
-  const [editBranchId, setEditBranchId] = useState('');
 
   // Form states for KYC Review (AC-02)
   const [kycStatus, setKycStatus] = useState<'VERIFIED' | 'REJECTED' | 'PENDING'>('VERIFIED');
@@ -80,20 +77,13 @@ export function MembersTab({ user }: { user: any }) {
   const fetchSubscribers = async () => {
     try {
       setLoading(true);
-      const [subRes, branchRes, usersRes, groupsRes] = await Promise.all([
+      const [subRes, usersRes, groupsRes] = await Promise.all([
         api.get('/subscribers'),
-        api.get('/branches').catch(() => ({ data: { data: [] } })),
         api.get('/auth/users').catch(() => ({ data: { data: [] } })),
         api.get('/chit-groups').catch(() => ({ data: { data: [] } })),
       ]);
       if (subRes.data.success) {
         setSubscribers(subRes.data.data || []);
-      }
-      if (branchRes.data.success) {
-        setBranches(branchRes.data.data || []);
-        if (branchRes.data.data.length > 0 && !branchId) {
-          setBranchId(branchRes.data.data[0].id);
-        }
       }
       if (usersRes.data.success) {
         setPlatformUsers(usersRes.data.data || []);
@@ -128,7 +118,6 @@ export function MembersTab({ user }: { user: any }) {
   const canEditMember = (member: any) => {
     if (isManagerOrAdmin) return true;
     if (isStaff) {
-      if (member.assignedStaffId === user?.id) return true;
       if (member.memberships && Array.isArray(member.memberships)) {
         return member.memberships.some((m: any) =>
           staffAssignedGroupIds.includes(m.groupId || m.group?.id)
@@ -156,9 +145,15 @@ export function MembersTab({ user }: { user: any }) {
       return;
     }
 
-    if (isStaff && !registerGroupId && staffAssignedGroups.length > 0) {
-      alert('Please select one of your assigned chit groups to add this member to.');
-      return;
+    if (isStaff) {
+      if (staffAssignedGroups.length === 0) {
+        alert('You have no chit groups assigned by the manager. You can only add members once a chit group is assigned to you.');
+        return;
+      }
+      if (!registerGroupId) {
+        alert('Please select one of your assigned chit groups to add this member to.');
+        return;
+      }
     }
 
     try {
@@ -172,7 +167,6 @@ export function MembersTab({ user }: { user: any }) {
         panNo: panNumber.trim().toUpperCase() || undefined,
         nomineeName: nomineeName.trim() || undefined,
         nomineeRelation: nomineeRelation.trim() || undefined,
-        branchId: branchId || user.branchId || branches[0]?.id || undefined,
         userId: selectedUserId || undefined,
         groupId: registerGroupId || undefined,
       });
@@ -211,7 +205,6 @@ export function MembersTab({ user }: { user: any }) {
     setEditPanNumber(member.panNo || member.panNumber || '');
     setEditNomineeName(member.nomineeName || '');
     setEditNomineeRelation(member.nomineeRelation || '');
-    setEditBranchId(member.branchId || branches[0]?.id || '');
     setShowEditModal(true);
   };
 
@@ -232,7 +225,6 @@ export function MembersTab({ user }: { user: any }) {
         panNo: editPanNumber.trim().toUpperCase() || undefined,
         nomineeName: editNomineeName.trim() || undefined,
         nomineeRelation: editNomineeRelation.trim() || undefined,
-        branchId: editBranchId || undefined,
       });
       if (res.data.success) {
         alert('Member details updated successfully!');
@@ -379,6 +371,12 @@ export function MembersTab({ user }: { user: any }) {
   };
 
   const filtered = subscribers.filter((s) => {
+    if (isStaff) {
+      const belongsToStaffGroup = s.memberships && s.memberships.some((m: any) =>
+        staffAssignedGroupIds.includes(m.groupId || m.group?.id)
+      );
+      if (!belongsToStaffGroup) return false;
+    }
     const q = search.toLowerCase();
     const matchesSearch =
       s.fullName?.toLowerCase().includes(q) ||
@@ -409,9 +407,13 @@ export function MembersTab({ user }: { user: any }) {
         </View>
         <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
           <TouchableOpacity
-            style={mStyles.primaryBtn}
+            style={[mStyles.primaryBtn, isStaff && staffAssignedGroups.length === 0 && { opacity: 0.5 }]}
             onPress={() => {
-              if (isStaff && staffAssignedGroups.length > 0) {
+              if (isStaff) {
+                if (staffAssignedGroups.length === 0) {
+                  alert('You do not have any chit groups assigned by the manager yet. You can only register members for chit groups assigned to you.');
+                  return;
+                }
                 setRegisterGroupId(staffAssignedGroups[0].id);
               } else {
                 setRegisterGroupId('');
@@ -528,7 +530,7 @@ export function MembersTab({ user }: { user: any }) {
                 </View>
 
                 <Text style={mStyles.cardSubtitle}>
-                  📞 {member.phone} • ✉️ {member.email || 'N/A'} • 🏛️ {member.branch?.name || 'Main Branch'}
+                  📞 {member.phone} • ✉️ {member.email || 'N/A'}
                 </Text>
 
                 {/* Address, Aadhaar & PAN details */}
@@ -823,28 +825,15 @@ export function MembersTab({ user }: { user: any }) {
                 </View>
               )}
 
-              <Text style={mStyles.label}>Assigned Branch *</Text>
-              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-                {branches.map((b) => (
-                  <TouchableOpacity
-                    key={b.id}
-                    style={[mStyles.chip, branchId === b.id && mStyles.chipActive]}
-                    onPress={() => setBranchId(b.id)}
-                  >
-                    <Text style={[mStyles.chipText, branchId === b.id && mStyles.chipTextActive]}>
-                      🏛️ {b.name} ({b.code})
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+
 
               <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
                 <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowRegisterModal(false)}>
                   <Text style={mStyles.secondaryBtnText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[mStyles.primaryBtn, submitting && { opacity: 0.7 }]}
-                  disabled={submitting}
+                  style={[mStyles.primaryBtn, (submitting || (isStaff && staffAssignedGroups.length === 0)) && { opacity: 0.7 }]}
+                  disabled={submitting || (isStaff && staffAssignedGroups.length === 0)}
                   onPress={handleRegisterMember}
                 >
                   {submitting ? (
@@ -1019,7 +1008,7 @@ export function MembersTab({ user }: { user: any }) {
                     {ledgerData.subscriber?.fullName} [{ledgerData.subscriber?.subscriberCode}]
                   </Text>
                   <Text style={{ fontSize: 12, color: '#64748B' }}>
-                    Phone: {ledgerData.subscriber?.phone} • Branch: {ledgerData.subscriber?.branch?.name}
+                    Phone: {ledgerData.subscriber?.phone}
                   </Text>
                 </View>
 
@@ -1334,20 +1323,7 @@ export function MembersTab({ user }: { user: any }) {
                 </View>
               </View>
 
-              <Text style={mStyles.label}>Assigned Branch</Text>
-              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-                {branches.map((b) => (
-                  <TouchableOpacity
-                    key={b.id}
-                    style={[mStyles.chip, editBranchId === b.id && mStyles.chipActive]}
-                    onPress={() => setEditBranchId(b.id)}
-                  >
-                    <Text style={[mStyles.chipText, editBranchId === b.id && mStyles.chipTextActive]}>
-                      🏛️ {b.name} ({b.code})
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+
 
               <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
                 <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowEditModal(false)}>
