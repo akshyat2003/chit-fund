@@ -111,8 +111,8 @@ function MainApp() {
 
   // Allowed tabs per role with automatic fallback to 'dashboard' to prevent blank screens
   const allowedTabsByRole: Record<string, string[]> = {
-    SUPER_ADMIN: ['dashboard', 'companies', 'admins', 'audits', 'system', 'backups', 'notifications', 'khatabook'],
-    MANAGER: ['dashboard', 'khatabook', 'members', 'chit_groups', 'collections', 'accounting', 'auctions', 'compliance', 'staff', 'notifications'],
+    SUPER_ADMIN: ['dashboard', 'companies', 'admins', 'compliance', 'audits', 'system', 'backups', 'notifications', 'khatabook'],
+    MANAGER: ['dashboard', 'khatabook', 'staff', 'members', 'chit_groups', 'collections', 'accounting', 'auctions', 'notifications'],
     COLLECTION_STAFF: ['dashboard', 'khatabook', 'chit_groups', 'collections', 'members', 'notifications'],
   };
   const roleAllowed = allowedTabsByRole[user.role] || ['dashboard'];
@@ -188,6 +188,13 @@ function MainApp() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                  style={[styles.navItem, effectiveTab === 'compliance' && styles.navItemActive]}
+                  onPress={() => setActiveTab('compliance')}
+                >
+                  <Text style={[styles.navText, effectiveTab === 'compliance' && styles.navTextActive]}>🏛️ Compliance & Regulatory Reports</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   style={[styles.navItem, effectiveTab === 'system' && styles.navItemActive]}
                   onPress={() => setActiveTab('system')}
                 >
@@ -256,13 +263,6 @@ function MainApp() {
                   onPress={() => setActiveTab('auctions')}
                 >
                   <Text style={[styles.navText, effectiveTab === 'auctions' && styles.navTextActive]}>🎯 Auctions & Payouts</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.navItem, effectiveTab === 'compliance' && styles.navItemActive]}
-                  onPress={() => setActiveTab('compliance')}
-                >
-                  <Text style={[styles.navText, effectiveTab === 'compliance' && styles.navTextActive]}>📑 Compliance & Reports</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -383,7 +383,7 @@ function MainApp() {
           {effectiveTab === 'collections' && (user.role === 'MANAGER' || user.role === 'COLLECTION_STAFF') && <CollectionsTab user={user} />}
           {effectiveTab === 'accounting' && user.role === 'MANAGER' && <AccountingTab user={user} />}
           {effectiveTab === 'auctions' && user.role === 'MANAGER' && <AuctionsPayoutsTab user={user} />}
-          {effectiveTab === 'compliance' && user.role === 'MANAGER' && <ComplianceReportsTab user={user} />}
+          {effectiveTab === 'compliance' && user.role === 'SUPER_ADMIN' && <ComplianceReportsTab user={user} />}
           {effectiveTab === 'khatabook' && (user.role === 'MANAGER' || user.role === 'COLLECTION_STAFF' || user.role === 'SUPER_ADMIN') && (
             <KhataBookTab user={user} />
           )}

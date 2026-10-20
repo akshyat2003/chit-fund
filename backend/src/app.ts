@@ -168,6 +168,7 @@ router.get('/accounting/general-ledger/:accountId', authenticateToken, requireRo
 router.get('/accounting/trial-balance', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.getTrialBalance);
 router.get('/accounting/financial-statements', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.getFinancialStatements);
 router.post('/accounting/close-period', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.closeFinancialPeriod);
+router.get('/accounting/reports', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.getComprehensiveReports);
 
 // Reconciliation & Handover Routes
 router.post('/reconciliation/handover', authenticateToken, reconciliationController.submitCashHandover);

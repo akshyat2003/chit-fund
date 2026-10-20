@@ -91,9 +91,9 @@ export function ComplianceReportsTab({ user }: { user: any }) {
       {/* Header */}
       <View style={mStyles.headerRow}>
         <View>
-          <Text style={mStyles.headerTitle}>📑 Audit Support, Compliance & Reports</Text>
+          <Text style={mStyles.headerTitle}>🏛️ Administrator Compliance & Regulatory Center</Text>
           <Text style={mStyles.headerSubtitle}>
-            AC-32 Immutable Audit Support, AC-33 Chit Funds Act Registers & AC-34 Report Engine
+            Statutory Chit Funds Act Filings, State Registrar Registers & Immutable System Audit Trail
           </Text>
         </View>
       </View>
