@@ -16,6 +16,7 @@ import * as reportController from './modules/reports/report.controller.js';
 import * as superAdminController from './modules/super-admin/superAdmin.controller.js';
 import * as accountingController from './modules/accounting/accounting.controller.js';
 import * as notificationController from './modules/notifications/notification.controller.js';
+import * as khataController from './modules/khata/khata.controller.js';
 
 const app = express();
 
@@ -236,6 +237,23 @@ router.get('/notifications/recipients', authenticateToken, notificationControlle
 router.get('/notifications', authenticateToken, notificationController.listNotifications);
 router.post('/notifications/send', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), notificationController.sendNotification);
 router.delete('/notifications/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), notificationController.deleteNotification);
+
+// Multi-Business & Khatabook Ledger Routes
+router.get('/khata/businesses', authenticateToken, khataController.listBusinesses);
+router.post('/khata/businesses', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), khataController.createBusiness);
+router.put('/khata/businesses/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), khataController.updateBusiness);
+router.delete('/khata/businesses/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), khataController.deleteBusiness);
+router.get('/khata/businesses/:id/staff', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), khataController.getBusinessStaff);
+router.post('/khata/businesses/:id/assign-staff', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), khataController.assignStaffToBusiness);
+
+router.get('/khata/businesses/:businessId/customers', authenticateToken, khataController.listCustomers);
+router.post('/khata/businesses/:businessId/customers', authenticateToken, khataController.createCustomer);
+router.get('/khata/customers/:customerId', authenticateToken, khataController.getCustomerDetails);
+router.put('/khata/customers/:customerId', authenticateToken, khataController.updateCustomer);
+router.delete('/khata/customers/:customerId', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), khataController.deleteCustomer);
+
+router.post('/khata/customers/:customerId/transactions', authenticateToken, khataController.addTransaction);
+router.delete('/khata/transactions/:txId', authenticateToken, khataController.deleteTransaction);
 
 // Legacy/Compatibility endpoints for Super Admin
 router.get('/super-admin/notifications/recipients', authenticateToken, requireRoles('SUPER_ADMIN'), notificationController.getRecipients);

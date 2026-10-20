@@ -36,6 +36,7 @@ model Company {
   refunds               Refund[]
   handovers             CashHandover[]
   expenses              Expense[]
+  businesses            Business[]
 }
 
 model User {
@@ -68,6 +69,11 @@ model User {
   auditLogs           AuditLog[]
   refreshTokens       RefreshToken[]
   linkedSubscribers   Subscriber[] @relation("UserSubscriber")
+  
+  managedBusinesses         Business[]          @relation("ManagerBusinesses")
+  assignedBusinesses        BusinessStaff[]     @relation("StaffAssignedBusinesses")
+  createdKhataCustomers     KhataCustomer[]     @relation("CustomerCreator")
+  recordedKhataTransactions KhataTransaction[]  @relation("KhataTxRecorder")
 }
 
 model Subscriber {
@@ -427,4 +433,69 @@ model Notification {
   senderRole     String?
   companyId      String?
   createdAt      DateTime @default(now())
+}
+
+model Business {
+  id               String          @id @default(uuid())
+  companyId        String?
+  managerId        String
+  name             String
+  category         String?         @default("GENERAL_STORE")
+  phone            String?
+  address          String?
+  currency         String          @default("INR")
+  status           String          @default("ACTIVE")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  company          Company?        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  manager          User            @relation("ManagerBusinesses", fields: [managerId], references: [id], onDelete: Cascade)
+  staffAssignments BusinessStaff[]
+  customers        KhataCustomer[]
+}
+
+model BusinessStaff {
+  id         String   @id @default(uuid())
+  businessId String
+  staffId    String
+  assignedAt DateTime @default(now())
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staff      User     @relation("StaffAssignedBusinesses", fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, staffId])
+}
+
+model KhataCustomer {
+  id             String             @id @default(uuid())
+  businessId     String
+  name           String
+  phone          String?
+  address        String?
+  openingBalance Float              @default(0)
+  status         String             @default("ACTIVE")
+  createdById    String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  business       Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdBy      User?              @relation("CustomerCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  transactions   KhataTransaction[]
+}
+
+model KhataTransaction {
+  id                String        @id @default(uuid())
+  customerId        String
+  type              String        // GAVE (You Gave / Maine Diye), GOT (You Got / Mujhe Mile)
+  amount            Float
+  description       String?
+  billPhoto         String?
+  paymentMode       String        @default("CASH") // CASH, UPI, BANK_TRANSFER, CHEQUE, OTHER
+  recordedByUserId  String?
+  transactionDate   DateTime      @default(now())
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  customer          KhataCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  recordedBy        User?         @relation("KhataTxRecorder", fields: [recordedByUserId], references: [id], onDelete: SetNull)
 }

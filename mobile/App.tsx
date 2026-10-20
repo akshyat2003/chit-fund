@@ -25,6 +25,7 @@ import { AccountingTab } from './src/modules/manager/AccountingTab';
 import { AuctionsPayoutsTab } from './src/modules/manager/AuctionsPayoutsTab';
 import { ComplianceReportsTab } from './src/modules/manager/ComplianceReportsTab';
 import { StaffTab } from './src/modules/manager/StaffTab';
+import { KhataBookTab } from './src/modules/manager/KhataBookTab';
 
 // --- MAIN APP CONTROLLER ---
 function MainApp() {
@@ -44,6 +45,7 @@ function MainApp() {
     | 'auctions'
     | 'compliance'
     | 'staff'
+    | 'khatabook'
   >('dashboard');
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [openStaffCreateOnLoad, setOpenStaffCreateOnLoad] = useState(false);
@@ -109,9 +111,9 @@ function MainApp() {
 
   // Allowed tabs per role with automatic fallback to 'dashboard' to prevent blank screens
   const allowedTabsByRole: Record<string, string[]> = {
-    SUPER_ADMIN: ['dashboard', 'companies', 'admins', 'audits', 'system', 'backups', 'notifications'],
-    MANAGER: ['dashboard', 'members', 'chit_groups', 'collections', 'accounting', 'auctions', 'compliance', 'staff', 'notifications'],
-    COLLECTION_STAFF: ['dashboard', 'chit_groups', 'collections', 'members', 'notifications'],
+    SUPER_ADMIN: ['dashboard', 'companies', 'admins', 'audits', 'system', 'backups', 'notifications', 'khatabook'],
+    MANAGER: ['dashboard', 'khatabook', 'members', 'chit_groups', 'collections', 'accounting', 'auctions', 'compliance', 'staff', 'notifications'],
+    COLLECTION_STAFF: ['dashboard', 'khatabook', 'chit_groups', 'collections', 'members', 'notifications'],
   };
   const roleAllowed = allowedTabsByRole[user.role] || ['dashboard'];
   const effectiveTab = roleAllowed.includes(activeTab) ? activeTab : 'dashboard';
@@ -264,6 +266,13 @@ function MainApp() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                  style={[styles.navItem, effectiveTab === 'khatabook' && styles.navItemActive]}
+                  onPress={() => setActiveTab('khatabook')}
+                >
+                  <Text style={[styles.navText, effectiveTab === 'khatabook' && styles.navTextActive]}>📖 Khata Book</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   style={[styles.navItem, effectiveTab === 'notifications' && styles.navItemActive]}
                   onPress={() => setActiveTab('notifications')}
                 >
@@ -294,6 +303,13 @@ function MainApp() {
                   onPress={() => setActiveTab('members')}
                 >
                   <Text style={[styles.navText, effectiveTab === 'members' && styles.navTextActive]}>👥 Subscribers & Members</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.navItem, effectiveTab === 'khatabook' && styles.navItemActive]}
+                  onPress={() => setActiveTab('khatabook')}
+                >
+                  <Text style={[styles.navText, effectiveTab === 'khatabook' && styles.navTextActive]}>📖 Khata Book</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -368,6 +384,9 @@ function MainApp() {
           {effectiveTab === 'accounting' && user.role === 'MANAGER' && <AccountingTab user={user} />}
           {effectiveTab === 'auctions' && user.role === 'MANAGER' && <AuctionsPayoutsTab user={user} />}
           {effectiveTab === 'compliance' && user.role === 'MANAGER' && <ComplianceReportsTab user={user} />}
+          {effectiveTab === 'khatabook' && (user.role === 'MANAGER' || user.role === 'COLLECTION_STAFF' || user.role === 'SUPER_ADMIN') && (
+            <KhataBookTab user={user} />
+          )}
           {effectiveTab === 'staff' && user.role === 'MANAGER' && (
             <StaffTab
               user={user}
