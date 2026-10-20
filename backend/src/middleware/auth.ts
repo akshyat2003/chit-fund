@@ -62,6 +62,18 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
       return res.status(403).json({ success: false, message: 'User account is inactive or disabled' });
     }
 
+    // Block non-SUPER_ADMIN users if their company has been deleted
+    if (
+      user.role !== 'SUPER_ADMIN' &&
+      user.company &&
+      (user.company.status === 'DELETED' || user.company.status === 'deleted')
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'This company account has been deleted. Access is revoked.',
+      });
+    }
+
     // FR-SA-014: Prohibit suspended companies from performing business write operations while preserving historical read access
     if (
       user.role !== 'SUPER_ADMIN' &&

@@ -167,6 +167,18 @@ export const login = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    // Company Status Enforcement: Block access if company is deleted
+    if (
+      user.role !== 'SUPER_ADMIN' &&
+      user.company &&
+      (user.company.status === 'DELETED' || user.company.status === 'deleted')
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'This company account has been deleted. Please contact platform administration.',
+      });
+    }
+
     // Reset failed login counter on success
     failedLogins.delete(key);
 

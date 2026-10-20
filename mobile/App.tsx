@@ -1272,14 +1272,16 @@ function CompaniesTab({ user }: { user: any }) {
   };
 
   const handleDeleteCompany = async (comp: any) => {
-    const confirmMsg = `Are you sure you want to delete company "${comp.name}" (${comp.code})? This will permanently remove its accounts.`;
+    const confirmMsg = `Are you sure you want to delete company "${comp.name}" (${comp.code})? It will be marked as DELETED and hidden from active operations, while preserving historical records in the database.`;
     if (!window.confirm ? !confirm(confirmMsg) : !window.confirm(confirmMsg)) return;
 
     try {
       setActionLoading(true);
       const res = await api.delete(`/super-admin/companies/${comp.id}`);
+      // Optimistically remove company immediately from the view
+      setCompanies((prev) => prev.filter((c) => c.id !== comp.id));
       alert(res.data?.message || `Company "${comp.name}" (${comp.code}) deleted successfully.`);
-      loadCompanies();
+      await loadCompanies();
     } catch (err: any) {
       alert(err.response?.data?.message || err.message || 'Failed to delete company');
     } finally {
@@ -1359,6 +1361,13 @@ function CompaniesTab({ user }: { user: any }) {
           value={search}
           onChangeText={setSearch}
         />
+        <TouchableOpacity
+          style={[styles.addBtn, { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1' }]}
+          onPress={() => loadCompanies()}
+          disabled={loading}
+        >
+          <Text style={[styles.addBtnText, { color: '#334155' }]}>🔄 Refresh</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddModal(true)}>
           <Text style={styles.addBtnText}>+ CREATE COMPANY</Text>
         </TouchableOpacity>
@@ -1382,7 +1391,7 @@ function CompaniesTab({ user }: { user: any }) {
         ))}
       </View>
 
-      {loading ? (
+      {loading && companies.length === 0 ? (
         <ActivityIndicator size="small" color="#0A2540" />
       ) : companies.length === 0 ? (
         <View style={styles.emptyBox}>
@@ -1390,7 +1399,17 @@ function CompaniesTab({ user }: { user: any }) {
           <Text style={styles.emptySubText}>Tap "+ CREATE COMPANY" to onboard a new chit fund company.</Text>
         </View>
       ) : (
-        <ScrollView style={{ flex: 1 }}>
+        <ScrollView
+          style={{ flex: 1 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={loadCompanies}
+              colors={['#0A2540']}
+              tintColor="#0A2540"
+            />
+          }
+        >
           <View style={styles.cardsGrid}>
             {companies.map((c) => (
               <View key={c.id} style={styles.companyCard}>

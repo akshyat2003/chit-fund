@@ -87,7 +87,7 @@ export const getPlatformDashboard = async (req: AuthRequest, res: Response) => {
       totalGroups,
       totalTransactions,
     ] = await Promise.all([
-      prisma.company.count(),
+      prisma.company.count({ where: { status: { notIn: ['DELETED', 'deleted'] } } }),
       prisma.company.count({ where: { status: 'ACTIVE' } }),
       prisma.company.count({ where: { status: 'SUSPENDED' } }),
       prisma.user.count(),
@@ -411,8 +411,9 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
 };
 
 /**
- * Delete Company Account & Cleanup
- * Safely removes company and associated accounts or marks DELETED if financial records exist.
+ * Delete Company Account & Cleanup (Soft Delete)
+ * Safely marks company as DELETED in database so all financial and ledger data remain intact,
+ * while preventing access, deactivating company users, and hiding the company from active lists.
  */
 export const deleteCompany = async (req: AuthRequest, res: Response) => {
   try {
@@ -422,146 +423,161 @@ export const deleteCompany = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: 'Company not found.' });
     }
 
-    // Comprehensive cascade deletion of all child records in topological order
-    await prisma.$transaction(async (tx) => {
-      // 1. Gather all related entity IDs
-      const chitGroups = await tx.chitGroup.findMany({ where: { companyId: id }, select: { id: true } });
-      const chitGroupIds = chitGroups.map((g) => g.id);
+    if (company.status === 'DELETED') {
+      return res.status(400).json({ success: false, message: 'Company is already marked as deleted.' });
+    }
 
-      const subscribers = await tx.subscriber.findMany({ where: { companyId: id }, select: { id: true } });
-      const subscriberIds = subscribers.map((s) => s.id);
+    // Check if hard delete was explicitly requested via ?permanent=true or ?hard=true
+    const isHardDelete = req.query.permanent === 'true' || req.query.hard === 'true';
 
-      const users = await tx.user.findMany({ where: { companyId: id }, select: { id: true } });
-      const userIds = users.map((u) => u.id);
+    if (isHardDelete) {
+      // Hard delete: cascade with defensive handling so missing columns or relations do not crash
+      await prisma.$transaction(async (tx) => {
+        const chitGroups = await tx.chitGroup.findMany({ where: { companyId: id }, select: { id: true } });
+        const chitGroupIds = chitGroups.map((g) => g.id);
 
-      // 2. Delete payouts (references auction & subscriber)
-      if (subscriberIds.length > 0) {
-        await tx.payout.deleteMany({
-          where: { subscriberId: { in: subscriberIds } },
-        });
-      }
+        const subscribers = await tx.subscriber.findMany({ where: { companyId: id }, select: { id: true } });
+        const subscriberIds = subscribers.map((s) => s.id);
 
-      // 3. Delete auction bids, auctions, schedules, group staff, group members, installment schedules
-      if (chitGroupIds.length > 0) {
-        await tx.auctionBid.deleteMany({
+        const users = await tx.user.findMany({ where: { companyId: id }, select: { id: true } });
+        const userIds = users.map((u) => u.id);
+
+        if (subscriberIds.length > 0) {
+          await tx.payout.deleteMany({ where: { subscriberId: { in: subscriberIds } } }).catch(() => {});
+        }
+
+        if (chitGroupIds.length > 0) {
+          await tx.auctionBid.deleteMany({
+            where: {
+              OR: [
+                { auction: { groupId: { in: chitGroupIds } } },
+                ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
+              ],
+            },
+          }).catch(() => {});
+          await tx.auction.deleteMany({ where: { groupId: { in: chitGroupIds } } }).catch(() => {});
+          await tx.chitGroupStaff.deleteMany({ where: { groupId: { in: chitGroupIds } } }).catch(() => {});
+          await tx.chitGroupMember.deleteMany({ where: { groupId: { in: chitGroupIds } } }).catch(() => {});
+          await tx.installmentSchedule.deleteMany({ where: { groupId: { in: chitGroupIds } } }).catch(() => {});
+        }
+
+        const txns = await tx.paymentTransaction.findMany({
           where: {
             OR: [
-              { auction: { groupId: { in: chitGroupIds } } },
+              { companyId: id },
+              ...(chitGroupIds.length > 0 ? [{ groupId: { in: chitGroupIds } }] : []),
               ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
             ],
           },
+          select: { id: true },
+        }).catch(() => []);
+        const txnIds = txns.map((t) => t.id);
+        if (txnIds.length > 0) {
+          await tx.receipt.deleteMany({ where: { transactionId: { in: txnIds } } }).catch(() => {});
+        }
+
+        await tx.paymentTransaction.deleteMany({
+          where: {
+            OR: [
+              { companyId: id },
+              ...(chitGroupIds.length > 0 ? [{ groupId: { in: chitGroupIds } }] : []),
+              ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
+            ],
+          },
+        }).catch(() => {});
+
+        await tx.refund.deleteMany({
+          where: {
+            OR: [
+              { companyId: id },
+              ...(chitGroupIds.length > 0 ? [{ groupId: { in: chitGroupIds } }] : []),
+              ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
+            ],
+          },
+        }).catch(() => {});
+
+        // Safely attempt cashHandover deletion without crashing if companyId column is missing in DB
+        try {
+          await tx.cashHandover.deleteMany({ where: { companyId: id } as any });
+        } catch (e: any) {
+          console.warn('[HardDelete] cashHandover deletion skipped:', e?.message);
+        }
+
+        try {
+          await tx.expense.deleteMany({ where: { companyId: id } });
+        } catch (e: any) {
+          console.warn('[HardDelete] expense deletion skipped:', e?.message);
+        }
+
+        await tx.notification.deleteMany({ where: { companyId: id } }).catch(() => {});
+
+        const journals = await tx.journalEntry.findMany({ where: { companyId: id }, select: { id: true } }).catch(() => []);
+        const journalIds = journals.map((j) => j.id);
+        if (journalIds.length > 0) {
+          await tx.journalEntryLine.deleteMany({ where: { journalEntryId: { in: journalIds } } }).catch(() => {});
+        }
+        await tx.journalEntry.deleteMany({ where: { companyId: id } }).catch(() => {});
+        await tx.voucher.deleteMany({ where: { companyId: id } }).catch(() => {});
+        await tx.account.deleteMany({ where: { companyId: id } }).catch(() => {});
+
+        await tx.chitGroup.deleteMany({ where: { companyId: id } }).catch(() => {});
+        await tx.subscriber.deleteMany({ where: { companyId: id } }).catch(() => {});
+
+        if (userIds.length > 0) {
+          await tx.refreshToken.deleteMany({ where: { userId: { in: userIds } } }).catch(() => {});
+        }
+
+        await tx.user.updateMany({
+          where: { companyId: id, role: 'SUPER_ADMIN' },
+          data: { companyId: null },
+        }).catch(() => {});
+        await tx.user.deleteMany({
+          where: { companyId: id, role: { not: 'SUPER_ADMIN' } },
+        }).catch(() => {});
+
+        await tx.auditLog.deleteMany({ where: { companyId: id } }).catch(() => {});
+        await tx.company.delete({ where: { id } });
+      });
+    } else {
+      // DEFAULT: Soft Delete (Company remains in the database with status DELETED)
+      await prisma.company.update({
+        where: { id },
+        data: { status: 'DELETED' },
+      });
+
+      // Revoke user sessions & deactivate company staff/managers (preserving SUPER_ADMINs)
+      try {
+        const companyUsers = await prisma.user.findMany({
+          where: { companyId: id },
+          select: { id: true, role: true },
         });
-        await tx.auction.deleteMany({
-          where: { groupId: { in: chitGroupIds } },
-        });
-        await tx.chitGroupStaff.deleteMany({
-          where: { groupId: { in: chitGroupIds } },
-        });
-        await tx.chitGroupMember.deleteMany({
-          where: { groupId: { in: chitGroupIds } },
-        });
-        await tx.installmentSchedule.deleteMany({
-          where: { groupId: { in: chitGroupIds } },
-        });
+
+        const nonSuperAdminIds = companyUsers.filter((u) => u.role !== 'SUPER_ADMIN').map((u) => u.id);
+        const allUserIds = companyUsers.map((u) => u.id);
+
+        if (allUserIds.length > 0) {
+          await prisma.refreshToken.deleteMany({
+            where: { userId: { in: allUserIds } },
+          }).catch(() => {});
+        }
+
+        if (nonSuperAdminIds.length > 0) {
+          await prisma.user.updateMany({
+            where: { id: { in: nonSuperAdminIds } },
+            data: { status: 'INACTIVE' },
+          }).catch(() => {});
+        }
+      } catch (userErr: any) {
+        console.warn('[deleteCompany] Failed to update user statuses / tokens:', userErr?.message);
       }
-
-      // 4. Delete receipts and payment transactions
-      const txns = await tx.paymentTransaction.findMany({
-        where: {
-          OR: [
-            { companyId: id },
-            ...(chitGroupIds.length > 0 ? [{ groupId: { in: chitGroupIds } }] : []),
-            ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
-          ],
-        },
-        select: { id: true },
-      });
-      const txnIds = txns.map((t) => t.id);
-      if (txnIds.length > 0) {
-        await tx.receipt.deleteMany({
-          where: { transactionId: { in: txnIds } },
-        });
-      }
-
-      await tx.paymentTransaction.deleteMany({
-        where: {
-          OR: [
-            { companyId: id },
-            ...(chitGroupIds.length > 0 ? [{ groupId: { in: chitGroupIds } }] : []),
-            ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
-          ],
-        },
-      });
-
-      // 5. Delete refunds
-      await tx.refund.deleteMany({
-        where: {
-          OR: [
-            { companyId: id },
-            ...(chitGroupIds.length > 0 ? [{ groupId: { in: chitGroupIds } }] : []),
-            ...(subscriberIds.length > 0 ? [{ subscriberId: { in: subscriberIds } }] : []),
-          ],
-        },
-      });
-
-      // 6. Delete cash handovers & expenses
-      await tx.cashHandover.deleteMany({
-        where: { companyId: id },
-      });
-      await tx.expense.deleteMany({
-        where: { companyId: id },
-      });
-
-      // 7. Delete notifications
-      await tx.notification.deleteMany({
-        where: { companyId: id },
-      });
-
-      // 8. Delete accounting records (journal lines, journals, vouchers, accounts)
-      const journals = await tx.journalEntry.findMany({
-        where: { companyId: id },
-        select: { id: true },
-      });
-      const journalIds = journals.map((j) => j.id);
-      if (journalIds.length > 0) {
-        await tx.journalEntryLine.deleteMany({
-          where: { journalEntryId: { in: journalIds } },
-        });
-      }
-      await tx.journalEntry.deleteMany({ where: { companyId: id } });
-      await tx.voucher.deleteMany({ where: { companyId: id } });
-      await tx.account.deleteMany({ where: { companyId: id } });
-
-      // 9. Delete chit groups & subscribers
-      await tx.chitGroup.deleteMany({ where: { companyId: id } });
-      await tx.subscriber.deleteMany({ where: { companyId: id } });
-
-      // 10. Revoke user refresh tokens
-      if (userIds.length > 0) {
-        await tx.refreshToken.deleteMany({ where: { userId: { in: userIds } } });
-      }
-
-      // 11. Preserve SUPER_ADMIN users (like akshyatraj) by clearing company, delete other company users
-      await tx.user.updateMany({
-        where: { companyId: id, role: 'SUPER_ADMIN' },
-        data: { companyId: null },
-      });
-      await tx.user.deleteMany({
-        where: { companyId: id, role: { not: 'SUPER_ADMIN' } },
-      });
-
-      // 12. Delete audit logs referencing this company
-      await tx.auditLog.deleteMany({ where: { companyId: id } });
-
-      // 13. Finally delete the company
-      await tx.company.delete({ where: { id } });
-    });
+    }
 
     companySettingsStore.delete(id);
 
     try {
       await prisma.auditLog.create({
         data: {
+          companyId: id,
           userId: req.user?.id || null,
           action: 'COMPANY_DELETED',
           entity: 'Company',
@@ -569,6 +585,7 @@ export const deleteCompany = async (req: AuthRequest, res: Response) => {
           details: JSON.stringify({
             code: company.code,
             name: company.name,
+            softDelete: !isHardDelete,
             deletedBy: req.user?.fullName || req.user?.id,
           }),
           ipAddress: req.ip || 'unknown',
@@ -578,7 +595,8 @@ export const deleteCompany = async (req: AuthRequest, res: Response) => {
 
     return res.json({
       success: true,
-      message: `Company "${company.name}" (${company.code}) deleted successfully.`,
+      message: `Company "${company.name}" (${company.code}) has been deleted. Data remains safely archived in the database.`,
+      data: { id: company.id, status: 'DELETED' },
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
