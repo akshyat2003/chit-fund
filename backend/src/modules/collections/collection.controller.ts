@@ -499,3 +499,40 @@ export const rejectTransaction = async (req: AuthRequest, res: Response) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
+
+/**
+ * Allow Staff or Manager to attach or update a payment screenshot/slip
+ */
+export const updateReceiptPhoto = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { receiptPhoto } = req.body;
+
+    if (!receiptPhoto) {
+      return res.status(400).json({ success: false, message: 'Receipt photo is required' });
+    }
+
+    const tx = await prisma.paymentTransaction.findUnique({ where: { id } });
+    if (!tx) {
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    }
+
+    // Role check: staff can only update their own transactions
+    if (req.user?.role === 'COLLECTION_STAFF' && tx.recordedByUserId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Forbidden: You can only update your own transactions' });
+    }
+
+    const updated = await prisma.paymentTransaction.update({
+      where: { id },
+      data: { receiptPhoto },
+    });
+
+    return res.json({
+      success: true,
+      message: 'Payment screenshot attached successfully',
+      data: updated,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};

@@ -24,7 +24,8 @@ app.use(cors({
   credentials: true,
 }));
 app.use(cookieParser());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 // In-memory buffer of recent API requests for Super Admin observability
 export interface ApiLogEntry {
   id: string;
@@ -138,6 +139,7 @@ router.post('/collections/:id/approve', authenticateToken, requireRoles('SUPER_A
 router.patch('/collections/:id/approve', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), collectionController.approveTransaction);
 router.post('/collections/:id/reject', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), collectionController.rejectTransaction);
 router.patch('/collections/:id/reject', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), collectionController.rejectTransaction);
+router.patch('/collections/:id/photo', authenticateToken, collectionController.updateReceiptPhoto);
 
 // Auction Routes (AC-23, AC-24, AC-25)
 router.post('/auctions/confirm', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), auctionController.createAuctionResult);

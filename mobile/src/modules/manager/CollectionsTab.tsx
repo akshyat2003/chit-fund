@@ -10,7 +10,9 @@ import {
   Image,
   StyleSheet,
   Alert,
+  Platform,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { api } from '../../services/api';
 import { mStyles } from './commonStyles';
 
@@ -202,25 +204,167 @@ export function CollectionsTab({ user }: { user: any }) {
     }
   };
 
-  // Photo file picker using HTML input
-  const handlePickReceiptImage = () => {
+  // Compress raw base64 / dataUrl via Canvas on Web, or return as is
+  const processImageUri = (dataUrl: string): Promise<string> => {
+    return new Promise((resolve) => {
+      if (typeof document !== 'undefined' && dataUrl.startsWith('data:image')) {
+        try {
+          const img = document.createElement('img');
+          img.onload = () => {
+            const maxDim = 1200;
+            let w = img.width;
+            let h = img.height;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, w, h);
+              resolve(canvas.toDataURL('image/jpeg', 0.75));
+            } else {
+              resolve(dataUrl);
+            }
+          };
+          img.onerror = () => resolve(dataUrl);
+          img.src = dataUrl;
+          return;
+        } catch (e) {
+          resolve(dataUrl);
+          return;
+        }
+      }
+      resolve(dataUrl);
+    });
+  };
+
+  // 1. Pick screenshot from phone gallery or computer files
+  const handlePickReceiptImage = async (targetTx?: any) => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync().catch(() => null);
+      if (perm && !perm.granted && perm.canAskAgain) {
+        Alert.alert('Permission Required', 'Gallery access is needed to select a payment screenshot.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        let photoUri = '';
+        if (asset.base64) {
+          const mime = asset.mimeType || 'image/jpeg';
+          photoUri = `data:${mime};base64,${asset.base64}`;
+        } else if (asset.uri) {
+          photoUri = asset.uri;
+        }
+
+        if (photoUri) {
+          const processed = await processImageUri(photoUri);
+          if (targetTx) {
+            await savePhotoToTransaction(targetTx.id, processed);
+          } else {
+            setReceiptPhoto(processed);
+          }
+          return;
+        }
+      }
+    } catch (pickerErr) {
+      console.warn('ImagePicker fallback to browser file input:', pickerErr);
+    }
+
+    // Web DOM fallback
     if (typeof document !== 'undefined') {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
-      input.onchange = (e: any) => {
+      input.onchange = async (e: any) => {
         const file = e.target.files?.[0];
         if (file) {
           const reader = new FileReader();
-          reader.onload = (uploadEvent: any) => {
-            setReceiptPhoto(uploadEvent.target.result as string);
+          reader.onload = async (uploadEvent: any) => {
+            const rawData = uploadEvent.target.result as string;
+            const processed = await processImageUri(rawData);
+            if (targetTx) {
+              await savePhotoToTransaction(targetTx.id, processed);
+            } else {
+              setReceiptPhoto(processed);
+            }
           };
           reader.readAsDataURL(file);
         }
       };
       input.click();
     } else {
-      alert('File upload is not supported in this environment.');
+      Alert.alert('Notice', 'Unable to open file picker.');
+    }
+  };
+
+  // 2. Take live photo with camera
+  const handleTakePhoto = async (targetTx?: any) => {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync().catch(() => null);
+      if (perm && !perm.granted && perm.canAskAgain) {
+        Alert.alert('Permission Required', 'Camera permission is required to capture payment receipt.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: false,
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        let photoUri = '';
+        if (asset.base64) {
+          const mime = asset.mimeType || 'image/jpeg';
+          photoUri = `data:${mime};base64,${asset.base64}`;
+        } else if (asset.uri) {
+          photoUri = asset.uri;
+        }
+
+        if (photoUri) {
+          const processed = await processImageUri(photoUri);
+          if (targetTx) {
+            await savePhotoToTransaction(targetTx.id, processed);
+          } else {
+            setReceiptPhoto(processed);
+          }
+        }
+      }
+    } catch (e: any) {
+      Alert.alert('Camera Error', e?.message || 'Could not launch camera');
+    }
+  };
+
+  // Save screenshot to an existing transaction
+  const savePhotoToTransaction = async (txId: string, photo: string) => {
+    try {
+      setLoading(true);
+      const res = await api.patch(`/collections/${txId}/photo`, { receiptPhoto: photo });
+      if (res.data.success) {
+        Alert.alert('Success', 'Payment screenshot attached to receipt successfully!');
+        fetchData();
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e.response?.data?.message || 'Failed to attach screenshot to transaction');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -856,10 +1000,10 @@ export function CollectionsTab({ user }: { user: any }) {
             </View>
           )}
 
-          {/* --- DIGITAL REFERENCE & PROOF (FOR UPI, BANK, SPLIT) --- */}
+          {/* --- DIGITAL REFERENCE (FOR UPI, BANK, SPLIT) --- */}
           {paymentMode !== 'CASH' && (
             <View style={localStyles.digitalBox}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                 <Text style={{ fontSize: 16 }}>ℹ️</Text>
                 <Text style={{ fontSize: 13, fontWeight: '800', color: '#1E40AF' }}>
                   Digital Transfer Details (Required for Verification & Audit)
@@ -882,56 +1026,70 @@ export function CollectionsTab({ user }: { user: any }) {
                   }}
                 />
               </View>
-
-              <View>
-                <Text style={[mStyles.label, { color: '#1E3A8A' }]}>
-                  Photo of Payment Receipt / Transfer Slip Proof (Optional)
-                </Text>
-
-                <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <TouchableOpacity
-                    style={[mStyles.primaryBtn, { backgroundColor: '#2563EB' }]}
-                    onPress={handlePickReceiptImage}
-                  >
-                    <Text style={mStyles.primaryBtnText}>📷 Upload Receipt Screenshot</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[mStyles.secondaryBtn, { backgroundColor: '#FFF', borderColor: '#93C5FD' }]}
-                    onPress={handleAttachDemoReceipt}
-                  >
-                    <Text style={[mStyles.secondaryBtnText, { color: '#1D4ED8' }]}>
-                      ⚡ Attach Sample Receipt Slip
-                    </Text>
-                  </TouchableOpacity>
-
-                  {receiptPhoto ? (
-                    <TouchableOpacity
-                      onPress={() => setShowPhotoModal(true)}
-                      style={localStyles.photoProofBadge}
-                    >
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#166534' }}>
-                        ✓ Photo Attached (Click to Preview)
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-
-                {receiptPhoto ? (
-                  <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Image
-                      source={{ uri: receiptPhoto }}
-                      style={{ width: 80, height: 60, borderRadius: 6, borderWidth: 1, borderColor: '#CBD5E1' }}
-                      resizeMode="cover"
-                    />
-                    <TouchableOpacity onPress={() => setReceiptPhoto('')}>
-                      <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '700' }}>✕ Remove Photo</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-              </View>
             </View>
           )}
+
+          {/* --- PHOTO PROOF / PAYMENT SCREENSHOT (AVAILABLE FOR ALL PAYMENT MODES) --- */}
+          <View style={[localStyles.digitalBox, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', marginTop: 12 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Text style={{ fontSize: 16 }}>📷</Text>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#166534' }}>
+                Payment Screenshot / Voucher Proof (Optional)
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <TouchableOpacity
+                style={[mStyles.primaryBtn, { backgroundColor: '#2563EB', paddingHorizontal: 12 }]}
+                onPress={() => handlePickReceiptImage()}
+              >
+                <Text style={mStyles.primaryBtnText}>📁 Gallery / Screenshot</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[mStyles.primaryBtn, { backgroundColor: '#059669', paddingHorizontal: 12 }]}
+                onPress={() => handleTakePhoto()}
+              >
+                <Text style={mStyles.primaryBtnText}>📸 Take Photo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[mStyles.secondaryBtn, { backgroundColor: '#FFF', borderColor: '#86EFAC', paddingHorizontal: 10 }]}
+                onPress={handleAttachDemoReceipt}
+              >
+                <Text style={[mStyles.secondaryBtnText, { color: '#166534' }]}>
+                  ⚡ Sample Slip
+                </Text>
+              </TouchableOpacity>
+
+              {receiptPhoto ? (
+                <TouchableOpacity
+                  onPress={() => setShowPhotoModal(true)}
+                  style={localStyles.photoProofBadge}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#166534' }}>
+                    ✓ Photo Attached (Click to Preview)
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {receiptPhoto ? (
+              <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Image
+                  source={{ uri: receiptPhoto }}
+                  style={{ width: 80, height: 60, borderRadius: 6, borderWidth: 1, borderColor: '#CBD5E1' }}
+                  resizeMode="cover"
+                />
+                <View style={{ gap: 4 }}>
+                  <Text style={{ fontSize: 12, color: '#15803D', fontWeight: '700' }}>✓ Screenshot attached</Text>
+                  <TouchableOpacity onPress={() => setReceiptPhoto('')}>
+                    <Text style={{ fontSize: 11, color: '#DC2626', fontWeight: '700' }}>✕ Remove Photo</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+          </View>
 
           {/* 5. MANDATORY REMARK SECTION */}
           <View style={localStyles.remarkContainer}>
@@ -1319,8 +1477,8 @@ export function CollectionsTab({ user }: { user: any }) {
                         </TouchableOpacity>
                       )}
 
-                      {/* Photo preview button if attached */}
-                      {tx.receiptPhoto && (
+                      {/* Photo preview button if attached, or attach screenshot button */}
+                      {tx.receiptPhoto ? (
                         <TouchableOpacity
                           style={{ backgroundColor: '#E0F2FE', paddingVertical: 5, paddingHorizontal: 8, borderRadius: 6 }}
                           onPress={() => {
@@ -1329,6 +1487,13 @@ export function CollectionsTab({ user }: { user: any }) {
                           }}
                         >
                           <Text style={{ fontSize: 10, fontWeight: '800', color: '#0284C7' }}>📷 Slip</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#FEF3C7', paddingVertical: 5, paddingHorizontal: 8, borderRadius: 6, borderWidth: 1, borderColor: '#FCD34D' }}
+                          onPress={() => handlePickReceiptImage(tx)}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#B45309' }}>📷 + Slip</Text>
                         </TouchableOpacity>
                       )}
                     </View>
