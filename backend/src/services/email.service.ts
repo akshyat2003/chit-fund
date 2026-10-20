@@ -1,15 +1,16 @@
 import 'dotenv/config';
 import nodemailer from 'nodemailer';
 
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.mail.yahoo.com';
+const SMTP_USER = process.env.SMTP_USER || 'akshatrajpati@gmail.com';
+const SMTP_PASS = (process.env.SMTP_PASS || 'rxdciwgakdupujze').replace(/\s+/g, '');
+const SMTP_HOST = process.env.SMTP_HOST || (SMTP_USER.includes('gmail.com') ? 'smtp.gmail.com' : 'smtp.mail.yahoo.com');
 const SMTP_PORT = Number(process.env.SMTP_PORT) || 465;
 const SMTP_SECURE = process.env.SMTP_SECURE !== 'false';
-const SMTP_USER = process.env.SMTP_USER || 'akshyatraj@yahoo.com';
-const SMTP_PASS = process.env.SMTP_PASS || 'pbdxbsbvobseaxpv';
-const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
+const SMTP_FROM = process.env.SMTP_FROM || `"ChitKart Platform" <${SMTP_USER}>`;
 const DEFAULT_PORTAL_URL = process.env.PORTAL_URL || 'https://chit-fund-mobile.vercel.app';
 
 export const transporter = nodemailer.createTransport({
+  service: SMTP_USER.includes('gmail.com') ? 'gmail' : undefined,
   host: SMTP_HOST,
   port: SMTP_PORT,
   secure: SMTP_SECURE,
@@ -20,7 +21,7 @@ export const transporter = nodemailer.createTransport({
   tls: {
     rejectUnauthorized: false,
   },
-  connectionTimeout: 10000,
+  connectionTimeout: 15000,
 });
 
 // Verify email configuration on startup (non-blocking)

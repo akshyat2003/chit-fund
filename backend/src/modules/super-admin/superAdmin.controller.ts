@@ -8,7 +8,7 @@ import { sendAdminCredentialsEmail } from '../../services/email.service.js';
 // Global In-Memory Platform Configuration & Template Store (FR-SA-011, FR-SA-015)
 let platformSettings = {
   platformName: 'ChitKart Management Platform',
-  supportEmail: 'akshyatraj@yahoo.com',
+  supportEmail: 'akshatrajpati@gmail.com',
   maintenanceMode: false,
   saasModeEnabled: true,
   lastBackupAt: new Date(Date.now() - 3600000).toISOString(),
@@ -116,7 +116,7 @@ export const getPlatformDashboard = async (req: AuthRequest, res: Response) => {
           database: 'CONNECTED',
           dbLatency: `${dbLatencyMs}ms`,
           pooler: 'IPv4 Supavisor Active (aws-0-ap-northeast-1)',
-          emailService: 'ONLINE (Yahoo Mail SMTP)',
+          emailService: 'ONLINE (Gmail SMTP)',
           failedJobsCount: 0,
           operationalAlerts: suspendedCompanies > 0 ? [`${suspendedCompanies} company account(s) currently suspended.`] : [],
         },
@@ -1238,9 +1238,9 @@ let integrationsStore = {
     webhookConfigured: true,
   },
   emailService: {
-    provider: 'Yahoo Mail SMTP',
+    provider: 'Gmail SMTP',
     status: 'ACTIVE',
-    user: 'akshyatraj@yahoo.com',
+    user: 'akshatrajpati@gmail.com',
     authType: 'App Password Verified',
   },
   smsGateway: {
