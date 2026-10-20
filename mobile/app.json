@@ -15,7 +15,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.apexchits.management",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "This app requires access to the camera to capture payment receipt photos.",
+        "NSPhotoLibraryUsageDescription": "This app requires access to the photo library to select payment receipt screenshots."
       }
     },
     "android": {
@@ -26,7 +28,11 @@
         "backgroundColor": "#0A2540"
       },
       "permissions": [
-        "INTERNET"
+        "INTERNET",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES"
       ]
     },
     "web": {
@@ -44,6 +50,13 @@
     "jsEngine": "hermes",
     "plugins": [
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to allow you to upload payment receipts and screenshots.",
+          "cameraPermission": "The app accesses your camera to capture payment receipt photos."
+        }
+      ],
       [
         "expo-build-properties",
         {

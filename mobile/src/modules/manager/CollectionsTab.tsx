@@ -268,30 +268,58 @@ export function CollectionsTab({ user }: { user: any }) {
     });
   };
 
+  // Convert local file URI to Base64 Data URL reliably
+  const uriToDataUrl = async (uri: string): Promise<string> => {
+    if (!uri) return '';
+    if (uri.startsWith('data:image')) return uri;
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve((reader.result as string) || uri);
+        };
+        reader.onerror = () => resolve(uri);
+        reader.readAsDataURL(blob);
+      });
+    } catch (err) {
+      return uri;
+    }
+  };
+
   // 1. Pick screenshot from phone gallery or computer files
   const handlePickReceiptImage = async (targetTx?: any) => {
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync().catch(() => null);
-      if (perm && !perm.granted && perm.canAskAgain) {
-        Alert.alert('Permission Required', 'Gallery access is needed to select a payment screenshot.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
+      // Direct launchImageLibraryAsync handles native picker on Android & iOS
+      let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
-        quality: 0.7,
+        quality: 0.5,
         base64: true,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
+      // If permissions needed on older Android/iOS, explicitly request permission and retry
+      if (!result) {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (perm.granted) {
+          result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.5,
+            base64: true,
+          });
+        }
+      }
+
+      if (result && !result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         let photoUri = '';
         if (asset.base64) {
           const mime = asset.mimeType || 'image/jpeg';
           photoUri = `data:${mime};base64,${asset.base64}`;
         } else if (asset.uri) {
-          photoUri = asset.uri;
+          photoUri = await uriToDataUrl(asset.uri);
         }
 
         if (photoUri) {
@@ -300,53 +328,61 @@ export function CollectionsTab({ user }: { user: any }) {
             await savePhotoToTransaction(targetTx.id, processed);
           } else {
             setReceiptPhoto(processed);
+            Alert.alert('Photo Attached', 'Payment screenshot selected successfully!');
           }
           return;
         }
       }
     } catch (pickerErr) {
-      console.warn('ImagePicker fallback to browser file input:', pickerErr);
+      console.warn('ImagePicker error, trying DOM fallback:', pickerErr);
     }
 
     // Web DOM fallback
     if (typeof document !== 'undefined') {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.onchange = async (e: any) => {
-        const file = e.target.files?.[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = async (uploadEvent: any) => {
-            const rawData = uploadEvent.target.result as string;
-            const processed = await processImageUri(rawData);
-            if (targetTx) {
-              await savePhotoToTransaction(targetTx.id, processed);
-            } else {
-              setReceiptPhoto(processed);
-            }
-          };
-          reader.readAsDataURL(file);
-        }
-      };
-      input.click();
-    } else {
-      Alert.alert('Notice', 'Unable to open file picker.');
+      try {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = async (e: any) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = async (uploadEvent: any) => {
+              const rawData = uploadEvent.target.result as string;
+              const processed = await processImageUri(rawData);
+              if (targetTx) {
+                await savePhotoToTransaction(targetTx.id, processed);
+              } else {
+                setReceiptPhoto(processed);
+                Alert.alert('Photo Attached', 'Payment screenshot selected successfully!');
+              }
+            };
+            reader.readAsDataURL(file);
+          }
+        };
+        input.click();
+        return;
+      } catch (e) {
+        console.warn('DOM file input error:', e);
+      }
     }
   };
 
   // 2. Take live photo with camera
   const handleTakePhoto = async (targetTx?: any) => {
     try {
-      const perm = await ImagePicker.requestCameraPermissionsAsync().catch(() => null);
-      if (perm && !perm.granted && perm.canAskAgain) {
-        Alert.alert('Permission Required', 'Camera permission is required to capture payment receipt.');
-        return;
+      const { status } = await ImagePicker.getCameraPermissionsAsync();
+      if (status !== 'granted') {
+        const req = await ImagePicker.requestCameraPermissionsAsync();
+        if (req.status !== 'granted') {
+          Alert.alert('Camera Permission Required', 'Please enable camera permission in your phone settings to capture receipt photos.');
+          return;
+        }
       }
 
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: false,
-        quality: 0.7,
+        quality: 0.5,
         base64: true,
       });
 
@@ -357,7 +393,7 @@ export function CollectionsTab({ user }: { user: any }) {
           const mime = asset.mimeType || 'image/jpeg';
           photoUri = `data:${mime};base64,${asset.base64}`;
         } else if (asset.uri) {
-          photoUri = asset.uri;
+          photoUri = await uriToDataUrl(asset.uri);
         }
 
         if (photoUri) {
@@ -366,10 +402,12 @@ export function CollectionsTab({ user }: { user: any }) {
             await savePhotoToTransaction(targetTx.id, processed);
           } else {
             setReceiptPhoto(processed);
+            Alert.alert('Photo Attached', 'Receipt photo captured successfully!');
           }
         }
       }
     } catch (e: any) {
+      console.warn('Camera error:', e);
       Alert.alert('Camera Error', e?.message || 'Could not launch camera');
     }
   };
@@ -388,11 +426,6 @@ export function CollectionsTab({ user }: { user: any }) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleAttachDemoReceipt = () => {
-    const demoSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="250" viewBox="0 0 400 250"><rect width="100%" height="100%" fill="%230F172A" rx="10"/><rect x="10" y="10" width="380" height="230" fill="%231E293B" rx="8"/><text x="30" y="45" font-family="sans-serif" font-size="16" font-weight="bold" fill="%23F59E0B">CHITKART PAYMENT PROOF</text><text x="30" y="80" font-family="sans-serif" font-size="13" fill="%23E2E8F0">Ref / UTR: ${externalRef || 'UPI-984729184'}</text><text x="30" y="110" font-family="sans-serif" font-size="13" fill="%23E2E8F0">Amount: ₹${amount || '5000'}</text><text x="30" y="140" font-family="sans-serif" font-size="13" fill="%23E2E8F0">Mode: ${paymentMode}</text><text x="30" y="170" font-family="sans-serif" font-size="13" fill="%2310B981">Status: SUCCESSFUL TRANSFER</text><text x="30" y="215" font-family="sans-serif" font-size="11" fill="%2394A3B8">Verified Electronic Voucher</text></svg>`;
-    setReceiptPhoto(demoSvg);
   };
 
   // --- RECORD PAYMENT ---
@@ -1075,14 +1108,6 @@ export function CollectionsTab({ user }: { user: any }) {
                 <Text style={mStyles.primaryBtnText}>📸 Take Photo</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[mStyles.secondaryBtn, { backgroundColor: '#FFF', borderColor: '#86EFAC', paddingHorizontal: 10 }]}
-                onPress={handleAttachDemoReceipt}
-              >
-                <Text style={[mStyles.secondaryBtnText, { color: '#166534' }]}>
-                  ⚡ Sample Slip
-                </Text>
-              </TouchableOpacity>
 
               {receiptPhoto ? (
                 <TouchableOpacity
