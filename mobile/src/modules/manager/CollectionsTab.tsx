@@ -1154,7 +1154,7 @@ export function CollectionsTab({ user }: { user: any }) {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
               <Text style={{ fontSize: 16 }}>📷</Text>
               <Text style={{ fontSize: 13, fontWeight: '800', color: '#166534' }}>
-                Payment Screenshot / Voucher Proof (Optional)
+                Payment Screenshot / Receipt Proof (Optional)
               </Text>
             </View>
 

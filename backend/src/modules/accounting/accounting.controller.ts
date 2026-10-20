@@ -462,7 +462,6 @@ export const listJournalEntries = async (req: AuthRequest, res: Response) => {
         lines: {
           include: { account: { select: { code: true, name: true, type: true } } },
         },
-        voucher: true,
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -635,62 +634,6 @@ export const createExpense = async (req: AuthRequest, res: Response) => {
   }
 };
 
-/**
- * AC-19: Voucher Management (Receipt, Payment, Journal Vouchers)
- */
-export const listVouchers = async (req: AuthRequest, res: Response) => {
-  try {
-    const companyId = req.user?.companyId || (req.query.companyId as string);
-    if (!companyId) return res.status(400).json({ success: false, message: 'Company ID required' });
-
-    const { voucherType, status } = req.query;
-    const where: any = { companyId };
-    if (voucherType && typeof voucherType === 'string' && voucherType !== 'ALL') where.voucherType = voucherType;
-    if (status && typeof status === 'string' && status !== 'ALL') where.status = status;
-
-    const vouchers = await prisma.voucher.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
-
-    return res.json({ success: true, data: vouchers });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-export const createVoucher = async (req: AuthRequest, res: Response) => {
-  try {
-    const companyId = req.user?.companyId || req.body.companyId;
-    const { voucherType, amount, narration, referenceNo, voucherDate } = req.body;
-
-    if (!companyId || !voucherType || !amount || !narration) {
-      return res.status(400).json({ success: false, message: 'companyId, voucherType, amount, and narration are required' });
-    }
-
-    const prefix = voucherType === 'RECEIPT' ? 'RV' : voucherType === 'PAYMENT' ? 'PV' : 'JV';
-    const voucherNo = `${prefix}-${Date.now().toString().slice(-6)}`;
-
-    const voucher = await prisma.voucher.create({
-      data: {
-        companyId,
-        voucherNo,
-        voucherType,
-        voucherDate: voucherDate || new Date().toISOString().split('T')[0],
-        amount: Number(amount),
-        narration: narration.trim(),
-        referenceNo: referenceNo || null,
-        status: 'POSTED',
-        createdByUserId: req.user?.id || null,
-      },
-    });
-
-    return res.status(201).json({ success: true, message: `Voucher ${voucherNo} created successfully`, data: voucher });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-};
 
 /**
  * AC-20: General Ledger (Account-wise postings, reference numbers, running balance)
@@ -1065,14 +1008,7 @@ export const getComprehensiveReports = async (req: AuthRequest, res: Response) =
       expenseCategoryMap[e.category] = (expenseCategoryMap[e.category] || 0) + e.amount;
     });
 
-    // 5. Vouchers
-    const vouchers = await prisma.voucher.findMany({
-      where: { companyId },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-
-    // 6. Accounts (Trial Balance snapshot)
+    // 5. Accounts (Trial Balance snapshot)
     const accounts = await prisma.account.findMany({
       where: { companyId, isActive: true },
       orderBy: { code: 'asc' },
@@ -1142,10 +1078,6 @@ export const getComprehensiveReports = async (req: AuthRequest, res: Response) =
           count: expenses.length,
           byCategory: expenseCategoryMap,
           recentExpenses: expenses.slice(0, 10),
-        },
-        voucherRegisterReport: {
-          totalVouchers: vouchers.length,
-          recentVouchers: vouchers.slice(0, 15),
         },
       },
     });

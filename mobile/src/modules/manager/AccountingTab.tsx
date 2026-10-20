@@ -20,7 +20,7 @@ export function AccountingTab({ user }: { user: any }) {
   const [cashbook, setCashbook] = useState<any>(null);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [reportsData, setReportsData] = useState<any>(null);
-  const [reportCategory, setReportCategory] = useState<'ALL' | 'COLLECTIONS' | 'MEMBERS' | 'AUCTIONS' | 'FINANCIALS' | 'TRIAL_BALANCE' | 'EXPENSES' | 'VOUCHERS'>('ALL');
+  const [reportCategory, setReportCategory] = useState<'ALL' | 'COLLECTIONS' | 'MEMBERS' | 'AUCTIONS' | 'FINANCIALS' | 'TRIAL_BALANCE' | 'EXPENSES'>('ALL');
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportModalTitle, setExportModalTitle] = useState('');
   const [exportModalSummary, setExportModalSummary] = useState('');
@@ -113,7 +113,7 @@ export function AccountingTab({ user }: { user: any }) {
         description: expDescription.trim() || undefined,
       });
       if (res.data.success) {
-        alert('Expense voucher recorded successfully');
+        alert('Expense recorded successfully');
         setShowAddExpenseModal(false);
         setExpAmount('');
         setExpVendor('');
@@ -728,7 +728,6 @@ export function AccountingTab({ user }: { user: any }) {
                       { key: 'FINANCIALS', label: '📈 P&L & Balance Sheet' },
                       { key: 'TRIAL_BALANCE', label: '📊 Trial Balance' },
                       { key: 'EXPENSES', label: '🧾 Expenses Register' },
-                      { key: 'VOUCHERS', label: '🎟️ Vouchers Register' },
                     ].map((cat) => (
                       <TouchableOpacity
                         key={cat.key}
@@ -1240,59 +1239,7 @@ export function AccountingTab({ user }: { user: any }) {
                 </View>
               )}
 
-              {/* REPORT 8: Financial Vouchers */}
-              {(reportCategory === 'ALL' || reportCategory === 'VOUCHERS') && (
-                <View style={mStyles.card}>
-                  <View style={mStyles.cardRow}>
-                    <View style={{ flex: 1, paddingRight: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Text style={mStyles.cardTitle}>🎟️ Financial Vouchers & Audit Trail Register</Text>
-                        <View style={[mStyles.badge, mStyles.badgeInfo]}>
-                          <Text style={[mStyles.badgeText, mStyles.badgeInfoText]}>REP-08</Text>
-                        </View>
-                      </View>
-                      <Text style={mStyles.cardSubtitle}>
-                        Sequential vouchers (Payment, Receipt, Journal, Contra) with immutable audit numbers
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={mStyles.secondaryBtn}
-                      onPress={() =>
-                        handleTriggerExport(
-                          'REP-08: Financial Vouchers Register',
-                          `Total Registered Vouchers: ${reportsData?.voucherRegisterReport?.totalVouchers || 0}.`
-                        )
-                      }
-                    >
-                      <Text style={mStyles.secondaryBtnText}>📥 Export</Text>
-                    </TouchableOpacity>
-                  </View>
 
-                  {reportsData?.voucherRegisterReport?.recentVouchers?.length > 0 && (
-                    <View style={mStyles.table}>
-                      <View style={mStyles.tableHeader}>
-                        <Text style={[mStyles.tableHeaderCell, { width: 110 }]}>Voucher #</Text>
-                        <Text style={[mStyles.tableHeaderCell, { flex: 1 }]}>Type / Narration</Text>
-                        <Text style={[mStyles.tableHeaderCell, { width: 100, textAlign: 'right' }]}>Amount (₹)</Text>
-                      </View>
-                      {reportsData.voucherRegisterReport.recentVouchers.slice(0, 6).map((v: any) => (
-                        <View key={v.id} style={mStyles.tableRow}>
-                          <Text style={[mStyles.tableCell, { width: 110, fontWeight: '700', color: '#0F2F52', fontSize: 11 }]}>
-                            {v.voucherNumber}
-                          </Text>
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{v.type}</Text>
-                            <Text style={{ fontSize: 11, color: '#64748B' }}>{v.narration || 'Standard entry'}</Text>
-                          </View>
-                          <Text style={[mStyles.tableCell, { width: 100, textAlign: 'right', fontWeight: '700', color: '#0F172A' }]}>
-                            ₹{v.amount?.toLocaleString()}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              )}
             </View>
           )}
         </>

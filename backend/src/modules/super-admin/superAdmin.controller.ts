@@ -517,7 +517,6 @@ export const deleteCompany = async (req: AuthRequest, res: Response) => {
           await tx.journalEntryLine.deleteMany({ where: { journalEntryId: { in: journalIds } } }).catch(() => {});
         }
         await tx.journalEntry.deleteMany({ where: { companyId: id } }).catch(() => {});
-        await tx.voucher.deleteMany({ where: { companyId: id } }).catch(() => {});
         await tx.account.deleteMany({ where: { companyId: id } }).catch(() => {});
 
         await tx.chitGroup.deleteMany({ where: { companyId: id } }).catch(() => {});

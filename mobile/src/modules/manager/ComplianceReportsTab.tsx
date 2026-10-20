@@ -447,7 +447,7 @@ export function ComplianceReportsTab({ user }: { user: any }) {
           <View style={mStyles.filterRow}>
             <TextInput
               style={mStyles.searchBar}
-              placeholder="Search audit trail by action, entity (e.g. Sanction, Payment, Voucher, Refund)..."
+              placeholder="Search audit trail by action, entity (e.g. Sanction, Payment, Filing, Refund)..."
               placeholderTextColor="#94A3B8"
               value={search}
               onChangeText={setSearch}

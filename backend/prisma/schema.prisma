@@ -31,7 +31,6 @@ model Company {
   transactions          PaymentTransaction[]
   auditLogs             AuditLog[]
   accounts              Account[]
-  vouchers              Voucher[]
   journalEntries        JournalEntry[]
   refunds               Refund[]
   handovers             CashHandover[]
@@ -112,6 +111,9 @@ model Subscriber {
   auctionBids    AuctionBid[]
   auctionsWon    Auction[] @relation("AuctionWinner")
   refunds        Refund[]
+
+  @@index([companyId, status])
+  @@index([companyId, phone])
 }
 
 model ChitGroup {
@@ -140,6 +142,8 @@ model ChitGroup {
   schedules            InstallmentSchedule[]
   transactions         PaymentTransaction[]
   auctions             Auction[]
+
+  @@index([companyId, status])
 }
 
 model ChitGroupStaff {
@@ -210,6 +214,11 @@ model PaymentTransaction {
   recordedBy          User       @relation("RecordedBy", fields: [recordedByUserId], references: [id])
 
   receipt             Receipt?
+
+  @@index([companyId, createdAt])
+  @@index([companyId, verificationStatus])
+  @@index([subscriberId])
+  @@index([groupId])
 }
 
 model Receipt {
@@ -295,6 +304,8 @@ model CashHandover {
   company              Company @relation(fields: [companyId], references: [id])
   staff                User   @relation("StaffHandover", fields: [staffUserId], references: [id])
   verifiedBy           User?  @relation("ManagerVerification", fields: [verifiedByUserId], references: [id])
+
+  @@index([companyId, handoverDate])
 }
 
 model Expense {
@@ -308,6 +319,8 @@ model Expense {
   createdAt    DateTime @default(now())
 
   company      Company  @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, expenseDate])
 }
 
 model AuditLog {
@@ -323,6 +336,8 @@ model AuditLog {
 
   company    Company? @relation(fields: [companyId], references: [id])
   user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([companyId, createdAt])
 }
 
 model RefreshToken {
@@ -353,28 +368,9 @@ model Account {
   @@unique([companyId, code])
 }
 
-model Voucher {
-  id              String    @id @default(uuid())
-  companyId       String
-  voucherNo       String    // e.g. "RV-2026-001", "PV-2026-001", "JV-2026-001"
-  voucherType     String    // RECEIPT, PAYMENT, JOURNAL, CONTRA
-  voucherDate     String    // YYYY-MM-DD
-  amount          Float
-  narration       String
-  referenceNo     String?
-  status          String    @default("POSTED") // DRAFT, POSTED, CANCELLED
-  createdByUserId String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  journalEntries  JournalEntry[]
-}
-
 model JournalEntry {
   id          String   @id @default(uuid())
   companyId   String
-  voucherId   String?
   entryNo     String   @unique
   date        String   // YYYY-MM-DD
   narration   String
@@ -383,7 +379,6 @@ model JournalEntry {
   createdAt   DateTime @default(now())
 
   company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  voucher     Voucher? @relation(fields: [voucherId], references: [id], onDelete: SetNull)
   lines       JournalEntryLine[]
 }
 
@@ -481,6 +476,8 @@ model KhataCustomer {
   business       Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
   createdBy      User?              @relation("CustomerCreator", fields: [createdById], references: [id], onDelete: SetNull)
   transactions   KhataTransaction[]
+
+  @@index([businessId])
 }
 
 model KhataTransaction {
@@ -498,4 +495,6 @@ model KhataTransaction {
 
   customer          KhataCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   recordedBy        User?         @relation("KhataTxRecorder", fields: [recordedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([customerId, transactionDate])
 }

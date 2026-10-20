@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
+import compression from 'compression';
 import { authenticateToken, requireRoles } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -19,6 +20,8 @@ import * as notificationController from './modules/notifications/notification.co
 import * as khataController from './modules/khata/khata.controller.js';
 
 const app = express();
+
+app.use(compression());
 
 app.use(cors({
   origin: (origin, callback) => callback(null, true),
@@ -162,8 +165,6 @@ router.get('/accounting/journal-entries', authenticateToken, requireRoles('SUPER
 router.post('/accounting/journal-entries', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.createJournalEntry);
 router.get('/accounting/expenses', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.listExpenses);
 router.post('/accounting/expenses', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.createExpense);
-router.get('/accounting/vouchers', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.listVouchers);
-router.post('/accounting/vouchers', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.createVoucher);
 router.get('/accounting/general-ledger/:accountId', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.getGeneralLedger);
 router.get('/accounting/trial-balance', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.getTrialBalance);
 router.get('/accounting/financial-statements', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.getFinancialStatements);
