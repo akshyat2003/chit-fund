@@ -28,10 +28,13 @@ export function AccountingTab({ user }: { user: any }) {
   const [trialBalance, setTrialBalance] = useState<any>(null);
   const [finStatements, setFinStatements] = useState<any>(null);
 
-  // Cash In / Cash Out Period Filters (Daily, Weekly, 15 Days, Month, Custom)
-  const [cashPeriod, setCashPeriod] = useState<'DAILY' | 'WEEKLY' | '15DAYS' | 'MONTH' | 'CUSTOM'>('DAILY');
+  // Cash In / Cash Out Period Filters (Daily, Exact Date, Weekly, 15 Days, Month, Custom)
+  const [cashPeriod, setCashPeriod] = useState<'DAILY' | 'EXACT_DATE' | 'WEEKLY' | '15DAYS' | 'MONTH' | 'CUSTOM'>('DAILY');
+  const [cashExactDate, setCashExactDate] = useState(new Date().toISOString().split('T')[0]);
   const [cashCustomStart, setCashCustomStart] = useState('');
   const [cashCustomEnd, setCashCustomEnd] = useState('');
+  const [cashSearch, setCashSearch] = useState('');
+  const [cashSubView, setCashSubView] = useState<'DAILY_ROSTER' | 'INFLOWS' | 'OUTFLOWS' | 'ALL'>('DAILY_ROSTER');
 
   // General Ledger State
   const [selectedGlAccountId, setSelectedGlAccountId] = useState('');
@@ -76,15 +79,18 @@ export function AccountingTab({ user }: { user: any }) {
   const [submitting, setSubmitting] = useState(false);
 
   const fetchCashbookData = async (
-    period: 'DAILY' | 'WEEKLY' | '15DAYS' | 'MONTH' | 'CUSTOM' = cashPeriod,
+    period: 'DAILY' | 'EXACT_DATE' | 'WEEKLY' | '15DAYS' | 'MONTH' | 'CUSTOM' = cashPeriod,
     start: string = cashCustomStart,
-    end: string = cashCustomEnd
+    end: string = cashCustomEnd,
+    exactDate: string = cashExactDate
   ) => {
     try {
       setLoading(true);
       let url = `/accounting/cashbook?period=${period}`;
-      if (period === 'CUSTOM' && start && end) {
-        url += `&startDate=${start}&endDate=${end}`;
+      if (period === 'EXACT_DATE' && exactDate) {
+        url += `&date=${exactDate.trim()}`;
+      } else if (period === 'CUSTOM' && start && end) {
+        url += `&startDate=${start.trim()}&endDate=${end.trim()}`;
       }
       const res = await api.get(url);
       if (res.data.success) setCashbook(res.data.data);
@@ -409,18 +415,19 @@ export function AccountingTab({ user }: { user: any }) {
           {/* --- 1. CASHBOOK & CASH IN / CASH OUT CENTER (AC-14) --- */}
           {subTab === 'CASHBOOK' && cashbook && (
             <View>
-              {/* Date Filter Bar: Daily, Weekly, 15 Days, Month, Custom */}
-              <View style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 8 }}>
-                  📅 Cash In & Out Reporting Period:
+              {/* Date Filter Bar: Daily, Exact Date, Weekly, 15 Days, Month, Custom */}
+              <View style={{ backgroundColor: '#F8FAFC', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', marginBottom: 14 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', marginBottom: 8 }}>
+                  📅 Cash In & Cash Out Reporting Period:
                 </Text>
                 <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                   {[
                     { key: 'DAILY', label: '📅 Today' },
-                    { key: 'WEEKLY', label: '📅 7 Days' },
+                    { key: 'EXACT_DATE', label: '🎯 Pick Date' },
+                    { key: 'WEEKLY', label: '📅 7 Days / Week' },
                     { key: '15DAYS', label: '📅 15 Days' },
                     { key: 'MONTH', label: '📅 This Month' },
-                    { key: 'CUSTOM', label: '📅 Custom Date' },
+                    { key: 'CUSTOM', label: '📅 Custom Range' },
                   ].map((p) => {
                     const isSelected = cashPeriod === p.key;
                     return (
@@ -429,12 +436,12 @@ export function AccountingTab({ user }: { user: any }) {
                         style={[
                           mStyles.chip,
                           isSelected && mStyles.chipActive,
-                          { paddingVertical: 6, paddingHorizontal: 12 },
+                          { paddingVertical: 7, paddingHorizontal: 12 },
                         ]}
                         onPress={() => {
                           const newPeriod = p.key as any;
                           setCashPeriod(newPeriod);
-                          if (newPeriod !== 'CUSTOM') {
+                          if (newPeriod !== 'CUSTOM' && newPeriod !== 'EXACT_DATE') {
                             fetchCashbookData(newPeriod);
                           }
                         }}
@@ -447,6 +454,33 @@ export function AccountingTab({ user }: { user: any }) {
                   })}
                 </View>
 
+                {/* Exact Date Picker Input if EXACT_DATE is active */}
+                {cashPeriod === 'EXACT_DATE' && (
+                  <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
+                    <Text style={[mStyles.label, { fontSize: 12 }]}>Select Date (YYYY-MM-DD):</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                      <TextInput
+                        style={[mStyles.input, { flex: 1, height: 40, fontSize: 13 }]}
+                        placeholder="2026-10-20"
+                        value={cashExactDate}
+                        onChangeText={setCashExactDate}
+                      />
+                      <TouchableOpacity
+                        style={[mStyles.primaryBtn, { height: 40, justifyContent: 'center' }]}
+                        onPress={() => {
+                          if (!cashExactDate.trim()) {
+                            alert('Please enter a date in YYYY-MM-DD format.');
+                            return;
+                          }
+                          fetchCashbookData('EXACT_DATE', '', '', cashExactDate.trim());
+                        }}
+                      >
+                        <Text style={[mStyles.primaryBtnText, { fontSize: 12 }]}>View Date</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
                 {/* Custom Date Inputs if CUSTOM is active */}
                 {cashPeriod === 'CUSTOM' && (
                   <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
@@ -454,7 +488,7 @@ export function AccountingTab({ user }: { user: any }) {
                       <View style={{ flex: 1 }}>
                         <Text style={[mStyles.label, { fontSize: 11 }]}>Start Date (YYYY-MM-DD)</Text>
                         <TextInput
-                          style={[mStyles.input, { height: 38, fontSize: 12 }]}
+                          style={[mStyles.input, { height: 40, fontSize: 12 }]}
                           placeholder="2026-10-01"
                           value={cashCustomStart}
                           onChangeText={setCashCustomStart}
@@ -463,14 +497,14 @@ export function AccountingTab({ user }: { user: any }) {
                       <View style={{ flex: 1 }}>
                         <Text style={[mStyles.label, { fontSize: 11 }]}>End Date (YYYY-MM-DD)</Text>
                         <TextInput
-                          style={[mStyles.input, { height: 38, fontSize: 12 }]}
+                          style={[mStyles.input, { height: 40, fontSize: 12 }]}
                           placeholder="2026-10-20"
                           value={cashCustomEnd}
                           onChangeText={setCashCustomEnd}
                         />
                       </View>
                       <TouchableOpacity
-                        style={[mStyles.primaryBtn, { marginTop: 14, height: 38, justifyContent: 'center' }]}
+                        style={[mStyles.primaryBtn, { marginTop: 14, height: 40, justifyContent: 'center' }]}
                         onPress={() => {
                           if (!cashCustomStart || !cashCustomEnd) {
                             alert('Please enter both Start Date and End Date in YYYY-MM-DD format.');
@@ -479,7 +513,7 @@ export function AccountingTab({ user }: { user: any }) {
                           fetchCashbookData('CUSTOM', cashCustomStart.trim(), cashCustomEnd.trim());
                         }}
                       >
-                        <Text style={[mStyles.primaryBtnText, { fontSize: 12 }]}>Apply</Text>
+                        <Text style={[mStyles.primaryBtnText, { fontSize: 12 }]}>Apply Range</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -491,7 +525,7 @@ export function AccountingTab({ user }: { user: any }) {
                 <View style={[mStyles.kpiCard, { borderColor: '#86EFAC', backgroundColor: '#F0FDF4' }]}>
                   <Text style={[mStyles.kpiLabel, { color: '#166534' }]}>Total Cash In (+)</Text>
                   <Text style={[mStyles.kpiVal, { color: '#16A34A', fontWeight: '900' }]}>
-                    +₹{(cashbook.summary?.totalCashIn ?? cashbook.summary?.totalCashReceipts ?? 0).toLocaleString()}
+                    +₹{(cashbook.summary?.totalCashIn ?? 0).toLocaleString()}
                   </Text>
                   <Text style={{ fontSize: 10, color: '#15803D', marginTop: 2 }}>
                     Cash: ₹{(cashbook.summary?.totalCashReceipts || 0).toLocaleString()} • Digital: ₹{(cashbook.summary?.totalDigitalReceipts || 0).toLocaleString()}
@@ -501,7 +535,7 @@ export function AccountingTab({ user }: { user: any }) {
                 <View style={[mStyles.kpiCard, { borderColor: '#FCA5A5', backgroundColor: '#FEF2F2' }]}>
                   <Text style={[mStyles.kpiLabel, { color: '#991B1B' }]}>Total Cash Out (-)</Text>
                   <Text style={[mStyles.kpiVal, { color: '#DC2626', fontWeight: '900' }]}>
-                    -₹{(cashbook.summary?.totalCashOut ?? cashbook.summary?.totalCashExpenses ?? 0).toLocaleString()}
+                    -₹{(cashbook.summary?.totalCashOut ?? 0).toLocaleString()}
                   </Text>
                   <Text style={{ fontSize: 10, color: '#B91C1C', marginTop: 2 }}>
                     Expenses, Payouts & Refunds
@@ -546,81 +580,292 @@ export function AccountingTab({ user }: { user: any }) {
                   📱 <Text style={{ fontWeight: '700' }}>Digital Collections:</Text> ₹{(cashbook.summary?.totalDigitalReceipts || 0).toLocaleString()}
                 </Text>
                 <Text style={{ fontSize: 11, color: '#334155' }}>
-                  📉 <Text style={{ fontWeight: '700' }}>Operating Expenses:</Text> ₹{(cashbook.summary?.totalExpenses || cashbook.summary?.totalCashExpenses || 0).toLocaleString()}
+                  📉 <Text style={{ fontWeight: '700' }}>Operating Expenses:</Text> ₹{(cashbook.summary?.totalExpenses || 0).toLocaleString()}
                 </Text>
                 <Text style={{ fontSize: 11, color: '#334155' }}>
-                  🏆 <Text style={{ fontWeight: '700' }}>Prize Payouts:</Text> ₹{(cashbook.summary?.totalPayouts || cashbook.summary?.totalCashPayouts || 0).toLocaleString()}
+                  🏆 <Text style={{ fontWeight: '700' }}>Prize Payouts:</Text> ₹{(cashbook.summary?.totalPayouts || 0).toLocaleString()}
                 </Text>
                 <Text style={{ fontSize: 11, color: '#334155' }}>
                   🔄 <Text style={{ fontWeight: '700' }}>Surrender Refunds:</Text> ₹{(cashbook.summary?.totalRefunds || 0).toLocaleString()}
                 </Text>
               </View>
 
-              <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 8, color: '#0F172A' }}>
-                Recent Cash Receipts & Inflows ({cashbook.cashReceipts?.length || 0})
-              </Text>
-              {(!cashbook.cashReceipts || cashbook.cashReceipts.length === 0) ? (
-                <View style={[mStyles.card, { padding: 20, alignItems: 'center', marginBottom: 16 }]}>
-                  <Text style={{ color: '#64748B', fontSize: 12 }}>No cash inflows recorded for this period.</Text>
-                </View>
-              ) : (
-                <View style={{ gap: 8, marginBottom: 20 }}>
-                  {cashbook.cashReceipts?.map((r: any) => (
-                    <View key={r.id} style={[mStyles.card, { padding: 12, marginBottom: 0 }]}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A' }}>
-                            {r.subscriber?.fullName || 'Member'} [{r.subscriber?.subscriberCode || 'SUB'}]
-                          </Text>
-                          <Text style={{ fontSize: 11, color: '#64748B' }}>
-                            Receipt: {r.receiptNo} • Group: {r.group?.groupCode || r.group?.name || 'Group'} • Mode: {r.paymentMode}
-                          </Text>
-                        </View>
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <Text style={{ fontSize: 15, fontWeight: '800', color: '#16A34A' }}>
-                            +₹{r.amount.toLocaleString()}
-                          </Text>
-                          <Text style={{ fontSize: 10, color: '#94A3B8' }}>
-                            {new Date(r.createdAt).toLocaleDateString()}
-                          </Text>
-                        </View>
-                      </View>
+              {/* View Selector Tabs: Daily Roster, Cash Inflows, Cash Outflows, All */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                <TouchableOpacity
+                  style={[
+                    mStyles.chip,
+                    cashSubView === 'DAILY_ROSTER' && mStyles.chipActive,
+                    { paddingVertical: 6, paddingHorizontal: 12 },
+                  ]}
+                  onPress={() => setCashSubView('DAILY_ROSTER')}
+                >
+                  <Text style={[mStyles.chipText, cashSubView === 'DAILY_ROSTER' && mStyles.chipTextActive, { fontSize: 12 }]}>
+                    📊 Each Date Roster ({cashbook.dailyBreakdown?.length || 0} Days)
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    mStyles.chip,
+                    cashSubView === 'INFLOWS' && mStyles.chipActive,
+                    { paddingVertical: 6, paddingHorizontal: 12 },
+                  ]}
+                  onPress={() => setCashSubView('INFLOWS')}
+                >
+                  <Text style={[mStyles.chipText, cashSubView === 'INFLOWS' && mStyles.chipTextActive, { fontSize: 12 }]}>
+                    🟢 All Cash In ({cashbook.cashReceipts?.length || 0})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    mStyles.chip,
+                    cashSubView === 'OUTFLOWS' && mStyles.chipActive,
+                    { paddingVertical: 6, paddingHorizontal: 12 },
+                  ]}
+                  onPress={() => setCashSubView('OUTFLOWS')}
+                >
+                  <Text style={[mStyles.chipText, cashSubView === 'OUTFLOWS' && mStyles.chipTextActive, { fontSize: 12 }]}>
+                    🔴 All Cash Out ({(cashbook.cashExpenses?.length || 0) + (cashbook.cashPayouts?.length || 0) + (cashbook.refunds?.length || 0)})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* ======================================================== */}
+              {/* SUBVIEW 1: DAY-BY-DAY (EACH DATE) AGGREGATE BREAKDOWN    */}
+              {/* ======================================================== */}
+              {cashSubView === 'DAILY_ROSTER' && (
+                <View>
+                  <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 10, color: '#0F172A' }}>
+                    📅 Date-by-Date Cash In & Cash Out Summary:
+                  </Text>
+                  {(!cashbook.dailyBreakdown || cashbook.dailyBreakdown.length === 0) ? (
+                    <View style={[mStyles.card, { padding: 24, alignItems: 'center' }]}>
+                      <Text style={{ color: '#64748B', fontSize: 13 }}>No daily activity recorded for this period.</Text>
                     </View>
-                  ))}
+                  ) : (
+                    <View style={{ gap: 10, marginBottom: 20 }}>
+                      {cashbook.dailyBreakdown.map((day: any) => {
+                        const isPositive = day.netFlow >= 0;
+                        return (
+                          <View
+                            key={day.date}
+                            style={[
+                              mStyles.card,
+                              {
+                                padding: 14,
+                                marginBottom: 0,
+                                borderLeftWidth: 4,
+                                borderLeftColor: isPositive ? '#16A34A' : '#DC2626',
+                              },
+                            ]}
+                          >
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                              <View>
+                                <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A' }}>
+                                  🗓️ {new Date(day.date).toLocaleDateString('en-IN', {
+                                    weekday: 'short',
+                                    day: 'numeric',
+                                    month: 'short',
+                                    year: 'numeric',
+                                  })}
+                                </Text>
+                                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }}>
+                                  {day.receiptsCount || 0} Inflow Receipts • {(day.expensesCount || 0) + (day.payoutsCount || 0)} Outflow Records
+                                </Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text
+                                  style={{
+                                    fontSize: 16,
+                                    fontWeight: '800',
+                                    color: isPositive ? '#16A34A' : '#DC2626',
+                                  }}
+                                >
+                                  {isPositive ? '+' : ''}₹{day.netFlow.toLocaleString()}
+                                </Text>
+                                <Text style={{ fontSize: 10, color: '#94A3B8' }}>Net Cashflow</Text>
+                              </View>
+                            </View>
+
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#F8FAFC', padding: 8, borderRadius: 6, marginTop: 4 }}>
+                              <Text style={{ fontSize: 12, color: '#16A34A', fontWeight: '700' }}>
+                                Cash In: +₹{(day.cashIn || 0).toLocaleString()}
+                              </Text>
+                              <Text style={{ fontSize: 12, color: '#DC2626', fontWeight: '700' }}>
+                                Cash Out: -₹{(day.cashOut || 0).toLocaleString()}
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
                 </View>
               )}
 
-              {/* Outflows Summary List */}
-              {cashbook.cashExpenses && cashbook.cashExpenses.length > 0 && (
-                <>
+              {/* ======================================================== */}
+              {/* SUBVIEW 2: ALL CASH IN (EVERY INFLOW)                    */}
+              {/* ======================================================== */}
+              {cashSubView === 'INFLOWS' && (
+                <View>
                   <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 8, color: '#0F172A' }}>
-                    Recent Expenses & Cash Outflows ({cashbook.cashExpenses.length})
+                    🟢 Complete Inflows & Collections List ({cashbook.cashReceipts?.length || 0})
                   </Text>
-                  <View style={{ gap: 8 }}>
-                    {cashbook.cashExpenses.map((e: any) => (
-                      <View key={e.id} style={[mStyles.card, { padding: 12, marginBottom: 0 }]}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A' }}>
-                              {e.category || 'Expense'}
-                            </Text>
-                            <Text style={{ fontSize: 11, color: '#64748B' }}>
-                              {e.description || e.vendor || 'Operating Expense'}
-                            </Text>
-                          </View>
-                          <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={{ fontSize: 15, fontWeight: '800', color: '#DC2626' }}>
-                              -₹{e.amount.toLocaleString()}
-                            </Text>
-                            <Text style={{ fontSize: 10, color: '#94A3B8' }}>
-                              {new Date(e.createdAt).toLocaleDateString()}
-                            </Text>
+                  {(!cashbook.cashReceipts || cashbook.cashReceipts.length === 0) ? (
+                    <View style={[mStyles.card, { padding: 20, alignItems: 'center', marginBottom: 16 }]}>
+                      <Text style={{ color: '#64748B', fontSize: 12 }}>No cash inflows recorded for this period.</Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8, marginBottom: 20 }}>
+                      {cashbook.cashReceipts?.map((r: any) => (
+                        <View key={r.id} style={[mStyles.card, { padding: 12, marginBottom: 0 }]}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <View style={{ flex: 1, marginRight: 8 }}>
+                              <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A' }}>
+                                {r.subscriber?.fullName || 'Member'} [{r.subscriber?.subscriberCode || 'SUB'}]
+                              </Text>
+                              <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }}>
+                                Receipt: {r.receipt?.receiptNo || r.receiptNo || 'N/A'} • Group: {r.group?.groupCode || r.group?.name || 'Group'} • Mode: {r.paymentMode}
+                              </Text>
+                              {r.recordedBy?.fullName && (
+                                <Text style={{ fontSize: 10, color: '#0284C7', marginTop: 2 }}>
+                                  Collected by: {r.recordedBy.fullName} ({r.recordedBy.role})
+                                </Text>
+                              )}
+                            </View>
+                            <View style={{ alignItems: 'flex-end' }}>
+                              <Text style={{ fontSize: 15, fontWeight: '800', color: '#16A34A' }}>
+                                +₹{r.amount.toLocaleString()}
+                              </Text>
+                              <Text style={{ fontSize: 10, color: '#94A3B8' }}>
+                                {new Date(r.createdAt).toLocaleDateString()} • {new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </Text>
+                            </View>
                           </View>
                         </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* ======================================================== */}
+              {/* SUBVIEW 3: ALL CASH OUT (EXPENSES, PAYOUTS, REFUNDS)     */}
+              {/* ======================================================== */}
+              {cashSubView === 'OUTFLOWS' && (
+                <View>
+                  <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 8, color: '#0F172A' }}>
+                    🔴 Complete Outflows Breakdown:
+                  </Text>
+
+                  {/* 1. Operating Expenses */}
+                  {cashbook.cashExpenses && cashbook.cashExpenses.length > 0 && (
+                    <View style={{ marginBottom: 16 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569', marginBottom: 6 }}>
+                        🧾 Operating Expenses ({cashbook.cashExpenses.length}):
+                      </Text>
+                      <View style={{ gap: 8 }}>
+                        {cashbook.cashExpenses.map((e: any) => (
+                          <View key={e.id} style={[mStyles.card, { padding: 12, marginBottom: 0 }]}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A' }}>
+                                  {e.category || 'Expense'}
+                                </Text>
+                                <Text style={{ fontSize: 11, color: '#64748B' }}>
+                                  {e.description || e.vendor || 'Operating Expense'} • {e.paymentMode || 'CASH'}
+                                </Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={{ fontSize: 15, fontWeight: '800', color: '#DC2626' }}>
+                                  -₹{e.amount.toLocaleString()}
+                                </Text>
+                                <Text style={{ fontSize: 10, color: '#94A3B8' }}>
+                                  {new Date(e.createdAt).toLocaleDateString()}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        ))}
                       </View>
-                    ))}
-                  </View>
-                </>
+                    </View>
+                  )}
+
+                  {/* 2. Prize Payouts */}
+                  {cashbook.cashPayouts && cashbook.cashPayouts.length > 0 && (
+                    <View style={{ marginBottom: 16 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569', marginBottom: 6 }}>
+                        🏆 Prize Money Payouts ({cashbook.cashPayouts.length}):
+                      </Text>
+                      <View style={{ gap: 8 }}>
+                        {cashbook.cashPayouts.map((p: any) => (
+                          <View key={p.id} style={[mStyles.card, { padding: 12, marginBottom: 0 }]}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A' }}>
+                                  {p.subscriber?.fullName} [{p.subscriber?.subscriberCode}]
+                                </Text>
+                                <Text style={{ fontSize: 11, color: '#64748B' }}>
+                                  Group: {p.auction?.group?.name || 'Chit Group'} • Mode: {p.paymentMode}
+                                  {p.transactionRef ? ` • UTR: ${p.transactionRef}` : ''}
+                                </Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={{ fontSize: 15, fontWeight: '800', color: '#DC2626' }}>
+                                  -₹{p.netPayoutAmount.toLocaleString()}
+                                </Text>
+                                <Text style={{ fontSize: 10, color: '#94A3B8' }}>
+                                  {new Date(p.createdAt).toLocaleDateString()}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* 3. Surrender Refunds */}
+                  {cashbook.refunds && cashbook.refunds.length > 0 && (
+                    <View style={{ marginBottom: 16 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569', marginBottom: 6 }}>
+                        🔄 Surrender & Member Refunds ({cashbook.refunds.length}):
+                      </Text>
+                      <View style={{ gap: 8 }}>
+                        {cashbook.refunds.map((ref: any) => (
+                          <View key={ref.id} style={[mStyles.card, { padding: 12, marginBottom: 0 }]}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A' }}>
+                                  {ref.subscriber?.fullName || 'Member'} [{ref.subscriber?.subscriberCode}]
+                                </Text>
+                                <Text style={{ fontSize: 11, color: '#64748B' }}>
+                                  Surrender Refund • {ref.reason || 'Member exit'}
+                                </Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={{ fontSize: 15, fontWeight: '800', color: '#DC2626' }}>
+                                  -₹{ref.amount.toLocaleString()}
+                                </Text>
+                                <Text style={{ fontSize: 10, color: '#94A3B8' }}>
+                                  {new Date(ref.createdAt).toLocaleDateString()}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {(!cashbook.cashExpenses?.length && !cashbook.cashPayouts?.length && !cashbook.refunds?.length) && (
+                    <View style={[mStyles.card, { padding: 24, alignItems: 'center' }]}>
+                      <Text style={{ color: '#64748B', fontSize: 12 }}>No cash outflows recorded for this period.</Text>
+                    </View>
+                  )}
+                </View>
               )}
             </View>
           )}

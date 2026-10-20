@@ -167,6 +167,12 @@ export const getCashbook = async (req: AuthRequest, res: Response) => {
     if (periodStr === 'DAILY') {
       fromDate = new Date();
       fromDate.setHours(0, 0, 0, 0);
+    } else if (periodStr === 'EXACT_DATE' && (startDate || (req.query as any).date)) {
+      const targetDate = String(startDate || (req.query as any).date);
+      fromDate = new Date(targetDate);
+      fromDate.setHours(0, 0, 0, 0);
+      toDate = new Date(targetDate);
+      toDate.setHours(23, 59, 59, 999);
     } else if (periodStr === 'WEEKLY') {
       fromDate = new Date();
       fromDate.setDate(now.getDate() - 7);
@@ -214,8 +220,12 @@ export const getCashbook = async (req: AuthRequest, res: Response) => {
     };
 
     const payoutsWhere: any = {
-      companyId,
       status: 'DISBURSED',
+      auction: {
+        group: {
+          companyId,
+        },
+      },
       ...dateFilter,
     };
 
@@ -228,7 +238,12 @@ export const getCashbook = async (req: AuthRequest, res: Response) => {
     const [allReceipts, expenses, payouts, refunds, handovers] = await Promise.all([
       prisma.paymentTransaction.findMany({
         where: verifiedTxWhere,
-        include: { subscriber: { select: { fullName: true, subscriberCode: true } }, group: { select: { groupCode: true, name: true } } },
+        include: {
+          subscriber: { select: { fullName: true, subscriberCode: true } },
+          group: { select: { groupCode: true, name: true } },
+          recordedBy: { select: { fullName: true, role: true } },
+          receipt: { select: { receiptNo: true } },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.expense.findMany({
@@ -237,7 +252,14 @@ export const getCashbook = async (req: AuthRequest, res: Response) => {
       }),
       prisma.payout.findMany({
         where: payoutsWhere,
-        include: { subscriber: { select: { fullName: true, subscriberCode: true } } },
+        include: {
+          subscriber: { select: { fullName: true, subscriberCode: true } },
+          auction: {
+            include: {
+              group: { select: { groupCode: true, name: true } },
+            },
+          },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.refund.findMany({
@@ -270,6 +292,66 @@ export const getCashbook = async (req: AuthRequest, res: Response) => {
     const netCashFlow = totalCashIn - totalCashOut;
     const closingBalance = openingBalance + netCashFlow;
 
+    // Day-by-Day (Each Date) Aggregate Breakdown
+    const dailyMap: Record<
+      string,
+      {
+        date: string;
+        cashIn: number;
+        cashOut: number;
+        netFlow: number;
+        receiptsCount: number;
+        expensesCount: number;
+        payoutsCount: number;
+      }
+    > = {};
+
+    const getDayKey = (d: Date | string) => {
+      const dateObj = new Date(d);
+      return dateObj.toISOString().split('T')[0];
+    };
+
+    allReceipts.forEach((r) => {
+      const key = getDayKey(r.createdAt);
+      if (!dailyMap[key]) {
+        dailyMap[key] = { date: key, cashIn: 0, cashOut: 0, netFlow: 0, receiptsCount: 0, expensesCount: 0, payoutsCount: 0 };
+      }
+      dailyMap[key].cashIn += r.amount;
+      dailyMap[key].netFlow += r.amount;
+      dailyMap[key].receiptsCount += 1;
+    });
+
+    expenses.forEach((e) => {
+      const key = getDayKey(e.createdAt);
+      if (!dailyMap[key]) {
+        dailyMap[key] = { date: key, cashIn: 0, cashOut: 0, netFlow: 0, receiptsCount: 0, expensesCount: 0, payoutsCount: 0 };
+      }
+      dailyMap[key].cashOut += e.amount;
+      dailyMap[key].netFlow -= e.amount;
+      dailyMap[key].expensesCount += 1;
+    });
+
+    payouts.forEach((p) => {
+      const key = getDayKey(p.createdAt);
+      if (!dailyMap[key]) {
+        dailyMap[key] = { date: key, cashIn: 0, cashOut: 0, netFlow: 0, receiptsCount: 0, expensesCount: 0, payoutsCount: 0 };
+      }
+      dailyMap[key].cashOut += p.netPayoutAmount;
+      dailyMap[key].netFlow -= p.netPayoutAmount;
+      dailyMap[key].payoutsCount += 1;
+    });
+
+    refunds.forEach((ref) => {
+      const key = getDayKey(ref.createdAt);
+      if (!dailyMap[key]) {
+        dailyMap[key] = { date: key, cashIn: 0, cashOut: 0, netFlow: 0, receiptsCount: 0, expensesCount: 0, payoutsCount: 0 };
+      }
+      dailyMap[key].cashOut += ref.amount;
+      dailyMap[key].netFlow -= ref.amount;
+    });
+
+    const dailyBreakdown = Object.values(dailyMap).sort((a, b) => b.date.localeCompare(a.date));
+
     return res.json({
       success: true,
       data: {
@@ -290,11 +372,12 @@ export const getCashbook = async (req: AuthRequest, res: Response) => {
           openingBalance,
           closingBalance,
         },
-        cashReceipts: allReceipts.slice(0, 100),
-        cashExpenses: expenses.slice(0, 50),
-        cashPayouts: payouts.slice(0, 50),
-        refunds: refunds.slice(0, 50),
-        cashHandovers: handovers.slice(0, 20),
+        dailyBreakdown,
+        cashReceipts: allReceipts,
+        cashExpenses: expenses,
+        cashPayouts: payouts,
+        refunds,
+        cashHandovers: handovers,
       },
     });
   } catch (err: any) {
