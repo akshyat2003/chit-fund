@@ -148,9 +148,9 @@ router.get('/auctions/group/:groupId', authenticateToken, auctionController.getG
 // Payout & Refund Routes (AC-26, AC-27, AC-28)
 router.get('/payouts', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), payoutController.listPayouts);
 router.patch('/payouts/:id/status', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), payoutController.updatePayoutStatus);
-router.get('/refunds', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), payoutController.listRefunds);
-router.post('/refunds', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), payoutController.createRefundRequest);
-router.patch('/refunds/:id/process', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), payoutController.processRefund);
+router.get('/refunds', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER', 'COLLECTION_STAFF'), payoutController.listRefunds);
+router.post('/refunds', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER', 'COLLECTION_STAFF'), payoutController.createRefundRequest);
+router.patch('/refunds/:id/process', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER', 'COLLECTION_STAFF'), payoutController.processRefund);
 
 // Accounting & Finance Routes (AC-14, AC-15, AC-16, AC-17, AC-18, AC-19, AC-20, AC-21, AC-22, AC-31)
 router.get('/accounting/accounts', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), accountingController.listAccounts);

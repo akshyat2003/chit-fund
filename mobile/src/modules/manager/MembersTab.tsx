@@ -31,6 +31,12 @@ export function MembersTab({ user }: { user: any }) {
   const [showLedgerModal, setShowLedgerModal] = useState(false);
   const [showStatementModal, setShowStatementModal] = useState(false);
   const [showOutstandingModal, setShowOutstandingModal] = useState(false);
+  const [showSurrenderModal, setShowSurrenderModal] = useState(false);
+  const [surrenderMember, setSurrenderMember] = useState<any>(null);
+  const [surrenderGroupId, setSurrenderGroupId] = useState('');
+  const [surrenderAmount, setSurrenderAmount] = useState('');
+  const [surrenderReason, setSurrenderReason] = useState('');
+  const [surrenderSubmitting, setSurrenderSubmitting] = useState(false);
 
   // Selected Member Context
   const [selectedMember, setSelectedMember] = useState<any>(null);
@@ -370,6 +376,59 @@ export function MembersTab({ user }: { user: any }) {
     }
   };
 
+  // Surrender & Refund Initiation
+  const handleOpenSurrender = (member: any) => {
+    if (!member.memberships || member.memberships.length === 0) {
+      alert('This member is not enrolled in any chit groups.');
+      return;
+    }
+    setSurrenderMember(member);
+    setSurrenderGroupId(member.memberships[0].groupId || member.memberships[0].group?.id || '');
+    setSurrenderAmount('');
+    setSurrenderReason('');
+    setShowSurrenderModal(true);
+  };
+
+  const handleSubmitSurrender = async () => {
+    if (!surrenderMember || !surrenderGroupId) {
+      alert('Please select a chit group to surrender.');
+      return;
+    }
+    if (!surrenderAmount || Number(surrenderAmount) <= 0) {
+      alert('Please enter a valid refund amount.');
+      return;
+    }
+    if (!surrenderReason.trim()) {
+      alert('Please provide a reason or policy justification for surrender.');
+      return;
+    }
+    try {
+      setSurrenderSubmitting(true);
+      const res = await api.post('/refunds', {
+        subscriberId: surrenderMember.id,
+        groupId: surrenderGroupId,
+        amount: Number(surrenderAmount),
+        reason: surrenderReason.trim(),
+      });
+      if (res.data.success) {
+        alert(
+          res.data.message ||
+            (isStaff
+              ? 'Surrender request submitted to manager for approval!'
+              : 'Surrender & refund request created! It is assigned to staff to collect surrender details and submit to manager for approval.')
+        );
+        setShowSurrenderModal(false);
+        setSurrenderAmount('');
+        setSurrenderReason('');
+        fetchSubscribers();
+      }
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'Failed to submit surrender request');
+    } finally {
+      setSurrenderSubmitting(false);
+    }
+  };
+
   const filtered = subscribers.filter((s) => {
     if (isStaff) {
       const belongsToStaffGroup = s.memberships && s.memberships.some((m: any) =>
@@ -655,6 +714,17 @@ export function MembersTab({ user }: { user: any }) {
               >
                 <Text style={mStyles.secondaryBtnText}>📄 Statement (AC-29)</Text>
               </TouchableOpacity>
+
+              {member.memberships && member.memberships.length > 0 && (
+                <TouchableOpacity
+                  style={[mStyles.secondaryBtn, { borderColor: '#E11D48' }]}
+                  onPress={() => handleOpenSurrender(member)}
+                >
+                  <Text style={[mStyles.secondaryBtnText, { color: '#E11D48', fontWeight: '700' }]}>
+                    🔄 Surrender & Refund
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         ))
@@ -1500,6 +1570,116 @@ export function MembersTab({ user }: { user: any }) {
                   </View>
                 </ScrollView>
               )}
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* --- MODAL: SURRENDER & REFUND INITIATION --- */}
+      {showSurrenderModal && surrenderMember && (
+        <Modal visible={showSurrenderModal} transparent animationType="fade">
+          <View style={mStyles.modalBackdrop}>
+            <View style={mStyles.modalBox}>
+              <View style={mStyles.modalHeader}>
+                <Text style={mStyles.modalTitle}>🔄 Surrender & Refund Request</Text>
+                <TouchableOpacity onPress={() => setShowSurrenderModal(false)}>
+                  <Text style={mStyles.modalClose}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={{ backgroundColor: '#FFF1F2', padding: 12, borderRadius: 8, marginBottom: 14, borderWidth: 1, borderColor: '#FFE4E6' }}>
+                  <Text style={{ fontWeight: '700', fontSize: 14, color: '#9F1239' }}>
+                    Member: {surrenderMember.fullName} [{surrenderMember.subscriberCode}]
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#BE123C', marginTop: 2 }}>
+                    📞 {surrenderMember.phone} • ✉️ {surrenderMember.email || 'N/A'}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#881337', marginTop: 6, fontStyle: 'italic' }}>
+                    ℹ️ When submitted, the request will be assigned to staff for collection. After staff collects and submits to manager, manager will approve or reject. On approval, the member's group enrollment is surrendered and future installment calculations stop.
+                  </Text>
+                </View>
+
+                <Text style={mStyles.label}>Select Chit Group to Surrender *</Text>
+                <View style={{ gap: 8, marginBottom: 14 }}>
+                  {surrenderMember.memberships?.map((m: any) => {
+                    const gid = m.groupId || m.group?.id;
+                    const isSelected = surrenderGroupId === gid;
+                    return (
+                      <TouchableOpacity
+                        key={gid}
+                        style={{
+                          padding: 10,
+                          borderRadius: 8,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? '#E11D48' : '#E2E8F0',
+                          backgroundColor: isSelected ? '#FFF1F2' : '#FFF',
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                        onPress={() => setSurrenderGroupId(gid)}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontWeight: '700', fontSize: 13, color: isSelected ? '#9F1239' : '#0F172A' }}>
+                            {m.group?.name} [{m.group?.groupCode}]
+                          </Text>
+                          <Text style={{ fontSize: 11, color: '#64748B' }}>
+                            Chit Value: ₹{(m.group?.chitValue || m.group?.totalChitValue || 0).toLocaleString()} • Monthly Due: ₹{(m.group?.monthlyInstallment || 0).toLocaleString()}
+                          </Text>
+                        </View>
+                        <View
+                          style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 6,
+                            backgroundColor: isSelected ? '#E11D48' : '#F1F5F9',
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#FFF' : '#64748B' }}>
+                            {isSelected ? '✓ Selected' : 'Select'}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={mStyles.label}>Refund Settlement Amount (₹) *</Text>
+                <TextInput
+                  style={mStyles.input}
+                  keyboardType="numeric"
+                  placeholder="e.g. 15000"
+                  value={surrenderAmount}
+                  onChangeText={setSurrenderAmount}
+                />
+
+                <Text style={mStyles.label}>Surrender Justification / Member Reason *</Text>
+                <TextInput
+                  style={[mStyles.input, { height: 75, textAlignVertical: 'top' }]}
+                  multiline
+                  placeholder="e.g. Member relocated, requested complete surrender and refund of paid installments..."
+                  value={surrenderReason}
+                  onChangeText={setSurrenderReason}
+                />
+
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                  <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowSurrenderModal(false)}>
+                    <Text style={mStyles.secondaryBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[mStyles.primaryBtn, { backgroundColor: '#E11D48' }, surrenderSubmitting && { opacity: 0.7 }]}
+                    disabled={surrenderSubmitting}
+                    onPress={handleSubmitSurrender}
+                  >
+                    {surrenderSubmitting ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Text style={mStyles.primaryBtnText}>✓ Assign Request to Staff</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
           </View>
         </Modal>

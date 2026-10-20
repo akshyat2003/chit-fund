@@ -20,7 +20,14 @@ export function CollectionsTab({ user }: { user: any }) {
   const isStaff = user?.role === 'COLLECTION_STAFF';
   const isManager = user?.role === 'MANAGER' || user?.role === 'SUPER_ADMIN';
 
-  const [subTab, setSubTab] = useState<'RECORD' | 'TRANSACTIONS' | 'RECONCILIATION'>('RECORD');
+  const [subTab, setSubTab] = useState<'RECORD' | 'TRANSACTIONS' | 'RECONCILIATION' | 'SURRENDERS'>('RECORD');
+  const [refunds, setRefunds] = useState<any[]>([]);
+  const [showStaffCollectModal, setShowStaffCollectModal] = useState(false);
+  const [showRejectModalForRefund, setShowRejectModalForRefund] = useState(false);
+  const [selectedRefund, setSelectedRefund] = useState<any>(null);
+  const [staffCollectNotes, setStaffCollectNotes] = useState('');
+  const [refundRejectReason, setRefundRejectReason] = useState('');
+  const [refundProcessing, setRefundProcessing] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [stats, setStats] = useState<{
     digitalCount: number;
@@ -92,11 +99,16 @@ export function CollectionsTab({ user }: { user: any }) {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [txRes, subRes, grpRes] = await Promise.all([
+      const [txRes, subRes, grpRes, refRes] = await Promise.all([
         api.get('/collections/transactions'),
         api.get('/subscribers'),
         api.get('/chit-groups'),
+        api.get('/refunds').catch(() => ({ data: { success: false, data: [] } })),
       ]);
+
+      if (refRes?.data?.success) {
+        setRefunds(refRes.data.data || []);
+      }
 
       if (txRes.data.success) {
         const txs = txRes.data.data || [];
@@ -143,6 +155,50 @@ export function CollectionsTab({ user }: { user: any }) {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const pendingStaffSurrenders = refunds.filter((r) => r.status === 'ASSIGNED_TO_STAFF').length;
+  const pendingManagerSurrenders = refunds.filter((r) => r.status === 'SUBMITTED_TO_MANAGER').length;
+  const pendingSurrendersCount = isStaff ? pendingStaffSurrenders : pendingManagerSurrenders;
+
+  const handleProcessRefundInCollections = async (
+    refundId: string,
+    status: 'SUBMITTED_TO_MANAGER' | 'APPROVED' | 'DISBURSED' | 'REJECTED',
+    extra?: { notes?: string; rejectionReason?: string }
+  ) => {
+    try {
+      setRefundProcessing(true);
+      const res = await api.patch(`/refunds/${refundId}/process`, {
+        status,
+        notes: extra?.notes,
+        rejectionReason: extra?.rejectionReason,
+      });
+      if (res.data.success) {
+        if (status === 'APPROVED') {
+          alert(
+            '✓ Surrender Approved!\n\nThe member has been surrendered from the chit group. Upcoming monthly installment dues and arrears calculations have stopped for this group.'
+          );
+        } else if (status === 'REJECTED') {
+          alert(
+            '✕ Surrender Rejected.\n\nThe member remains active in the chit group, and standard monthly installment calculations will continue.'
+          );
+        } else if (status === 'SUBMITTED_TO_MANAGER') {
+          alert('✓ Surrender collection submitted to manager for approval.');
+        } else {
+          alert(`Refund marked as ${status}`);
+        }
+        setShowStaffCollectModal(false);
+        setShowRejectModalForRefund(false);
+        setSelectedRefund(null);
+        setStaffCollectNotes('');
+        setRefundRejectReason('');
+        fetchData();
+      }
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'Failed to process refund');
+    } finally {
+      setRefundProcessing(false);
+    }
+  };
 
   // Update remarks helper when mode or split changes
   const applyQuickRemark = (remarkText: string) => {
@@ -780,6 +836,15 @@ export function CollectionsTab({ user }: { user: any }) {
             </Text>
           </TouchableOpacity>
         )}
+
+        <TouchableOpacity
+          style={[mStyles.subTabItem, subTab === 'SURRENDERS' && mStyles.subTabItemActive]}
+          onPress={() => setSubTab('SURRENDERS')}
+        >
+          <Text style={[mStyles.subTabText, subTab === 'SURRENDERS' && mStyles.subTabTextActive]}>
+            🔄 {isStaff ? '3. Surrender Requests' : '4. Surrenders & Refunds'} {pendingSurrendersCount > 0 ? `(${pendingSurrendersCount})` : ''}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* ========================================================================= */}
@@ -1646,6 +1711,178 @@ export function CollectionsTab({ user }: { user: any }) {
       )}
 
       {/* ========================================================================= */}
+      {/* --- SUB TAB 4: SURRENDERS & REFUNDS --- */}
+      {/* ========================================================================= */}
+      {subTab === 'SURRENDERS' && (
+        <View>
+          <View style={{ marginBottom: 14 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A' }}>
+              🔄 {isStaff ? 'Assigned Surrender Collections' : 'Member Surrenders & Refund Requests'}
+            </Text>
+            <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+              {isStaff
+                ? 'Collect surrender documents, passbook and member consent, then submit to manager for approval.'
+                : 'Review staff-collected surrender requests. On approval, the member enrollment is surrendered and future monthly installment calculations stop.'}
+            </Text>
+          </View>
+
+          {refunds.length === 0 ? (
+            <View style={[mStyles.card, { alignItems: 'center', paddingVertical: 40 }]}>
+              <Text style={{ color: '#64748B', fontSize: 13 }}>No surrender or refund requests on record.</Text>
+            </View>
+          ) : (
+            <View style={{ gap: 12 }}>
+              {refunds.map((r) => {
+                const isAssignedToStaff = r.status === 'ASSIGNED_TO_STAFF';
+                const isSubmittedToManager = r.status === 'SUBMITTED_TO_MANAGER';
+                const isApproved = r.status === 'APPROVED';
+                const isDisbursed = r.status === 'DISBURSED';
+                const isRejected = r.status === 'REJECTED';
+
+                return (
+                  <View key={r.id} style={[mStyles.card, { padding: 14, marginBottom: 0 }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: '#0F172A' }}>
+                          {r.subscriber?.fullName || 'Member'}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: '#64748B' }}>
+                          ID: {r.subscriber?.subscriberCode || 'N/A'} • {r.group?.name ? `${r.group.name} (${r.group.groupCode})` : 'Chit Group'}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ fontSize: 16, fontWeight: '800', color: '#E11D48' }}>
+                          ₹{r.amount?.toLocaleString()}
+                        </Text>
+                        <Text style={{ fontSize: 10, color: '#94A3B8' }}>Refund Amount</Text>
+                      </View>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+                      <View
+                        style={[
+                          mStyles.badge,
+                          isDisbursed
+                            ? mStyles.badgeSuccess
+                            : isApproved
+                            ? mStyles.badgeInfo
+                            : isRejected
+                            ? mStyles.badgeDanger
+                            : isSubmittedToManager
+                            ? { backgroundColor: '#E0E7FF' }
+                            : { backgroundColor: '#FEF3C7' },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            mStyles.badgeText,
+                            isDisbursed
+                              ? mStyles.badgeSuccessText
+                              : isApproved
+                              ? mStyles.badgeInfoText
+                              : isRejected
+                              ? mStyles.badgeDangerText
+                              : isSubmittedToManager
+                              ? { color: '#3730A3', fontWeight: '700' }
+                              : { color: '#92400E', fontWeight: '700' },
+                          ]}
+                        >
+                          {isAssignedToStaff
+                            ? '🟡 Assigned to Staff (Pending Collection)'
+                            : isSubmittedToManager
+                            ? '🔵 Submitted to Manager (Pending Approval)'
+                            : isApproved
+                            ? '🟢 Approved (Surrendered - Calculation Stopped)'
+                            : isDisbursed
+                            ? '🟣 Disbursed (Completed)'
+                            : '🔴 Rejected (Active in Group - Calculation Continues)'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={{ backgroundColor: '#F8FAFC', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#F1F5F9', marginBottom: 12 }}>
+                      <Text style={{ fontSize: 12, color: '#334155' }}>
+                        <Text style={{ fontWeight: '600' }}>Surrender Details:</Text> {r.reason || 'No notes provided'}
+                      </Text>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {/* Staff: Collect & Submit */}
+                      {isStaff && isAssignedToStaff && (
+                        <TouchableOpacity
+                          style={[mStyles.primaryBtn, { backgroundColor: '#2563EB' }]}
+                          onPress={() => {
+                            setSelectedRefund(r);
+                            setStaffCollectNotes('');
+                            setShowStaffCollectModal(true);
+                          }}
+                        >
+                          <Text style={[mStyles.primaryBtnText, { fontSize: 12 }]}>
+                            📥 Collect & Submit to Manager
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* Manager: Approve or Reject */}
+                      {isManager && (isSubmittedToManager || isAssignedToStaff) && (
+                        <>
+                          <TouchableOpacity
+                            style={[mStyles.successBtn]}
+                            onPress={() => {
+                              Alert.alert(
+                                'Approve Surrender & Refund?',
+                                `Are you sure you want to approve the surrender for ${r.subscriber?.fullName}?\n\nThis will remove the member from this chit group so future installment dues and charges will stop.`,
+                                [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  {
+                                    text: '✓ Approve',
+                                    onPress: () => handleProcessRefundInCollections(r.id, 'APPROVED'),
+                                  },
+                                ]
+                              );
+                            }}
+                          >
+                            <Text style={[mStyles.successBtnText, { fontSize: 12 }]}>
+                              ✓ Approve Surrender
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[mStyles.dangerBtn]}
+                            onPress={() => {
+                              setSelectedRefund(r);
+                              setRefundRejectReason('');
+                              setShowRejectModalForRefund(true);
+                            }}
+                          >
+                            <Text style={[mStyles.dangerBtnText, { fontSize: 12 }]}>
+                              ✕ Reject Surrender
+                            </Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
+
+                      {/* Manager: Disburse */}
+                      {isManager && isApproved && (
+                        <TouchableOpacity
+                          style={mStyles.primaryBtn}
+                          onPress={() => handleProcessRefundInCollections(r.id, 'DISBURSED')}
+                        >
+                          <Text style={[mStyles.primaryBtnText, { fontSize: 12 }]}>
+                            💰 Mark Disbursed
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* ========================================================================= */}
       {/* --- MODAL 1: OFFICIAL RECEIPT DISPLAY & SHARING --- */}
       {/* ========================================================================= */}
       <Modal visible={showReceiptModal} transparent animationType="fade">
@@ -2020,6 +2257,131 @@ export function CollectionsTab({ user }: { user: any }) {
                       <ActivityIndicator size="small" color="#FFF" />
                     ) : (
                       <Text style={mStyles.dangerBtnText}>✓ Execute Reversal</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* --- MODAL 6: STAFF COLLECT SURRENDER (STAFF ONLY) --- */}
+      {/* ========================================================================= */}
+      <Modal visible={showStaffCollectModal} transparent animationType="fade">
+        <View style={mStyles.modalBackdrop}>
+          <View style={mStyles.modalBox}>
+            <View style={mStyles.modalHeader}>
+              <Text style={mStyles.modalTitle}>📥 Staff Collection: Surrender & Refund</Text>
+              <TouchableOpacity onPress={() => setShowStaffCollectModal(false)}>
+                <Text style={mStyles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {selectedRefund && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={{ backgroundColor: '#EFF6FF', padding: 12, borderRadius: 8, marginBottom: 14 }}>
+                  <Text style={{ fontWeight: '700', fontSize: 14, color: '#1E40AF' }}>
+                    Member: {selectedRefund.subscriber?.fullName} [{selectedRefund.subscriber?.subscriberCode}]
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#3B82F6', marginTop: 2 }}>
+                    Chit Group: {selectedRefund.group?.name} • Refund: ₹{selectedRefund.amount?.toLocaleString()}
+                  </Text>
+                </View>
+
+                <Text style={mStyles.label}>Staff Collection Remarks / Verification Notes *</Text>
+                <TextInput
+                  style={[mStyles.input, { height: 85, textAlignVertical: 'top' }]}
+                  multiline
+                  placeholder="e.g. Visited member, collected original passbook and signed surrender request form..."
+                  value={staffCollectNotes}
+                  onChangeText={setStaffCollectNotes}
+                />
+
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                  <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowStaffCollectModal(false)}>
+                    <Text style={mStyles.secondaryBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[mStyles.primaryBtn, { backgroundColor: '#2563EB' }, refundProcessing && { opacity: 0.7 }]}
+                    disabled={refundProcessing}
+                    onPress={() => {
+                      if (!staffCollectNotes.trim()) {
+                        alert('Please enter your collection remarks / verification notes.');
+                        return;
+                      }
+                      handleProcessRefundInCollections(selectedRefund.id, 'SUBMITTED_TO_MANAGER', { notes: staffCollectNotes.trim() });
+                    }}
+                  >
+                    {refundProcessing ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Text style={mStyles.primaryBtnText}>✓ Submit to Manager</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* --- MODAL 7: MANAGER REJECT SURRENDER --- */}
+      {/* ========================================================================= */}
+      <Modal visible={showRejectModalForRefund} transparent animationType="fade">
+        <View style={mStyles.modalBackdrop}>
+          <View style={mStyles.modalBox}>
+            <View style={mStyles.modalHeader}>
+              <Text style={mStyles.modalTitle}>✕ Reject Member Surrender</Text>
+              <TouchableOpacity onPress={() => setShowRejectModalForRefund(false)}>
+                <Text style={mStyles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {selectedRefund && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={{ backgroundColor: '#FEF2F2', padding: 12, borderRadius: 8, marginBottom: 14 }}>
+                  <Text style={{ fontWeight: '700', fontSize: 14, color: '#991B1B' }}>
+                    Member: {selectedRefund.subscriber?.fullName}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#B91C1C', marginTop: 2 }}>
+                    Group: {selectedRefund.group?.name} • Refund: ₹{selectedRefund.amount?.toLocaleString()}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#7F1D1D', marginTop: 6, fontStyle: 'italic' }}>
+                    ⚠️ When rejected, the member will remain active in the chit group. Regular monthly installments, arrears, and dues calculations will continue.
+                  </Text>
+                </View>
+
+                <Text style={mStyles.label}>Reason for Rejection *</Text>
+                <TextInput
+                  style={[mStyles.input, { height: 80, textAlignVertical: 'top' }]}
+                  multiline
+                  placeholder="e.g. Surrender not compliant with mandatory lock-in period / member agreed to continue..."
+                  value={refundRejectReason}
+                  onChangeText={setRefundRejectReason}
+                />
+
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                  <TouchableOpacity style={mStyles.secondaryBtn} onPress={() => setShowRejectModalForRefund(false)}>
+                    <Text style={mStyles.secondaryBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[mStyles.dangerBtn, refundProcessing && { opacity: 0.7 }]}
+                    disabled={refundProcessing}
+                    onPress={() => {
+                      if (!refundRejectReason.trim()) {
+                        alert('Please provide a reason for rejecting the surrender request.');
+                        return;
+                      }
+                      handleProcessRefundInCollections(selectedRefund.id, 'REJECTED', { rejectionReason: refundRejectReason.trim() });
+                    }}
+                  >
+                    {refundProcessing ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Text style={mStyles.dangerBtnText}>✕ Confirm Rejection</Text>
                     )}
                   </TouchableOpacity>
                 </View>
