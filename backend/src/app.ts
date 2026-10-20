@@ -210,6 +210,7 @@ router.put('/super-admin/roles/:role/permissions', authenticateToken, requireRol
 // SA-12: Compliance Settings
 router.get('/super-admin/compliance', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getComplianceRecords);
 router.post('/super-admin/compliance', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.createComplianceRecord);
+router.get('/super-admin/compliance/reports', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getSuperAdminComplianceReports);
 
 // SA-13: Integration Configuration
 router.get('/super-admin/integrations', authenticateToken, requireRoles('SUPER_ADMIN'), superAdminController.getIntegrations);

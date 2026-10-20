@@ -965,44 +965,92 @@ function DashboardTab({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab
 
       {/* 1. SUPER ADMIN METRICS */}
       {isSuperAdmin && (
-        <View style={styles.gridRow}>
-          <MetricCard
-            title="Active Companies"
-            value={stats?.activeCompanies ?? 0}
-            color="#0070BA"
-            icon="🏢"
-          />
-          <MetricCard
-            title="Active Users"
-            value={stats?.activeUsers ?? stats?.totalUsers ?? 0}
-            color="#10B981"
-            icon="👥"
-          />
-          <MetricCard
-            title="Total Platform Users"
-            value={stats?.totalUsers ?? 0}
-            color="#2563EB"
-            icon="🛡️"
-          />
-          <MetricCard
-            title="Active Chit Groups"
-            value={stats?.activeGroups ?? 0}
-            color="#8E44AD"
-            icon="💰"
-          />
-          <MetricCard
-            title="Total Subscribers"
-            value={stats?.totalSubscribers ?? 0}
-            color="#2D3748"
-            icon="👤"
-          />
-          <MetricCard
-            title="System Engine Status"
-            value={stats?.systemStatus || 'ONLINE'}
-            color="#16A34A"
-            icon="🖥️"
-          />
-        </View>
+        <>
+          <View style={styles.gridRow}>
+            <MetricCard
+              title="Active Companies"
+              value={stats?.activeCompanies ?? 0}
+              color="#0070BA"
+              icon="🏢"
+            />
+            <MetricCard
+              title="Active Users"
+              value={stats?.activeUsers ?? stats?.totalUsers ?? 0}
+              color="#10B981"
+              icon="👥"
+            />
+            <MetricCard
+              title="Total Platform Users"
+              value={stats?.totalUsers ?? 0}
+              color="#2563EB"
+              icon="🛡️"
+            />
+            <MetricCard
+              title="Active Chit Groups"
+              value={stats?.activeGroups ?? 0}
+              color="#8E44AD"
+              icon="💰"
+            />
+            <MetricCard
+              title="Total Subscribers"
+              value={stats?.totalSubscribers ?? 0}
+              color="#2D3748"
+              icon="👤"
+            />
+            <MetricCard
+              title="System Engine Status"
+              value={stats?.systemStatus || 'ONLINE'}
+              color="#16A34A"
+              icon="🖥️"
+            />
+          </View>
+
+          {/* Super Admin Quick Governance Navigation */}
+          <View style={{ marginTop: 6, marginBottom: 14 }}>
+            <Text style={[styles.sectionTitle, { marginBottom: 10 }]}>⚡ Administrator Quick Actions</Text>
+            <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+              <TouchableOpacity
+                style={[styles.card, { flex: 1, minWidth: 150, backgroundColor: '#0B192C', borderColor: '#1E3E62', padding: 14 }]}
+                onPress={() => onNavigateTab?.('compliance')}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 20 }}>🏛️</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFF', marginTop: 6 }}>Compliance & Reports</Text>
+                <Text style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>Statutory filings, Chit Act & KYC</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.card, { flex: 1, minWidth: 150, backgroundColor: '#FFF', borderColor: '#E2E8F0', padding: 14 }]}
+                onPress={() => onNavigateTab?.('companies')}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 20 }}>🏢</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginTop: 6 }}>Manage Companies</Text>
+                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>Tenants, registrations & plans</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.card, { flex: 1, minWidth: 150, backgroundColor: '#FFF', borderColor: '#E2E8F0', padding: 14 }]}
+                onPress={() => onNavigateTab?.('audits')}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 20 }}>📜</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginTop: 6 }}>Audits & Logs</Text>
+                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>Immutable system security logs</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.card, { flex: 1, minWidth: 150, backgroundColor: '#FFF', borderColor: '#E2E8F0', padding: 14 }]}
+                onPress={() => onNavigateTab?.('backups')}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 20 }}>💾</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginTop: 6 }}>Backups & Export</Text>
+                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>Database snapshots & CSV export</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </>
       )}
 
       {/* 2. MANAGER METRICS */}
