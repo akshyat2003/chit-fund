@@ -2,11 +2,115 @@ import { Response } from 'express';
 import { prisma } from '../../config/prisma.js';
 import { AuthRequest } from '../../middleware/auth.js';
 
+// Helper: Automatically generate collection date notifications for manager and staff
+async function generateCollectionAlerts(companyId?: string) {
+  try {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    // Alert for today, upcoming within next 3 days, or recent within 2 days
+    const pastDateStr = new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const futureDateStr = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    // Find installment schedules for active / upcoming groups
+    const schedules = await prisma.installmentSchedule.findMany({
+      where: {
+        dueDate: { gte: pastDateStr, lte: futureDateStr },
+        group: {
+          status: { in: ['ACTIVE', 'UPCOMING'] },
+          ...(companyId ? { companyId } : {}),
+        },
+      },
+      include: {
+        group: {
+          include: {
+            assignedStaff: { select: { id: true, fullName: true } },
+            staffAssignments: { select: { staffId: true } },
+          },
+        },
+      },
+    });
+
+    for (const schedule of schedules) {
+      const group = schedule.group;
+      const isDueToday = schedule.dueDate === todayStr;
+      const isOverdue = schedule.dueDate < todayStr;
+      const timingLabel = isDueToday ? 'TODAY' : isOverdue ? 'OVERDUE' : `on ${schedule.dueDate}`;
+
+      const title = `📅 Collection Date (${timingLabel}): ${group.name} (Inst #${schedule.installmentNo})`;
+      const message = `Installment #${schedule.installmentNo} collection is due ${timingLabel} (${schedule.dueDate}) for chit group "${group.name}" (${group.groupCode}). Scheduled monthly installment: ₹${(schedule.netDueAmount || schedule.scheduledAmount).toLocaleString()}. Please record collections on time.`;
+
+      // 1. Alert for Managers
+      const existingManagerAlert = await prisma.notification.findFirst({
+        where: {
+          title,
+          targetType: 'ALL_MANAGERS',
+          ...(group.companyId ? { companyId: group.companyId } : {}),
+        },
+      });
+
+      if (!existingManagerAlert) {
+        await prisma.notification.create({
+          data: {
+            title,
+            message,
+            type: 'COLLECTION_DATE_ALERT',
+            priority: isDueToday || isOverdue ? 'HIGH' : 'NORMAL',
+            targetType: 'ALL_MANAGERS',
+            channels: 'IN_APP',
+            senderName: 'SYSTEM AUTOMATION',
+            senderRole: 'SYSTEM',
+            companyId: group.companyId,
+          },
+        });
+      }
+
+      // 2. Alert for Assigned Staff Members
+      const staffIdsToAlert = new Set<string>();
+      if (group.assignedStaffId) staffIdsToAlert.add(group.assignedStaffId);
+      if (group.staffAssignments && group.staffAssignments.length > 0) {
+        group.staffAssignments.forEach((sa) => staffIdsToAlert.add(sa.staffId));
+      }
+
+      for (const staffId of staffIdsToAlert) {
+        const existingStaffAlert = await prisma.notification.findFirst({
+          where: {
+            title,
+            targetType: 'SINGLE_STAFF',
+            targetId: staffId,
+          },
+        });
+
+        if (!existingStaffAlert) {
+          await prisma.notification.create({
+            data: {
+              title,
+              message,
+              type: 'COLLECTION_DATE_ALERT',
+              priority: isDueToday || isOverdue ? 'HIGH' : 'NORMAL',
+              targetType: 'SINGLE_STAFF',
+              targetId: staffId,
+              channels: 'IN_APP',
+              senderName: 'SYSTEM AUTOMATION',
+              senderRole: 'SYSTEM',
+              companyId: group.companyId,
+            },
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error generating collection alerts:', err);
+  }
+}
+
 export const listNotifications = async (req: AuthRequest, res: Response) => {
   try {
     const userRole = req.user?.role;
     const userId = req.user?.id;
     const companyId = req.user?.companyId;
+
+    // Automatically ensure fresh collection date notifications are generated
+    await generateCollectionAlerts(companyId || undefined);
 
     let where: any = {};
 

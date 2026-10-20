@@ -151,37 +151,84 @@ export const createAccount = async (req: AuthRequest, res: Response) => {
 export const getCashbook = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user?.companyId || (req.query.companyId as string);
-    const { startDate, endDate } = req.query;
+    const { period, startDate, endDate } = req.query; // period: 'DAILY' | 'WEEKLY' | '15DAYS' | 'MONTH' | 'CUSTOM'
 
     if (!companyId) {
       return res.status(400).json({ success: false, message: 'Company ID required' });
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
-    const fromDate = (startDate as string) || todayStr;
-    const toDate = (endDate as string) || todayStr;
+    const now = new Date();
+    let fromDate: Date;
+    let toDate: Date = new Date();
+    toDate.setHours(23, 59, 59, 999);
 
-    // Filter payments collected in Cash
-    const cashTxnsWhere: any = {
+    const periodStr = String(period || 'DAILY').toUpperCase();
+
+    if (periodStr === 'DAILY') {
+      fromDate = new Date();
+      fromDate.setHours(0, 0, 0, 0);
+    } else if (periodStr === 'WEEKLY') {
+      fromDate = new Date();
+      fromDate.setDate(now.getDate() - 7);
+      fromDate.setHours(0, 0, 0, 0);
+    } else if (periodStr === '15DAYS') {
+      fromDate = new Date();
+      fromDate.setDate(now.getDate() - 15);
+      fromDate.setHours(0, 0, 0, 0);
+    } else if (periodStr === 'MONTH') {
+      fromDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    } else if (periodStr === 'CUSTOM' && startDate && endDate) {
+      fromDate = new Date(startDate as string);
+      fromDate.setHours(0, 0, 0, 0);
+      toDate = new Date(endDate as string);
+      toDate.setHours(23, 59, 59, 999);
+    } else if (startDate && endDate) {
+      fromDate = new Date(startDate as string);
+      fromDate.setHours(0, 0, 0, 0);
+      toDate = new Date(endDate as string);
+      toDate.setHours(23, 59, 59, 999);
+    } else {
+      fromDate = new Date();
+      fromDate.setHours(0, 0, 0, 0);
+    }
+
+    const dateFilter = {
+      createdAt: {
+        gte: fromDate,
+        lte: toDate,
+      },
+    };
+
+    // Cash In: All verified collections
+    const verifiedTxWhere: any = {
       companyId,
-      paymentMode: 'CASH',
       verificationStatus: 'VERIFIED',
       isReversed: false,
+      ...dateFilter,
     };
 
-    // Filter expenses paid in cash
-    const expensesWhere: any = { companyId };
+    // Cash Out: Expenses, Payouts, and Refunds
+    const expensesWhere: any = {
+      companyId,
+      ...dateFilter,
+    };
 
-    // Filter payouts paid in cash
     const payoutsWhere: any = {
+      companyId,
       status: 'DISBURSED',
-      paymentMode: 'CASH',
+      ...dateFilter,
     };
 
-    const [cashReceipts, cashExpenses, cashPayouts, handovers] = await Promise.all([
+    const refundsWhere: any = {
+      companyId,
+      status: 'DISBURSED',
+      ...dateFilter,
+    };
+
+    const [allReceipts, expenses, payouts, refunds, handovers] = await Promise.all([
       prisma.paymentTransaction.findMany({
-        where: cashTxnsWhere,
-        include: { subscriber: { select: { fullName: true, subscriberCode: true } }, group: { select: { groupCode: true } } },
+        where: verifiedTxWhere,
+        include: { subscriber: { select: { fullName: true, subscriberCode: true } }, group: { select: { groupCode: true, name: true } } },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.expense.findMany({
@@ -191,6 +238,12 @@ export const getCashbook = async (req: AuthRequest, res: Response) => {
       prisma.payout.findMany({
         where: payoutsWhere,
         include: { subscriber: { select: { fullName: true, subscriberCode: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.refund.findMany({
+        where: refundsWhere,
+        include: { subscriber: { select: { fullName: true, subscriberCode: true } } },
+        orderBy: { createdAt: 'desc' },
       }),
       prisma.cashHandover.findMany({
         where: { companyId },
@@ -199,24 +252,48 @@ export const getCashbook = async (req: AuthRequest, res: Response) => {
       }),
     ]);
 
+    // Breakdown of Cash In
+    const cashReceipts = allReceipts.filter((t) => t.paymentMode === 'CASH');
+    const digitalReceipts = allReceipts.filter((t) => t.paymentMode !== 'CASH');
+
     const totalCashReceipts = cashReceipts.reduce((sum, t) => sum + t.amount, 0);
-    const totalCashExpenses = cashExpenses.reduce((sum, e) => sum + e.amount, 0);
-    const totalCashPayouts = cashPayouts.reduce((sum, p) => sum + p.netPayoutAmount, 0);
-    const openingBalance = 50000; // Configured base opening float
-    const netCashFlow = totalCashReceipts - totalCashExpenses - totalCashPayouts;
+    const totalDigitalReceipts = digitalReceipts.reduce((sum, t) => sum + t.amount, 0);
+    const totalCashIn = allReceipts.reduce((sum, t) => sum + t.amount, 0);
+
+    // Breakdown of Cash Out
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalPayouts = payouts.reduce((sum, p) => sum + p.netPayoutAmount, 0);
+    const totalRefunds = refunds.reduce((sum, r) => sum + r.amount, 0);
+    const totalCashOut = totalExpenses + totalPayouts + totalRefunds;
+
+    const openingBalance = 50000; // Base opening balance
+    const netCashFlow = totalCashIn - totalCashOut;
     const closingBalance = openingBalance + netCashFlow;
 
     return res.json({
       success: true,
       data: {
-        period: { fromDate, toDate },
-        openingBalance,
-        totalCashReceipts,
-        totalCashExpenses,
-        totalCashPayouts,
-        closingBalance,
-        cashReceipts: cashReceipts.slice(0, 50),
-        cashExpenses: cashExpenses.slice(0, 50),
+        period: {
+          type: periodStr,
+          fromDate: fromDate.toISOString().split('T')[0],
+          toDate: toDate.toISOString().split('T')[0],
+        },
+        summary: {
+          totalCashIn,
+          totalCashOut,
+          netCashFlow,
+          totalCashReceipts,
+          totalDigitalReceipts,
+          totalExpenses,
+          totalPayouts,
+          totalRefunds,
+          openingBalance,
+          closingBalance,
+        },
+        cashReceipts: allReceipts.slice(0, 100),
+        cashExpenses: expenses.slice(0, 50),
+        cashPayouts: payouts.slice(0, 50),
+        refunds: refunds.slice(0, 50),
         cashHandovers: handovers.slice(0, 20),
       },
     });

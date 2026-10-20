@@ -262,6 +262,29 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
     const count = await prisma.subscriber.count({ where: { companyId } });
     const subscriberCode = `SUB-${1000 + count + 1}`;
 
+    const isStaff = req.user?.role === 'COLLECTION_STAFF';
+
+    let targetGroup: any = null;
+    if (groupId) {
+      targetGroup = await prisma.chitGroup.findUnique({
+        where: { id: groupId },
+        include: { members: true },
+      });
+    }
+
+    // If staff enrolls member, set kycStatus to PENDING and store requested group in kycNotes
+    const initialKycStatus = isStaff ? 'PENDING' : 'VERIFIED';
+    const initialKycNotes = isStaff && targetGroup
+      ? JSON.stringify({
+          requestedGroupId: groupId,
+          requestedGroupName: targetGroup.name,
+          requestedGroupCode: targetGroup.groupCode,
+          enrolledByStaffId: req.user?.id,
+          enrolledByStaffName: req.user?.fullName,
+          requestedAt: new Date().toISOString(),
+        })
+      : null;
+
     const subscriber = await prisma.subscriber.create({
       data: {
         companyId,
@@ -280,7 +303,8 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
         nomineeName: nomineeName ? String(nomineeName).trim() : null,
         nomineeRelation: nomineeRelation ? String(nomineeRelation).trim() : null,
         nomineePhone: nomineePhone ? String(nomineePhone).trim() : null,
-        kycStatus: 'VERIFIED',
+        kycStatus: initialKycStatus,
+        kycNotes: initialKycNotes,
       },
       include: {
         assignedStaff: { select: { fullName: true, phone: true } },
@@ -288,22 +312,33 @@ export const createSubscriber = async (req: AuthRequest, res: Response) => {
       },
     });
 
-    // If groupId was specified, enroll the new member into that group immediately
-    if (groupId) {
-      const targetGroup = await prisma.chitGroup.findUnique({
-        where: { id: groupId },
-        include: { members: true },
+    // If Manager created and groupId specified, assign immediately
+    if (!isStaff && groupId && targetGroup) {
+      const ticketNumber = targetGroup.members.length + 1;
+      await prisma.chitGroupMember.create({
+        data: {
+          groupId,
+          subscriberId: subscriber.id,
+          ticketNumber,
+        },
       });
-      if (targetGroup) {
-        const ticketNumber = targetGroup.members.length + 1;
-        await prisma.chitGroupMember.create({
+    } else if (isStaff && targetGroup) {
+      // Notify manager that a new member enrollment needs approval
+      try {
+        await prisma.notification.create({
           data: {
-            groupId,
-            subscriberId: subscriber.id,
-            ticketNumber,
+            title: `👤 Member Enrollment Awaiting Approval: ${cleanName}`,
+            message: `Staff ${req.user?.fullName} enrolled new member "${cleanName}" (${cleanPhone}) for group "${targetGroup.name}". Manager approval is required to activate and automatically assign membership.`,
+            type: 'MEMBER_ENROLLMENT_REQUEST',
+            priority: 'HIGH',
+            targetType: 'ALL_MANAGERS',
+            channels: 'IN_APP',
+            senderName: req.user?.fullName || 'Collection Staff',
+            senderRole: 'STAFF',
+            companyId,
           },
         });
-      }
+      } catch (e) {}
     }
 
     // Refetch subscriber with memberships
@@ -406,19 +441,89 @@ export const getSubscriberById = async (req: AuthRequest, res: Response) => {
 export const verifyKyc = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { kycStatus, kycNotes } = req.body;
+    const { kycStatus, kycNotes, assignGroupId } = req.body;
 
     if (!['VERIFIED', 'REJECTED', 'PENDING'].includes(kycStatus)) {
       return res.status(400).json({ success: false, message: 'Valid kycStatus (VERIFIED, REJECTED, PENDING) is required' });
+    }
+
+    const existingSubscriber = await prisma.subscriber.findUnique({
+      where: { id },
+      include: { memberships: true },
+    });
+    if (!existingSubscriber) {
+      return res.status(404).json({ success: false, message: 'Subscriber not found' });
+    }
+
+    let targetGroupId = assignGroupId;
+    if (!targetGroupId && existingSubscriber.kycNotes) {
+      try {
+        const parsed = JSON.parse(existingSubscriber.kycNotes);
+        if (parsed.requestedGroupId) {
+          targetGroupId = parsed.requestedGroupId;
+        }
+      } catch (e) {}
+    }
+
+    let enrolledMessage = '';
+    let updatedNotes = kycNotes || existingSubscriber.kycNotes;
+
+    // If Manager approves (VERIFIED), automatically assign to the requested group!
+    if (kycStatus === 'VERIFIED' && targetGroupId) {
+      const alreadyInGroup = existingSubscriber.memberships.some((m) => m.groupId === targetGroupId);
+      if (!alreadyInGroup) {
+        const targetGroup = await prisma.chitGroup.findUnique({
+          where: { id: targetGroupId },
+          include: { members: true },
+        });
+
+        if (targetGroup && targetGroup.members.length < targetGroup.maxMembers) {
+          const ticketNumber = targetGroup.members.length + 1;
+          await prisma.chitGroupMember.create({
+            data: {
+              groupId: targetGroupId,
+              subscriberId: id,
+              ticketNumber,
+            },
+          });
+          enrolledMessage = ` and automatically assigned to chit group "${targetGroup.name}" (Ticket #${ticketNumber})`;
+          updatedNotes = `Approved by Manager. Enrolled into group ${targetGroup.name} (Ticket #${ticketNumber}). ${kycNotes || ''}`;
+
+          // Notify assigned staff that member was approved and enrolled
+          if (existingSubscriber.assignedStaffId) {
+            try {
+              await prisma.notification.create({
+                data: {
+                  title: `✓ Member Enrollment Approved: ${existingSubscriber.fullName}`,
+                  message: `Manager approved member ${existingSubscriber.fullName} (${existingSubscriber.subscriberCode}). The member has been automatically enrolled into group "${targetGroup.name}" with Ticket #${ticketNumber}.`,
+                  type: 'MEMBER_ENROLLMENT_APPROVED',
+                  priority: 'NORMAL',
+                  targetType: 'SINGLE_STAFF',
+                  targetId: existingSubscriber.assignedStaffId,
+                  channels: 'IN_APP',
+                  senderName: req.user?.fullName || 'Manager',
+                  senderRole: 'MANAGER',
+                  companyId: existingSubscriber.companyId,
+                },
+              });
+            } catch (e) {}
+          }
+        }
+      }
     }
 
     const subscriber = await prisma.subscriber.update({
       where: { id },
       data: {
         kycStatus,
-        kycNotes: kycNotes || null,
+        kycNotes: updatedNotes,
         kycVerifiedAt: new Date(),
         kycVerifiedByUserId: req.user?.id || null,
+      },
+      include: {
+        memberships: {
+          include: { group: { select: { id: true, name: true, groupCode: true, monthlyInstallment: true } } },
+        },
       },
     });
 
@@ -434,7 +539,7 @@ export const verifyKyc = async (req: AuthRequest, res: Response) => {
             subscriberCode: subscriber.subscriberCode,
             fullName: subscriber.fullName,
             kycStatus,
-            notes: kycNotes,
+            notes: updatedNotes,
             verifiedBy: req.user?.fullName || req.user?.phone || req.user?.id,
           }),
           ipAddress: req.ip || 'unknown',
@@ -442,7 +547,7 @@ export const verifyKyc = async (req: AuthRequest, res: Response) => {
       });
     } catch (e) {}
 
-    return res.json({ success: true, message: `Member KYC marked ${kycStatus}`, data: subscriber });
+    return res.json({ success: true, message: `Member KYC marked ${kycStatus}${enrolledMessage}.`, data: subscriber });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }

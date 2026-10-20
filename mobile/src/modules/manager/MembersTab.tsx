@@ -178,7 +178,11 @@ export function MembersTab({ user }: { user: any }) {
       });
 
       if (res.data.success) {
-        alert('Member registered successfully with Member Code: ' + res.data.data.subscriberCode);
+        alert(
+          isStaff
+            ? `Member registration submitted!\n\nMember Code: ${res.data.data?.subscriberCode}\n\nThe enrollment has been submitted for manager approval. Once approved, the member will automatically be assigned to the chit group.`
+            : 'Member registered successfully with Member Code: ' + res.data.data?.subscriberCode
+        );
         setShowRegisterModal(false);
         // Reset form
         setSelectedUserId(null);
@@ -545,127 +549,189 @@ export function MembersTab({ user }: { user: any }) {
           <Text style={{ color: '#64748B', fontSize: 15 }}>No members found matching filter criteria.</Text>
         </View>
       ) : (
-        filtered.map((member) => (
-          <View key={member.id} style={mStyles.card}>
-            <View style={mStyles.cardRow}>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <Text style={mStyles.cardTitle}>{member.fullName}</Text>
-                  <Text style={{ color: '#0284C7', fontWeight: '700', fontSize: 13 }}>
-                    [{member.subscriberCode}]
-                  </Text>
-                  <View
-                    style={[
-                      mStyles.badge,
-                      member.kycStatus === 'VERIFIED'
-                        ? mStyles.badgeSuccess
-                        : member.kycStatus === 'REJECTED'
-                        ? mStyles.badgeDanger
-                        : mStyles.badgeWarning,
-                    ]}
-                  >
-                    <Text
+        filtered.map((member) => {
+          let requestedInfo: any = null;
+          if (member.kycNotes) {
+            try {
+              requestedInfo = JSON.parse(member.kycNotes);
+            } catch (e) {}
+          }
+
+          return (
+            <View key={member.id} style={mStyles.card}>
+              <View style={mStyles.cardRow}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <Text style={mStyles.cardTitle}>{member.fullName}</Text>
+                    <Text style={{ color: '#0284C7', fontWeight: '700', fontSize: 13 }}>
+                      [{member.subscriberCode}]
+                    </Text>
+                    <View
                       style={[
-                        mStyles.badgeText,
+                        mStyles.badge,
                         member.kycStatus === 'VERIFIED'
-                          ? mStyles.badgeSuccessText
+                          ? mStyles.badgeSuccess
                           : member.kycStatus === 'REJECTED'
-                          ? mStyles.badgeDangerText
-                          : mStyles.badgeWarningText,
+                          ? mStyles.badgeDanger
+                          : mStyles.badgeWarning,
                       ]}
                     >
-                      KYC: {member.kycStatus}
-                    </Text>
+                      <Text
+                        style={[
+                          mStyles.badgeText,
+                          member.kycStatus === 'VERIFIED'
+                            ? mStyles.badgeSuccessText
+                            : member.kycStatus === 'REJECTED'
+                            ? mStyles.badgeDangerText
+                            : mStyles.badgeWarningText,
+                        ]}
+                      >
+                        {member.kycStatus === 'PENDING' ? '⏳ PENDING APPROVAL' : `KYC: ${member.kycStatus}`}
+                      </Text>
+                    </View>
+
+                    {/* Linked User Account Badge */}
+                    {member.user && (
+                      <View style={[mStyles.badge, { backgroundColor: '#EDE9FE' }]}>
+                        <Text style={[mStyles.badgeText, { color: '#6D28D9' }]}>
+                          👤 User Account: @{member.user.username} ({member.user.role?.replace('_', ' ')})
+                        </Text>
+                      </View>
+                    )}
                   </View>
 
-                  {/* Linked User Account Badge */}
-                  {member.user && (
-                    <View style={[mStyles.badge, { backgroundColor: '#EDE9FE' }]}>
-                      <Text style={[mStyles.badgeText, { color: '#6D28D9' }]}>
-                        👤 User Account: @{member.user.username} ({member.user.role?.replace('_', ' ')})
+                  {/* Pending Enrollment Notice */}
+                  {member.kycStatus === 'PENDING' && requestedInfo?.requestedGroupName && (
+                    <View style={{ backgroundColor: '#FEF3C7', padding: 8, borderRadius: 6, marginTop: 6, borderWidth: 1, borderColor: '#FDE68A' }}>
+                      <Text style={{ fontSize: 12, color: '#92400E', fontWeight: '700' }}>
+                        ⏳ Staff Enrollment Awaiting Manager Approval
+                      </Text>
+                      <Text style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>
+                        Staff: {requestedInfo.enrolledByStaffName || 'Collection Staff'} • Requested Group: {requestedInfo.requestedGroupName} ({requestedInfo.requestedGroupCode})
                       </Text>
                     </View>
                   )}
-                </View>
 
-                <Text style={mStyles.cardSubtitle}>
-                  📞 {member.phone} • ✉️ {member.email || 'N/A'}
-                </Text>
-
-                {/* Address, Aadhaar & PAN details */}
-                <View style={{ backgroundColor: '#F8FAFC', padding: 8, borderRadius: 6, marginTop: 6, borderWidth: 1, borderColor: '#F1F5F9' }}>
-                  <Text style={{ fontSize: 12, color: '#334155' }}>
-                    📍 <Text style={{ fontWeight: '600' }}>Address:</Text> {member.address || 'Address not provided'}
+                  <Text style={mStyles.cardSubtitle}>
+                    📞 {member.phone} • ✉️ {member.email || 'N/A'}
                   </Text>
-                  <View style={{ flexDirection: 'row', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
-                    <Text style={{ fontSize: 12, color: '#475569' }}>
-                      🪪 <Text style={{ fontWeight: '600' }}>Aadhaar:</Text> {member.aadhaarNo || member.aadhaarNumber || 'Not provided'}
+
+                  {/* Address, Aadhaar & PAN details */}
+                  <View style={{ backgroundColor: '#F8FAFC', padding: 8, borderRadius: 6, marginTop: 6, borderWidth: 1, borderColor: '#F1F5F9' }}>
+                    <Text style={{ fontSize: 12, color: '#334155' }}>
+                      📍 <Text style={{ fontWeight: '600' }}>Address:</Text> {member.address || 'Address not provided'}
                     </Text>
-                    <Text style={{ fontSize: 12, color: '#475569' }}>
-                      💳 <Text style={{ fontWeight: '600' }}>PAN:</Text> {member.panNo || member.panNumber || 'Not provided'}
-                    </Text>
-                    {member.nomineeName && (
+                    <View style={{ flexDirection: 'row', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
                       <Text style={{ fontSize: 12, color: '#475569' }}>
-                        👥 <Text style={{ fontWeight: '600' }}>Nominee:</Text> {member.nomineeName} ({member.nomineeRelation || 'N/A'})
+                        🪪 <Text style={{ fontWeight: '600' }}>Aadhaar:</Text> {member.aadhaarNo || member.aadhaarNumber || 'Not provided'}
                       </Text>
+                      <Text style={{ fontSize: 12, color: '#475569' }}>
+                        💳 <Text style={{ fontWeight: '600' }}>PAN:</Text> {member.panNo || member.panNumber || 'Not provided'}
+                      </Text>
+                      {member.nomineeName && (
+                        <Text style={{ fontSize: 12, color: '#475569' }}>
+                          👥 <Text style={{ fontWeight: '600' }}>Nominee:</Text> {member.nomineeName} ({member.nomineeRelation || 'N/A'})
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Multi-Group Enrollment Status */}
+                  <View style={{ marginTop: 8 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569', marginBottom: 4 }}>
+                      💰 {isStaff ? 'ASSIGNED CHIT GROUPS:' : `ENROLLED CHIT GROUPS (${member.memberships?.length || 0}):`}
+                    </Text>
+                    {(!member.memberships || member.memberships.length === 0) ? (
+                      <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>
+                        {member.kycStatus === 'PENDING' && requestedInfo?.requestedGroupName
+                          ? `Awaiting approval to assign into "${requestedInfo.requestedGroupName}".`
+                          : 'Not enrolled in any chit groups yet. Member can be enrolled in any active group.'}
+                      </Text>
+                    ) : (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                        {member.memberships.map((m: any) => (
+                          <View
+                            key={m.id || m.groupId}
+                            style={{
+                              backgroundColor: '#EFF6FF',
+                              borderColor: '#BFDBFE',
+                              borderWidth: 1,
+                              borderRadius: 6,
+                              paddingHorizontal: 8,
+                              paddingVertical: 4,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 5,
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#1D4ED8' }}>
+                              {m.group?.groupCode || 'GRP'}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: '#1E40AF' }}>
+                              {m.group?.name}
+                            </Text>
+                            <Text style={{ fontSize: 10, color: '#6B7280' }}>
+                              (₹{(m.group?.monthlyInstallment || 0).toLocaleString('en-IN')}/mo)
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
                     )}
                   </View>
                 </View>
-
-                {/* Multi-Group Enrollment Status */}
-                <View style={{ marginTop: 8 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569', marginBottom: 4 }}>
-                    💰 {isStaff ? 'ASSIGNED CHIT GROUPS:' : `ENROLLED CHIT GROUPS (${member.memberships?.length || 0}):`}
-                  </Text>
-                  {(!member.memberships || member.memberships.length === 0) ? (
-                    <Text style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>
-                      Not enrolled in any chit groups yet. Member can be enrolled in any active group.
-                    </Text>
-                  ) : (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                      {member.memberships.map((m: any) => (
-                        <View
-                          key={m.id || m.groupId}
-                          style={{
-                            backgroundColor: '#EFF6FF',
-                            borderColor: '#BFDBFE',
-                            borderWidth: 1,
-                            borderRadius: 6,
-                            paddingHorizontal: 8,
-                            paddingVertical: 4,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 5,
-                          }}
-                        >
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#1D4ED8' }}>
-                            {m.group?.groupCode || 'GRP'}
-                          </Text>
-                          <Text style={{ fontSize: 11, color: '#1E40AF' }}>
-                            {m.group?.name}
-                          </Text>
-                          <Text style={{ fontSize: 10, color: '#6B7280' }}>
-                            (₹{(m.group?.monthlyInstallment || 0).toLocaleString('en-IN')}/mo)
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
               </View>
-            </View>
 
-            {/* Action Bar */}
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              {/* Edit Member: Manager globally; Staff only if in their assigned group */}
-              {canEditMember(member) && (
-                <TouchableOpacity
-                  style={[mStyles.secondaryBtn, { borderColor: '#0284C7' }]}
-                  onPress={() => handleOpenEdit(member)}
-                >
-                  <Text style={[mStyles.secondaryBtnText, { color: '#0284C7', fontWeight: '700' }]}>✏️ Edit Member</Text>
-                </TouchableOpacity>
-              )}
+              {/* Action Bar */}
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                {/* Manager: Quick Approve & Assign to Group */}
+                {isManagerOrAdmin && member.kycStatus === 'PENDING' && (
+                  <TouchableOpacity
+                    style={[mStyles.primaryBtn, { backgroundColor: '#16A34A' }]}
+                    onPress={() => {
+                      Alert.alert(
+                        'Approve Member Enrollment?',
+                        `Approve member "${member.fullName}"?\n\n${requestedInfo?.requestedGroupName ? `The member will automatically be assigned to chit group "${requestedInfo.requestedGroupName}".` : 'Member KYC will be verified.'}`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: '✓ Approve & Assign',
+                            onPress: async () => {
+                              try {
+                                setLoading(true);
+                                const res = await api.patch(`/subscribers/${member.id}/kyc`, {
+                                  kycStatus: 'VERIFIED',
+                                  assignGroupId: requestedInfo?.requestedGroupId,
+                                });
+                                if (res.data.success) {
+                                  alert(res.data.message || 'Member approved and assigned successfully!');
+                                  fetchSubscribers();
+                                }
+                              } catch (e: any) {
+                                alert(e.response?.data?.message || 'Failed to approve member');
+                              } finally {
+                                setLoading(false);
+                              }
+                            },
+                          },
+                        ]
+                      );
+                    }}
+                  >
+                    <Text style={mStyles.primaryBtnText}>
+                      ✓ Approve & Assign {requestedInfo?.requestedGroupCode ? `to ${requestedInfo.requestedGroupCode}` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Edit Member: Manager globally; Staff only if in their assigned group */}
+                {canEditMember(member) && (
+                  <TouchableOpacity
+                    style={[mStyles.secondaryBtn, { borderColor: '#0284C7' }]}
+                    onPress={() => handleOpenEdit(member)}
+                  >
+                    <Text style={[mStyles.secondaryBtnText, { color: '#0284C7', fontWeight: '700' }]}>✏️ Edit Member</Text>
+                  </TouchableOpacity>
+                )}
 
               {/* Assign to Chit Group: Only Manager / Super Admin (Removed in Staff dashboard) */}
               {isManagerOrAdmin && (
@@ -727,8 +793,9 @@ export function MembersTab({ user }: { user: any }) {
               )}
             </View>
           </View>
-        ))
-      )}
+        );
+      })
+    )}
 
       {/* --- MODAL 1: REGISTER MEMBER (AC-01) --- */}
       <Modal visible={showRegisterModal} transparent animationType="fade">
