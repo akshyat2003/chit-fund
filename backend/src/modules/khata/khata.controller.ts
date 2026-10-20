@@ -434,6 +434,14 @@ export const listCustomers = async (req: AuthRequest, res: Response) => {
     const customers = await prisma.khataCustomer.findMany({
       where: customerWhere,
       include: {
+        createdBy: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            role: true,
+          },
+        },
         transactions: {
           orderBy: { transactionDate: 'desc' },
           take: 5,
@@ -489,6 +497,14 @@ export const listCustomers = async (req: AuthRequest, res: Response) => {
           netBalance,
           status: c.status,
           txCount: c._count.transactions,
+          createdBy: c.createdBy
+            ? {
+                id: c.createdBy.id,
+                fullName: c.createdBy.fullName,
+                phone: c.createdBy.phone,
+                role: c.createdBy.role,
+              }
+            : null,
           lastTransaction: lastTx
             ? {
                 type: lastTx.type,
@@ -842,5 +858,219 @@ export const deleteTransaction = async (req: AuthRequest, res: Response) => {
   } catch (error: any) {
     console.error('Error deleting transaction:', error);
     res.status(500).json({ success: false, message: error.message || 'Failed to delete transaction' });
+  }
+};
+
+// ==========================================
+// BUSINESS CASHFLOW & STAFF MONITORING
+// ==========================================
+
+export const getBusinessCashflowAndStaffMonitoring = async (req: AuthRequest, res: Response) => {
+  try {
+    const { businessId } = req.params;
+    const { period, startDate, endDate, staffId } = req.query;
+    const userId = req.user?.id;
+    const role = req.user?.role;
+    const companyId = req.user?.companyId;
+
+    if (!userId || !role) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const hasAccess = await verifyBusinessAccess(userId, role, businessId, companyId);
+    if (!hasAccess) {
+      return res.status(403).json({ success: false, message: 'Access denied to this business' });
+    }
+
+    const business = await prisma.business.findUnique({
+      where: { id: businessId },
+      include: {
+        staffAssignments: {
+          include: {
+            staff: {
+              select: {
+                id: true,
+                fullName: true,
+                phone: true,
+                role: true,
+                status: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!business) {
+      return res.status(404).json({ success: false, message: 'Business not found' });
+    }
+
+    // Build Date Filter
+    let dateWhere: any = {};
+    const now = new Date();
+    const periodStr = String(period || '30DAYS').toUpperCase();
+
+    if (periodStr === 'TODAY' || periodStr === 'DAILY') {
+      const from = new Date();
+      from.setHours(0, 0, 0, 0);
+      dateWhere = { gte: from };
+    } else if (periodStr === '7DAYS' || periodStr === 'WEEKLY') {
+      const from = new Date();
+      from.setDate(now.getDate() - 7);
+      from.setHours(0, 0, 0, 0);
+      dateWhere = { gte: from };
+    } else if (periodStr === '30DAYS' || periodStr === 'MONTH') {
+      const from = new Date();
+      from.setDate(now.getDate() - 30);
+      from.setHours(0, 0, 0, 0);
+      dateWhere = { gte: from };
+    } else if (periodStr === 'CUSTOM' && startDate && endDate) {
+      const from = new Date(startDate as string);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(endDate as string);
+      to.setHours(23, 59, 59, 999);
+      dateWhere = { gte: from, lte: to };
+    }
+
+    // Query all transactions for this business
+    const txWhere: any = {
+      customer: {
+        businessId,
+      },
+      ...(Object.keys(dateWhere).length > 0 ? { transactionDate: dateWhere } : {}),
+      ...(staffId && typeof staffId === 'string' ? { recordedByUserId: staffId } : {}),
+    };
+
+    const transactions = await prisma.khataTransaction.findMany({
+      where: txWhere,
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+          },
+        },
+        recordedBy: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: { transactionDate: 'desc' },
+    });
+
+    // Summary calculations
+    let totalCashIn = 0; // GOT (customer payment)
+    let totalCashOut = 0; // GAVE (credit given)
+    let cashPayments = 0;
+    let digitalPayments = 0;
+
+    const dailyMap: Record<string, { date: string; cashIn: number; cashOut: number; netFlow: number; count: number }> = {};
+
+    transactions.forEach((tx) => {
+      const amt = tx.amount;
+      const dayKey = new Date(tx.transactionDate).toISOString().split('T')[0];
+
+      if (!dailyMap[dayKey]) {
+        dailyMap[dayKey] = { date: dayKey, cashIn: 0, cashOut: 0, netFlow: 0, count: 0 };
+      }
+      dailyMap[dayKey].count += 1;
+
+      if (tx.type === 'GOT') {
+        totalCashIn += amt;
+        dailyMap[dayKey].cashIn += amt;
+        dailyMap[dayKey].netFlow += amt;
+        if (tx.paymentMode === 'CASH') cashPayments += amt;
+        else digitalPayments += amt;
+      } else {
+        totalCashOut += amt;
+        dailyMap[dayKey].cashOut += amt;
+        dailyMap[dayKey].netFlow -= amt;
+      }
+    });
+
+    const dailyBreakdown = Object.values(dailyMap).sort((a, b) => b.date.localeCompare(a.date));
+
+    // Staff Performance & Monitoring Roster
+    const staffRoster = await Promise.all(
+      business.staffAssignments.map(async (sa) => {
+        const staffUser = sa.staff;
+
+        // Count customers enrolled by this staff member in this shop
+        const customersEnrolled = await prisma.khataCustomer.count({
+          where: {
+            businessId,
+            createdById: staffUser.id,
+          },
+        });
+
+        // Sum transactions recorded by this staff member in this shop
+        const staffTxs = await prisma.khataTransaction.findMany({
+          where: {
+            customer: { businessId },
+            recordedByUserId: staffUser.id,
+            ...(Object.keys(dateWhere).length > 0 ? { transactionDate: dateWhere } : {}),
+          },
+          select: {
+            type: true,
+            amount: true,
+            transactionDate: true,
+          },
+          orderBy: { transactionDate: 'desc' },
+        });
+
+        const staffCashIn = staffTxs
+          .filter((t) => t.type === 'GOT')
+          .reduce((sum, t) => sum + t.amount, 0);
+
+        const staffCreditGiven = staffTxs
+          .filter((t) => t.type === 'GAVE')
+          .reduce((sum, t) => sum + t.amount, 0);
+
+        return {
+          id: staffUser.id,
+          fullName: staffUser.fullName,
+          phone: staffUser.phone,
+          role: staffUser.role,
+          customersEnrolled,
+          cashInCollected: staffCashIn,
+          creditGiven: staffCreditGiven,
+          netHandled: staffCashIn - staffCreditGiven,
+          totalTransactions: staffTxs.length,
+          lastActivity: staffTxs[0]?.transactionDate || null,
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      data: {
+        business: {
+          id: business.id,
+          name: business.name,
+          category: business.category,
+          phone: business.phone,
+          address: business.address,
+        },
+        summary: {
+          totalCashIn,
+          totalCashOut,
+          netCashflow: totalCashIn - totalCashOut,
+          cashPayments,
+          digitalPayments,
+          totalTransactions: transactions.length,
+        },
+        staffRoster,
+        dailyBreakdown,
+        transactions,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error in getBusinessCashflowAndStaffMonitoring:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to get cashflow and staff monitoring' });
   }
 };

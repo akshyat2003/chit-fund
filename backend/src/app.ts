@@ -248,6 +248,7 @@ router.post('/khata/businesses/:id/assign-staff', authenticateToken, requireRole
 
 router.get('/khata/businesses/:businessId/customers', authenticateToken, khataController.listCustomers);
 router.post('/khata/businesses/:businessId/customers', authenticateToken, khataController.createCustomer);
+router.get('/khata/businesses/:businessId/cashflow', authenticateToken, khataController.getBusinessCashflowAndStaffMonitoring);
 router.get('/khata/customers/:customerId', authenticateToken, khataController.getCustomerDetails);
 router.put('/khata/customers/:customerId', authenticateToken, khataController.updateCustomer);
 router.delete('/khata/customers/:customerId', authenticateToken, requireRoles('SUPER_ADMIN', 'MANAGER'), khataController.deleteCustomer);

@@ -53,6 +53,12 @@ export function KhataBookTab({ user }: { user: any }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'YOU_WILL_GET' | 'YOU_WILL_GIVE' | 'SETTLED'>('ALL');
 
+  // Sub-Navigation Tabs: Customers, Cashflow, Staff Monitoring
+  const [activeModuleTab, setActiveModuleTab] = useState<'CUSTOMERS' | 'CASHFLOW' | 'STAFF_MONITOR'>('CUSTOMERS');
+  const [cashflowData, setCashflowData] = useState<any>(null);
+  const [loadingCashflow, setLoadingCashflow] = useState(false);
+  const [cashflowPeriod, setCashflowPeriod] = useState<'TODAY' | '7DAYS' | '30DAYS' | 'ALL'>('ALL');
+
   // Add Customer Modal State
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [custName, setCustName] = useState('');
@@ -81,15 +87,17 @@ export function KhataBookTab({ user }: { user: any }) {
     fetchBusinesses();
   }, []);
 
-  // Fetch customers whenever selected business changes
+  // Fetch customers and cashflow whenever selected business or cashflowPeriod changes
   useEffect(() => {
     if (selectedBusiness?.id) {
       fetchCustomers(selectedBusiness.id);
+      fetchCashflowData(selectedBusiness.id, cashflowPeriod);
     } else {
       setCustomers([]);
       setSummary({ totalYouWillGet: 0, totalYouWillGive: 0, netBalance: 0, totalCustomers: 0 });
+      setCashflowData(null);
     }
-  }, [selectedBusiness?.id]);
+  }, [selectedBusiness?.id, cashflowPeriod]);
 
   const fetchBusinesses = async () => {
     setLoadingBusinesses(true);
@@ -133,9 +141,29 @@ export function KhataBookTab({ user }: { user: any }) {
     }
   };
 
+  const fetchCashflowData = async (businessId: string, period = cashflowPeriod) => {
+    setLoadingCashflow(true);
+    try {
+      const res = await api.get(`/khata/businesses/${businessId}/cashflow`, {
+        params: { period },
+      });
+      if (res.data?.success) {
+        setCashflowData(res.data.data);
+      }
+    } catch (e: any) {
+      console.error('Error fetching business cashflow:', e);
+    } finally {
+      setLoadingCashflow(false);
+    }
+  };
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchBusinesses();
+    if (selectedBusiness?.id) {
+      fetchCustomers(selectedBusiness.id);
+      fetchCashflowData(selectedBusiness.id, cashflowPeriod);
+    }
   };
 
   // Open Staff Management
@@ -240,6 +268,7 @@ export function KhataBookTab({ user }: { user: any }) {
         setCustAddress('');
         setCustOpeningBal('');
         fetchCustomers(selectedBusiness.id);
+        fetchCashflowData(selectedBusiness.id, cashflowPeriod);
       }
     } catch (e: any) {
       Alert.alert('Error', e.response?.data?.message || 'Failed to add customer');
@@ -275,6 +304,7 @@ export function KhataBookTab({ user }: { user: any }) {
       }
       if (selectedBusiness?.id) {
         fetchCustomers(selectedBusiness.id);
+        fetchCashflowData(selectedBusiness.id, cashflowPeriod);
       }
     } catch (e: any) {
       console.error('Error refreshing ledger:', e);
@@ -447,40 +477,37 @@ export function KhataBookTab({ user }: { user: any }) {
         )}
       </View>
 
-      {/* Khatabook Net Summary Cards */}
+      {/* Module Navigation Subtabs */}
       {selectedBusiness ? (
-        <View style={kbStyles.summaryContainer}>
-          <View style={kbStyles.summaryRow}>
-            {/* You will get (Receivable / Green) */}
-            <View style={[kbStyles.summaryCard, kbStyles.cardGet]}>
-              <Text style={kbStyles.summaryLabel}>YOU WILL GET</Text>
-              <Text style={[kbStyles.summaryAmount, { color: '#059669' }]} numberOfLines={1}>
-                ₹{(summary.totalYouWillGet || 0).toLocaleString('en-IN')}
-              </Text>
-              <Text style={kbStyles.summarySubText}>From customer credit</Text>
-            </View>
-
-            {/* You will give (Payable / Red) */}
-            <View style={[kbStyles.summaryCard, kbStyles.cardGive]}>
-              <Text style={kbStyles.summaryLabel}>YOU WILL GIVE</Text>
-              <Text style={[kbStyles.summaryAmount, { color: '#DC2626' }]} numberOfLines={1}>
-                ₹{(summary.totalYouWillGive || 0).toLocaleString('en-IN')}
-              </Text>
-              <Text style={kbStyles.summarySubText}>Customer advances</Text>
-            </View>
-          </View>
-
-          {/* Quick Metrics Bar */}
-          <View style={kbStyles.quickMetricsBar}>
-            <Text style={kbStyles.metricItem}>
-              👥 Customers: <Text style={{ fontWeight: '700', color: '#1E293B' }}>{customers.length}</Text>
+        <View style={kbStyles.subtabContainer}>
+          <TouchableOpacity
+            style={[kbStyles.subtabBtn, activeModuleTab === 'CUSTOMERS' && kbStyles.subtabBtnActive]}
+            onPress={() => setActiveModuleTab('CUSTOMERS')}
+          >
+            <Text style={[kbStyles.subtabBtnText, activeModuleTab === 'CUSTOMERS' && kbStyles.subtabBtnTextActive]}>
+              👥 Customers ({customers.length})
             </Text>
-            <Text style={kbStyles.metricItem}>
-              ⚖️ Net: <Text style={{ fontWeight: '700', color: summary.netBalance >= 0 ? '#059669' : '#DC2626' }}>
-                ₹{Math.abs(summary.netBalance || 0).toLocaleString('en-IN')} {summary.netBalance >= 0 ? 'Surplus' : 'Payable'}
-              </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[kbStyles.subtabBtn, activeModuleTab === 'CASHFLOW' && kbStyles.subtabBtnActive]}
+            onPress={() => setActiveModuleTab('CASHFLOW')}
+          >
+            <Text style={[kbStyles.subtabBtnText, activeModuleTab === 'CASHFLOW' && kbStyles.subtabBtnTextActive]}>
+              💸 Cashflow
             </Text>
-          </View>
+          </TouchableOpacity>
+
+          {isManager && (
+            <TouchableOpacity
+              style={[kbStyles.subtabBtn, activeModuleTab === 'STAFF_MONITOR' && kbStyles.subtabBtnActive]}
+              onPress={() => setActiveModuleTab('STAFF_MONITOR')}
+            >
+              <Text style={[kbStyles.subtabBtnText, activeModuleTab === 'STAFF_MONITOR' && kbStyles.subtabBtnTextActive]}>
+                🛡️ Staff Monitor ({selectedBusiness?.staffCount || 0})
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : null}
 
@@ -508,15 +535,53 @@ export function KhataBookTab({ user }: { user: any }) {
             </TouchableOpacity>
           )}
         </View>
-      ) : (
-        <View style={{ marginTop: 14 }}>
+      ) : activeModuleTab === 'CUSTOMERS' ? (
+        /* ================================================================= */
+        /* SUBTAB 1: CUSTOMERS & KHATABOOK LEDGER                            */
+        /* ================================================================= */
+        <View>
+          {/* Khatabook Net Summary Cards */}
+          <View style={kbStyles.summaryContainer}>
+            <View style={kbStyles.summaryRow}>
+              {/* You will get (Receivable / Green) */}
+              <View style={[kbStyles.summaryCard, kbStyles.cardGet]}>
+                <Text style={kbStyles.summaryLabel}>YOU WILL GET</Text>
+                <Text style={[kbStyles.summaryAmount, { color: '#059669' }]} numberOfLines={1}>
+                  ₹{(summary.totalYouWillGet || 0).toLocaleString('en-IN')}
+                </Text>
+                <Text style={kbStyles.summarySubText}>From customer credit</Text>
+              </View>
+
+              {/* You will give (Payable / Red) */}
+              <View style={[kbStyles.summaryCard, kbStyles.cardGive]}>
+                <Text style={kbStyles.summaryLabel}>YOU WILL GIVE</Text>
+                <Text style={[kbStyles.summaryAmount, { color: '#DC2626' }]} numberOfLines={1}>
+                  ₹{(summary.totalYouWillGive || 0).toLocaleString('en-IN')}
+                </Text>
+                <Text style={kbStyles.summarySubText}>Customer advances</Text>
+              </View>
+            </View>
+
+            {/* Quick Metrics Bar */}
+            <View style={kbStyles.quickMetricsBar}>
+              <Text style={kbStyles.metricItem}>
+                👥 Customers: <Text style={{ fontWeight: '700', color: '#1E293B' }}>{customers.length}</Text>
+              </Text>
+              <Text style={kbStyles.metricItem}>
+                ⚖️ Net: <Text style={{ fontWeight: '700', color: summary.netBalance >= 0 ? '#059669' : '#DC2626' }}>
+                  ₹{Math.abs(summary.netBalance || 0).toLocaleString('en-IN')} {summary.netBalance >= 0 ? 'Surplus' : 'Payable'}
+                </Text>
+              </Text>
+            </View>
+          </View>
+
           {/* Action Row: Search & Add Customer */}
-          <View style={kbStyles.searchRow}>
+          <View style={[kbStyles.searchRow, { marginTop: 14 }]}>
             <View style={kbStyles.searchBox}>
               <Text style={{ fontSize: 15, marginRight: 6 }}>🔍</Text>
               <TextInput
                 style={kbStyles.searchInput}
-                placeholder="Search customer name or phone..."
+                placeholder="Search member / customer..."
                 placeholderTextColor="#94A3B8"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
@@ -532,7 +597,7 @@ export function KhataBookTab({ user }: { user: any }) {
               style={kbStyles.addCustomerBtn}
               onPress={() => setShowAddCustomerModal(true)}
             >
-              <Text style={kbStyles.addCustomerBtnText}>+ Add Customer</Text>
+              <Text style={kbStyles.addCustomerBtnText}>+ Register Member</Text>
             </TouchableOpacity>
           </View>
 
@@ -579,18 +644,18 @@ export function KhataBookTab({ user }: { user: any }) {
             <View style={kbStyles.emptyCustomerBox}>
               <Text style={{ fontSize: 32, marginBottom: 8 }}>📝</Text>
               <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>
-                {searchQuery ? 'No matching customers found' : 'No customers yet in this shop'}
+                {searchQuery ? 'No matching members found' : 'No customers yet in this shop'}
               </Text>
               <Text style={{ color: '#64748B', textAlign: 'center', marginTop: 4, marginBottom: 16 }}>
                 {searchQuery
                   ? 'Try searching with another name or phone number.'
-                  : 'Add your first customer to record sales on credit (You Gave) or payments (You Got).'}
+                  : 'Register members or customers to record sales on credit (You Gave) or payments (You Got).'}
               </Text>
               <TouchableOpacity
                 style={kbStyles.addCustomerBtn}
                 onPress={() => setShowAddCustomerModal(true)}
               >
-                <Text style={kbStyles.addCustomerBtnText}>+ Add Customer</Text>
+                <Text style={kbStyles.addCustomerBtnText}>+ Register Member</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -620,6 +685,15 @@ export function KhataBookTab({ user }: { user: any }) {
                       <Text style={kbStyles.custPhone} numberOfLines={1}>
                         {cust.phone ? `📱 ${cust.phone}` : 'No phone registered'}
                       </Text>
+
+                      {cust.createdBy?.fullName ? (
+                        <View style={kbStyles.custStaffBadgeRow}>
+                          <Text style={kbStyles.custStaffBadgeText} numberOfLines={1}>
+                            👤 Added by: {cust.createdBy.fullName} {cust.createdBy.role === 'COLLECTION_STAFF' ? '(Staff)' : ''}
+                          </Text>
+                        </View>
+                      ) : null}
+
                       {cust.lastTransaction ? (
                         <Text style={kbStyles.custLastTx} numberOfLines={1}>
                           {cust.lastTransaction.type === 'GAVE' ? '🔴 Gave' : '🟢 Got'} ₹
@@ -660,6 +734,316 @@ export function KhataBookTab({ user }: { user: any }) {
                   </TouchableOpacity>
                 );
               })}
+            </View>
+          )}
+        </View>
+      ) : activeModuleTab === 'CASHFLOW' ? (
+        /* ================================================================= */
+        /* SUBTAB 2: SHOP CASHFLOW MANAGEMENT                                */
+        /* ================================================================= */
+        <View style={{ paddingHorizontal: 16 }}>
+          {/* Period Filter Selector */}
+          <View style={kbStyles.cashflowPeriodRow}>
+            {[
+              { key: 'TODAY', label: 'Today' },
+              { key: '7DAYS', label: '7 Days' },
+              { key: '30DAYS', label: '30 Days' },
+              { key: 'ALL', label: 'All Time' },
+            ].map((p) => (
+              <TouchableOpacity
+                key={p.key}
+                style={[
+                  kbStyles.cashflowPeriodBtn,
+                  cashflowPeriod === p.key && kbStyles.cashflowPeriodBtnActive,
+                ]}
+                onPress={() => setCashflowPeriod(p.key as any)}
+              >
+                <Text
+                  style={[
+                    kbStyles.cashflowPeriodBtnText,
+                    cashflowPeriod === p.key && kbStyles.cashflowPeriodBtnTextActive,
+                  ]}
+                >
+                  {p.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {loadingCashflow ? (
+            <View style={{ padding: 40, alignItems: 'center' }}>
+              <ActivityIndicator size="small" color="#0070BA" />
+              <Text style={{ marginTop: 8, color: '#64748B' }}>Loading shop cashflow...</Text>
+            </View>
+          ) : (
+            <>
+              {/* Cashflow Summary Cards */}
+              <View style={kbStyles.cashflowMetricGrid}>
+                {/* Cash In (You Got - Customer Payments) */}
+                <View style={[kbStyles.cfMetricCard, { borderColor: '#A7F3D0', backgroundColor: '#F0FDF4' }]}>
+                  <Text style={[kbStyles.cfMetricLabel, { color: '#059669' }]}>🟢 CASH IN (GOT)</Text>
+                  <Text style={[kbStyles.cfMetricValue, { color: '#059669' }]}>
+                    ₹{(cashflowData?.summary?.totalCashIn || 0).toLocaleString('en-IN')}
+                  </Text>
+                  <Text style={kbStyles.cfMetricSub}>Payments from members</Text>
+                </View>
+
+                {/* Cash Out (You Gave - Credit Given) */}
+                <View style={[kbStyles.cfMetricCard, { borderColor: '#FECACA', backgroundColor: '#FEF2F2' }]}>
+                  <Text style={[kbStyles.cfMetricLabel, { color: '#DC2626' }]}>🔴 CREDIT OUT (GAVE)</Text>
+                  <Text style={[kbStyles.cfMetricValue, { color: '#DC2626' }]}>
+                    ₹{(cashflowData?.summary?.totalCashOut || 0).toLocaleString('en-IN')}
+                  </Text>
+                  <Text style={kbStyles.cfMetricSub}>Credit purchases given</Text>
+                </View>
+              </View>
+
+              {/* Net Cashflow & Mode Split Banner */}
+              <View style={kbStyles.cfNetBanner}>
+                <View style={{ flex: 1 }}>
+                  <Text style={kbStyles.cfNetLabel}>NET CASHFLOW BALANCE</Text>
+                  <Text
+                    style={[
+                      kbStyles.cfNetValue,
+                      (cashflowData?.summary?.netCashflow || 0) >= 0 ? { color: '#059669' } : { color: '#DC2626' },
+                    ]}
+                  >
+                    ₹{Math.abs(cashflowData?.summary?.netCashflow || 0).toLocaleString('en-IN')}{' '}
+                    <Text style={{ fontSize: 13, fontWeight: '600' }}>
+                      {(cashflowData?.summary?.netCashflow || 0) >= 0 ? '(Net Inflow)' : '(Net Outflow)'}
+                    </Text>
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', borderLeftWidth: 1, borderLeftColor: '#E2E8F0', paddingLeft: 12 }}>
+                  <Text style={{ fontSize: 11, color: '#64748B' }}>
+                    💵 Cash: <Text style={{ fontWeight: '700', color: '#1E293B' }}>₹{(cashflowData?.summary?.cashPayments || 0).toLocaleString('en-IN')}</Text>
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>
+                    📱 Digital: <Text style={{ fontWeight: '700', color: '#1E293B' }}>₹{(cashflowData?.summary?.digitalPayments || 0).toLocaleString('en-IN')}</Text>
+                  </Text>
+                </View>
+              </View>
+
+              {/* Day-by-Day Cashflow Timeline */}
+              <View style={{ marginTop: 18 }}>
+                <Text style={kbStyles.sectionHeaderTitle}>📅 Day-by-Day Cashflow</Text>
+                {(!cashflowData?.dailyBreakdown || cashflowData.dailyBreakdown.length === 0) ? (
+                  <View style={kbStyles.emptySubCard}>
+                    <Text style={{ color: '#64748B', textAlign: 'center' }}>No daily transactions in this timeframe.</Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 8, marginTop: 8 }}>
+                    {cashflowData.dailyBreakdown.map((day: any) => (
+                      <View key={day.date} style={kbStyles.dailyBreakdownCard}>
+                        <View style={{ flex: 1.2 }}>
+                          <Text style={kbStyles.dailyDateText}>
+                            {new Date(day.date).toLocaleDateString('en-IN', {
+                              weekday: 'short',
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                          </Text>
+                          <Text style={kbStyles.dailyTxCountText}>{day.count} entries</Text>
+                        </View>
+
+                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                          <Text style={{ fontSize: 12, color: '#059669', fontWeight: '700' }}>
+                            +₹{day.cashIn.toLocaleString('en-IN')}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: '#DC2626', fontWeight: '700' }}>
+                            -₹{day.cashOut.toLocaleString('en-IN')}
+                          </Text>
+                        </View>
+
+                        <View style={{ minWidth: 70, alignItems: 'flex-end', marginLeft: 8 }}>
+                          <Text
+                            style={[
+                              kbStyles.dailyNetText,
+                              day.netFlow >= 0 ? { color: '#059669' } : { color: '#DC2626' },
+                            ]}
+                          >
+                            {day.netFlow >= 0 ? '+' : '-'}₹{Math.abs(day.netFlow).toLocaleString('en-IN')}
+                          </Text>
+                          <Text style={{ fontSize: 9, color: '#94A3B8' }}>Net Day</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+
+              {/* Recent Transactions Stream */}
+              <View style={{ marginTop: 20 }}>
+                <Text style={kbStyles.sectionHeaderTitle}>🧾 Cashflow Transactions Stream</Text>
+                {(!cashflowData?.transactions || cashflowData.transactions.length === 0) ? (
+                  <View style={kbStyles.emptySubCard}>
+                    <Text style={{ color: '#64748B', textAlign: 'center' }}>No transactions recorded yet.</Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 8, marginTop: 8 }}>
+                    {cashflowData.transactions.slice(0, 15).map((tx: any) => {
+                      const isGot = tx.type === 'GOT';
+                      return (
+                        <View key={tx.id} style={kbStyles.cfTxCard}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={kbStyles.cfTxCustName}>{tx.customer?.name || 'Customer'}</Text>
+                              <Text style={kbStyles.txModeBadge}>{tx.paymentMode}</Text>
+                            </View>
+                            <Text style={kbStyles.cfTxDateText}>
+                              {new Date(tx.transactionDate).toLocaleDateString('en-IN', {
+                                day: 'numeric',
+                                month: 'short',
+                              })}{' '}
+                              • {new Date(tx.transactionDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                            {tx.recordedBy?.fullName && (
+                              <Text style={kbStyles.cfTxStaffText}>
+                                ✍️ Recorded by: {tx.recordedBy.fullName} {tx.recordedBy.role === 'COLLECTION_STAFF' ? '(Staff)' : ''}
+                              </Text>
+                            )}
+                          </View>
+
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text
+                              style={[
+                                kbStyles.cfTxAmount,
+                                isGot ? { color: '#059669' } : { color: '#DC2626' },
+                              ]}
+                            >
+                              {isGot ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
+                            </Text>
+                            <Text style={[kbStyles.cfTxTypeTag, isGot ? { color: '#059669' } : { color: '#DC2626' }]}>
+                              {isGot ? 'YOU GOT' : 'YOU GAVE'}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            </>
+          )}
+        </View>
+      ) : (
+        /* ================================================================= */
+        /* SUBTAB 3: MANAGER STAFF MONITORING                                */
+        /* ================================================================= */
+        <View style={{ paddingHorizontal: 16 }}>
+          {/* Header Banner */}
+          <View style={kbStyles.staffMonitorHeaderCard}>
+            <View style={{ flex: 1 }}>
+              <Text style={kbStyles.staffMonitorTitle}>🛡️ Staff Monitoring</Text>
+              <Text style={kbStyles.staffMonitorSubtitle}>
+                Monitor member registration and cashflow performance of staff assigned to {selectedBusiness?.name}.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={kbStyles.staffManageBtn}
+              onPress={handleOpenAssignStaff}
+            >
+              <Text style={kbStyles.staffManageBtnText}>+ Assign Staff</Text>
+            </TouchableOpacity>
+          </View>
+
+          {loadingCashflow ? (
+            <View style={{ padding: 40, alignItems: 'center' }}>
+              <ActivityIndicator size="small" color="#0070BA" />
+              <Text style={{ marginTop: 8, color: '#64748B' }}>Loading staff performance data...</Text>
+            </View>
+          ) : (!cashflowData?.staffRoster || cashflowData.staffRoster.length === 0) ? (
+            <View style={kbStyles.emptySubCard}>
+              <Text style={{ fontSize: 32, marginBottom: 8 }}>👥</Text>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>
+                No Staff Assigned to this Shop
+              </Text>
+              <Text style={{ color: '#64748B', textAlign: 'center', marginTop: 4, marginBottom: 16 }}>
+                Assign staff members so they can register members, give credit, and collect cashflow for this shop.
+              </Text>
+              <TouchableOpacity
+                style={mStyles.primaryBtn}
+                onPress={handleOpenAssignStaff}
+              >
+                <Text style={mStyles.primaryBtnText}>Assign Staff Now</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ gap: 12, marginTop: 12 }}>
+              {cashflowData.staffRoster.map((staff: any) => (
+                <View key={staff.id} style={kbStyles.staffMonitorCard}>
+                  {/* Staff Info Header */}
+                  <View style={kbStyles.staffCardHeader}>
+                    <View style={kbStyles.staffAvatarBox}>
+                      <Text style={kbStyles.staffAvatarText}>
+                        {staff.fullName ? staff.fullName.charAt(0).toUpperCase() : 'S'}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={kbStyles.staffMonitorName}>{staff.fullName}</Text>
+                      <Text style={kbStyles.staffMonitorPhone}>📱 {staff.phone || 'No phone'}</Text>
+                    </View>
+                    <View style={kbStyles.staffRoleBadge}>
+                      <Text style={kbStyles.staffRoleBadgeText}>STAFF</Text>
+                    </View>
+                  </View>
+
+                  {/* 4 Performance Metrics */}
+                  <View style={kbStyles.staffMetricGrid}>
+                    <View style={kbStyles.staffMetricBox}>
+                      <Text style={kbStyles.staffMetricNumber}>{staff.customersEnrolled || 0}</Text>
+                      <Text style={kbStyles.staffMetricName}>Members Added</Text>
+                    </View>
+
+                    <View style={kbStyles.staffMetricBox}>
+                      <Text style={[kbStyles.staffMetricNumber, { color: '#059669' }]}>
+                        ₹{(staff.cashInCollected || 0).toLocaleString('en-IN')}
+                      </Text>
+                      <Text style={kbStyles.staffMetricName}>Cash Collected</Text>
+                    </View>
+
+                    <View style={kbStyles.staffMetricBox}>
+                      <Text style={[kbStyles.staffMetricNumber, { color: '#DC2626' }]}>
+                        ₹{(staff.creditGiven || 0).toLocaleString('en-IN')}
+                      </Text>
+                      <Text style={kbStyles.staffMetricName}>Credit Given</Text>
+                    </View>
+
+                    <View style={kbStyles.staffMetricBox}>
+                      <Text
+                        style={[
+                          kbStyles.staffMetricNumber,
+                          (staff.netHandled || 0) >= 0 ? { color: '#059669' } : { color: '#DC2626' },
+                        ]}
+                      >
+                        ₹{(staff.netHandled || 0).toLocaleString('en-IN')}
+                      </Text>
+                      <Text style={kbStyles.staffMetricName}>Net Flow</Text>
+                    </View>
+                  </View>
+
+                  {/* Footer Bar */}
+                  <View style={kbStyles.staffCardFooter}>
+                    <Text style={kbStyles.staffFooterText}>
+                      🧾 Transactions: <Text style={{ fontWeight: '700', color: '#1E293B' }}>{staff.totalTransactions || 0}</Text>
+                    </Text>
+                    <Text style={kbStyles.staffFooterText}>
+                      🕒 Last Active:{' '}
+                      <Text style={{ fontWeight: '600', color: '#1E293B' }}>
+                        {staff.lastActivity
+                          ? new Date(staff.lastActivity).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : 'No activity'}
+                      </Text>
+                    </Text>
+                  </View>
+                </View>
+              ))}
             </View>
           )}
         </View>
@@ -874,14 +1258,14 @@ export function KhataBookTab({ user }: { user: any }) {
       </Modal>
 
       {/* ================================================================= */}
-      {/* 4. ADD CUSTOMER MODAL                                            */}
+      {/* 4. ADD CUSTOMER / REGISTER MEMBER MODAL                          */}
       {/* ================================================================= */}
       <Modal visible={showAddCustomerModal} transparent animationType="slide">
         <View style={kbStyles.modalOverlay}>
           <View style={kbStyles.modalCard}>
             <View style={kbStyles.sheetHeader}>
               <View>
-                <Text style={kbStyles.sheetTitle}>Add New Customer</Text>
+                <Text style={kbStyles.sheetTitle}>Register Member / Customer</Text>
                 <Text style={{ fontSize: 12, color: '#64748B' }}>
                   Shop: {selectedBusiness?.name}
                 </Text>
@@ -892,7 +1276,17 @@ export function KhataBookTab({ user }: { user: any }) {
             </View>
 
             <ScrollView style={{ maxHeight: 420 }}>
-              <Text style={kbStyles.inputLabel}>Customer Name *</Text>
+              {/* Staff attribution badge */}
+              <View style={kbStyles.staffRegisterBadge}>
+                <Text style={kbStyles.staffRegisterBadgeText}>
+                  👤 Registering Staff: {user?.fullName || 'User'} ({user?.role === 'COLLECTION_STAFF' ? 'Staff' : 'Manager'})
+                </Text>
+                <Text style={{ fontSize: 11, color: '#0369A1', marginTop: 2 }}>
+                  Member will be assigned to this business. Registration and subsequent cashflow will be tracked under your profile.
+                </Text>
+              </View>
+
+              <Text style={kbStyles.inputLabel}>Member / Customer Name *</Text>
               <TextInput
                 style={kbStyles.formInput}
                 placeholder="e.g. Ramesh Kumar, Sunita Devi"
@@ -984,7 +1378,7 @@ export function KhataBookTab({ user }: { user: any }) {
                 {addingCustomer ? (
                   <ActivityIndicator size="small" color="#FFF" />
                 ) : (
-                  <Text style={mStyles.primaryBtnText}>Save Customer</Text>
+                  <Text style={mStyles.primaryBtnText}>Register Member</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -1885,5 +2279,331 @@ const kbStyles = StyleSheet.create({
   },
   modeChipTextActive: {
     color: '#FFFFFF',
+  },
+
+  // Subtab navigation styles
+  subtabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    padding: 6,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 6,
+  },
+  subtabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subtabBtnActive: {
+    backgroundColor: '#0F172A',
+  },
+  subtabBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  subtabBtnTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // Customer Card Staff badge
+  custStaffBadgeRow: {
+    marginTop: 2,
+    alignSelf: 'flex-start',
+  },
+  custStaffBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#0284C7',
+    backgroundColor: '#E0F2FE',
+    paddingVertical: 1,
+    paddingHorizontal: 5,
+    borderRadius: 4,
+  },
+
+  // Modal Staff Register Badge
+  staffRegisterBadge: {
+    backgroundColor: '#E0F2FE',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+  },
+  staffRegisterBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0369A1',
+  },
+
+  // Cashflow Subtab styles
+  cashflowPeriodRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 10,
+  },
+  cashflowPeriodBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+  },
+  cashflowPeriodBtnActive: {
+    backgroundColor: '#0070BA',
+    borderColor: '#0070BA',
+  },
+  cashflowPeriodBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  cashflowPeriodBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  cashflowMetricGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  cfMetricCard: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+  },
+  cfMetricLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  cfMetricValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    marginVertical: 4,
+  },
+  cfMetricSub: {
+    fontSize: 10,
+    color: '#64748B',
+  },
+  cfNetBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  cfNetLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.4,
+  },
+  cfNetValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  sectionHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1E293B',
+    marginBottom: 8,
+  },
+  dailyBreakdownCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  dailyDateText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  dailyTxCountText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  dailyNetText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  cfTxCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  cfTxCustName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  cfTxDateText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  cfTxStaffText: {
+    fontSize: 10,
+    color: '#0284C7',
+    marginTop: 2,
+  },
+  cfTxAmount: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  cfTxTypeTag: {
+    fontSize: 9,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+
+  // Staff Monitoring styles
+  staffMonitorHeaderCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 10,
+    gap: 12,
+  },
+  staffMonitorTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  staffMonitorSubtitle: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  staffManageBtn: {
+    backgroundColor: '#0070BA',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  staffManageBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  staffMonitorCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  staffCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  staffAvatarBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#EDE9FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  staffAvatarText: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#7C3AED',
+  },
+  staffMonitorName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  staffMonitorPhone: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  staffRoleBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
+  staffRoleBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  staffMetricGrid: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 12,
+    gap: 6,
+  },
+  staffMetricBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  staffMetricNumber: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  staffMetricName: {
+    fontSize: 9,
+    color: '#64748B',
+    fontWeight: '600',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  staffCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  staffFooterText: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  emptySubCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginTop: 8,
   },
 });
