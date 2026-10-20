@@ -465,7 +465,7 @@ export const getMemberLedger = async (req: AuthRequest, res: Response) => {
           },
         },
         transactions: {
-          where: { isReversed: false },
+          where: { isReversed: false, verificationStatus: 'VERIFIED' },
           orderBy: { createdAt: 'asc' },
         },
       },
@@ -501,7 +501,9 @@ export const getMemberLedger = async (req: AuthRequest, res: Response) => {
     let totalPaid = 0;
 
     const groupLedgers = subscriber.memberships.map((m) => {
-      const groupTxns = subscriber.transactions.filter((t) => t.groupId === m.groupId);
+      const groupTxns = subscriber.transactions.filter(
+        (t) => t.groupId === m.groupId && t.verificationStatus === 'VERIFIED' && !t.isReversed
+      );
       const paidInGroup = groupTxns.reduce((sum, t) => sum + t.amount, 0);
 
       const schedules = m.group.schedules.map((sch) => {
@@ -610,7 +612,9 @@ export const getMemberStatement = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    const totalPaid = subscriber.transactions.reduce((sum, t) => sum + t.amount, 0);
+    const totalPaid = subscriber.transactions
+      .filter((t) => t.verificationStatus === 'VERIFIED' && !t.isReversed)
+      .reduce((sum, t) => sum + t.amount, 0);
 
     return res.json({
       success: true,
@@ -667,8 +671,8 @@ export const getMemberOutstanding = async (req: AuthRequest, res: Response) => {
           },
         },
         transactions: {
-          where: { isReversed: false },
-          select: { groupId: true, installmentNo: true, amount: true },
+          where: { isReversed: false, verificationStatus: 'VERIFIED' },
+          select: { groupId: true, installmentNo: true, amount: true, verificationStatus: true },
         },
       },
     });
@@ -681,7 +685,9 @@ export const getMemberOutstanding = async (req: AuthRequest, res: Response) => {
         for (const sch of m.group.schedules) {
           totalDue += sch.netDueAmount;
         }
-        const groupTxns = sub.transactions.filter((t) => t.groupId === m.groupId);
+        const groupTxns = sub.transactions.filter(
+          (t) => t.groupId === m.groupId && (t as any).verificationStatus === 'VERIFIED'
+        );
         totalPaid += groupTxns.reduce((s, t) => s + t.amount, 0);
       }
 

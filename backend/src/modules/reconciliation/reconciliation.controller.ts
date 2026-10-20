@@ -17,7 +17,8 @@ export const submitCashHandover = async (req: AuthRequest, res: Response) => {
       where: {
         recordedByUserId: staffUserId,
         paymentMode: 'CASH',
-        verificationStatus: { not: 'REVERSED' },
+        verificationStatus: 'VERIFIED',
+        isReversed: false,
         createdAt: {
           gte: new Date(`${handoverDate}T00:00:00.000Z`),
           lte: new Date(`${handoverDate}T23:59:59.999Z`),

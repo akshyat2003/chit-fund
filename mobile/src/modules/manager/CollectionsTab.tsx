@@ -25,15 +25,23 @@ export function CollectionsTab({ user }: { user: any }) {
   const [stats, setStats] = useState<{
     digitalCount: number;
     pendingCount: number;
+    pendingAmount?: number;
     approvedCount: number;
+    approvedAmount?: number;
     rejectedCount: number;
+    rejectedAmount?: number;
     cashCount: number;
+    approvedCashAmount?: number;
   }>({
     digitalCount: 0,
     pendingCount: 0,
+    pendingAmount: 0,
     approvedCount: 0,
+    approvedAmount: 0,
     rejectedCount: 0,
+    rejectedAmount: 0,
     cashCount: 0,
+    approvedCashAmount: 0,
   });
   const [subscribers, setSubscribers] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
@@ -96,12 +104,26 @@ export function CollectionsTab({ user }: { user: any }) {
         if (txRes.data.stats) {
           setStats(txRes.data.stats);
         } else {
-          const digitalCount = txs.filter((t: any) => t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI' || t.paymentMode === 'SPLIT').length;
-          const pendingCount = txs.filter((t: any) => t.verificationStatus === 'PENDING_VERIFICATION').length;
-          const approvedCount = txs.filter((t: any) => t.verificationStatus === 'VERIFIED').length;
-          const rejectedCount = txs.filter((t: any) => t.verificationStatus === 'REJECTED').length;
-          const cashCount = txs.filter((t: any) => t.paymentMode === 'CASH').length;
-          setStats({ digitalCount, pendingCount, approvedCount, rejectedCount, cashCount });
+          const approvedTx = txs.filter((t: any) => t.verificationStatus === 'VERIFIED' && !t.isReversed);
+          const pendingTx = txs.filter((t: any) => t.verificationStatus === 'PENDING_VERIFICATION');
+          const rejectedTx = txs.filter((t: any) => t.verificationStatus === 'REJECTED');
+          const approvedAmount = approvedTx.reduce((acc: number, t: any) => acc + (t.amount || 0), 0);
+          const pendingAmount = pendingTx.reduce((acc: number, t: any) => acc + (t.amount || 0), 0);
+          const rejectedAmount = rejectedTx.reduce((acc: number, t: any) => acc + (t.amount || 0), 0);
+          const approvedCashAmount = approvedTx.filter((t: any) => t.paymentMode === 'CASH').reduce((acc: number, t: any) => acc + (t.amount || 0), 0);
+          const digitalCount = approvedTx.filter((t: any) => t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI' || t.paymentMode === 'SPLIT').length;
+          const cashCount = approvedTx.filter((t: any) => t.paymentMode === 'CASH').length;
+          setStats({
+            digitalCount,
+            pendingCount: pendingTx.length,
+            pendingAmount,
+            approvedCount: approvedTx.length,
+            approvedAmount,
+            rejectedCount: rejectedTx.length,
+            rejectedAmount,
+            cashCount,
+            approvedCashAmount,
+          });
         }
       }
 
@@ -169,7 +191,7 @@ export function CollectionsTab({ user }: { user: any }) {
       setAmount(String(targetGroup.monthlyInstallment || ''));
 
       const prevTransactions = transactions.filter(
-        (t: any) => t.subscriberId === subscriber.id && t.groupId === targetGroup.id && !t.isReversed
+        (t: any) => t.subscriberId === subscriber.id && t.groupId === targetGroup.id && !t.isReversed && t.verificationStatus === 'VERIFIED'
       );
       if (prevTransactions.length > 0) {
         const maxInst = Math.max(...prevTransactions.map((t: any) => Number(t.installmentNo) || 1));
@@ -192,7 +214,7 @@ export function CollectionsTab({ user }: { user: any }) {
       setAmount(String(grp.monthlyInstallment || ''));
       if (selectedSubscriberId) {
         const prevTransactions = transactions.filter(
-          (t: any) => t.subscriberId === selectedSubscriberId && t.groupId === groupId && !t.isReversed
+          (t: any) => t.subscriberId === selectedSubscriberId && t.groupId === groupId && !t.isReversed && t.verificationStatus === 'VERIFIED'
         );
         if (prevTransactions.length > 0) {
           const maxInst = Math.max(...prevTransactions.map((t: any) => Number(t.installmentNo) || 1));
@@ -1210,46 +1232,46 @@ export function CollectionsTab({ user }: { user: any }) {
         <View>
           {/* STATS OVERVIEW */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+            <View style={[localStyles.statCard, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#065F46' }}>✅ APPROVED (COUNTED)</Text>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: '#059669', marginTop: 4 }}>
+                ₹{(stats.approvedAmount || 0).toLocaleString()}
+              </Text>
+              <Text style={{ fontSize: 10, color: '#10B981', marginTop: 2 }}>{stats.approvedCount} Receipts Verified</Text>
+            </View>
+
+            <View style={[localStyles.statCard, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E' }}>⏳ PENDING (NOT COUNTED)</Text>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: '#D97706', marginTop: 4 }}>
+                ₹{(stats.pendingAmount || 0).toLocaleString()}
+              </Text>
+              <Text style={{ fontSize: 10, color: '#B45309', marginTop: 2 }}>
+                {stats.pendingCount} Waiting Manager Approval
+              </Text>
+            </View>
+
+            <View style={[localStyles.statCard, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#991B1B' }}>❌ REJECTED (NOT COUNTED)</Text>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: '#DC2626', marginTop: 4 }}>
+                ₹{(stats.rejectedAmount || 0).toLocaleString()}
+              </Text>
+              <Text style={{ fontSize: 10, color: '#EF4444', marginTop: 2 }}>{stats.rejectedCount} Rejected Collections</Text>
+            </View>
+
+            <View style={[localStyles.statCard, { backgroundColor: '#F8FAFC', borderColor: '#CBD5E1' }]}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155' }}>💵 APPROVED CASH IN HAND</Text>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: '#0F172A', marginTop: 4 }}>
+                ₹{(stats.approvedCashAmount || 0).toLocaleString()}
+              </Text>
+              <Text style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>{stats.cashCount} Cash Collections</Text>
+            </View>
+
             <View style={[localStyles.statCard, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}>
               <Text style={{ fontSize: 11, fontWeight: '700', color: '#1E40AF' }}>📱 DIGITAL & SPLIT</Text>
               <Text style={{ fontSize: 20, fontWeight: '900', color: '#1D4ED8', marginTop: 4 }}>
                 {stats.digitalCount}
               </Text>
               <Text style={{ fontSize: 10, color: '#3B82F6', marginTop: 2 }}>UPI, Bank & Split</Text>
-            </View>
-
-            <View style={[localStyles.statCard, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E' }}>⏳ PENDING APPROVAL</Text>
-              <Text style={{ fontSize: 20, fontWeight: '900', color: '#D97706', marginTop: 4 }}>
-                {stats.pendingCount}
-              </Text>
-              <Text style={{ fontSize: 10, color: '#B45309', marginTop: 2 }}>
-                {isStaff ? 'Your Pending Submissions' : 'Needs Manager Approval'}
-              </Text>
-            </View>
-
-            <View style={[localStyles.statCard, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#065F46' }}>✅ APPROVED RECEIPTS</Text>
-              <Text style={{ fontSize: 20, fontWeight: '900', color: '#059669', marginTop: 4 }}>
-                {stats.approvedCount}
-              </Text>
-              <Text style={{ fontSize: 10, color: '#10B981', marginTop: 2 }}>Verified & Finalized</Text>
-            </View>
-
-            <View style={[localStyles.statCard, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#991B1B' }}>❌ REJECTED</Text>
-              <Text style={{ fontSize: 20, fontWeight: '900', color: '#DC2626', marginTop: 4 }}>
-                {stats.rejectedCount}
-              </Text>
-              <Text style={{ fontSize: 10, color: '#EF4444', marginTop: 2 }}>Flagged Mismatches</Text>
-            </View>
-
-            <View style={[localStyles.statCard, { backgroundColor: '#F8FAFC', borderColor: '#CBD5E1' }]}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155' }}>💵 CASH TRANSACTIONS</Text>
-              <Text style={{ fontSize: 20, fontWeight: '900', color: '#0F172A', marginTop: 4 }}>
-                {stats.cashCount}
-              </Text>
-              <Text style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>Cash Collections</Text>
             </View>
           </View>
 
@@ -1285,7 +1307,7 @@ export function CollectionsTab({ user }: { user: any }) {
             </View>
           </View>
 
-          {/* TRANSACTIONS TABLE */}
+          {/* TRANSACTIONS LIST */}
           {loading ? (
             <ActivityIndicator size="large" color="#0070BA" style={{ marginVertical: 40 }} />
           ) : filteredTx.length === 0 ? (
@@ -1293,83 +1315,24 @@ export function CollectionsTab({ user }: { user: any }) {
               <Text style={{ color: '#64748B', fontSize: 14 }}>No collection receipts match the criteria.</Text>
             </View>
           ) : (
-            <View style={mStyles.table}>
-              <View style={mStyles.tableHeader}>
-                <Text style={[mStyles.tableHeaderCell, { width: 110 }]}>Receipt #</Text>
-                <Text style={[mStyles.tableHeaderCell, { width: 130 }]}>Member</Text>
-                <Text style={[mStyles.tableHeaderCell, { width: 95 }]}>Group</Text>
-                <Text style={[mStyles.tableHeaderCell, { width: 60 }]}>Inst #</Text>
-                <Text style={[mStyles.tableHeaderCell, { width: 95 }]}>Mode & Ref</Text>
-                <Text style={[mStyles.tableHeaderCell, { width: 85 }]}>Amount</Text>
-                <Text style={[mStyles.tableHeaderCell, { width: 120 }]}>Status</Text>
-                <Text style={[mStyles.tableHeaderCell, { width: 140 }]}>Mandatory Remark</Text>
-                <Text style={[mStyles.tableHeaderCell, { flex: 1, minWidth: 200 }]}>Actions</Text>
-              </View>
-
+            <View style={{ gap: 12 }}>
               {filteredTx.map((tx: any) => {
                 const isPending = tx.verificationStatus === 'PENDING_VERIFICATION';
                 const isVerified = tx.verificationStatus === 'VERIFIED';
                 const isRejected = tx.verificationStatus === 'REJECTED';
 
                 return (
-                  <View key={tx.id} style={mStyles.tableRow}>
-                    {/* Receipt No */}
-                    <Text style={[mStyles.tableCell, { width: 110, fontWeight: '700', color: '#0284C7' }]}>
-                      {tx.receiptNo}
-                    </Text>
-
-                    {/* Member */}
-                    <View style={{ width: 130, paddingRight: 6 }}>
-                      <Text style={{ fontWeight: '700', color: '#0F172A', fontSize: 12 }}>
-                        {tx.subscriber?.fullName}
-                      </Text>
-                      <Text style={{ fontSize: 10, color: '#64748B' }}>
-                        {tx.subscriber?.subscriberCode}
-                      </Text>
-                    </View>
-
-                    {/* Group */}
-                    <Text style={[mStyles.tableCell, { width: 95, fontSize: 11 }]}>
-                      {tx.group?.name}
-                    </Text>
-
-                    {/* Installment # & Type */}
-                    <View style={{ width: 60 }}>
-                      <Text style={{ fontWeight: '700', fontSize: 12, color: '#0F172A' }}>
-                        #{tx.installmentNo}
-                      </Text>
-                      {tx.installmentType && (
-                        <Text style={{ fontSize: 9, color: tx.installmentType === 'ADVANCE' ? '#16A34A' : tx.installmentType === 'ARREARS' ? '#EA580C' : '#0284C7', fontWeight: '800' }}>
-                          {tx.installmentType}
+                  <View key={tx.id} style={mStyles.card}>
+                    {/* Top Row: Receipt No & Status Badge */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <View>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: '#0284C7' }}>
+                          {tx.receiptNo}
                         </Text>
-                      )}
-                    </View>
-
-                    {/* Mode & UTR */}
-                    <View style={{ width: 95 }}>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155' }}>
-                        {tx.paymentMode === 'CASH'
-                          ? '💵 Cash'
-                          : tx.paymentMode === 'UPI'
-                          ? '📱 UPI/QR'
-                          : tx.paymentMode === 'SPLIT'
-                          ? '⚖️ Split'
-                          : '🏦 Bank'}
-                      </Text>
-                      {tx.externalRef ? (
-                        <Text style={{ fontSize: 9, color: '#64748B' }} numberOfLines={1}>
-                          {tx.externalRef}
+                        <Text style={{ fontSize: 10, color: '#64748B' }}>
+                          {tx.createdAt ? new Date(tx.createdAt).toLocaleDateString() : ''}
                         </Text>
-                      ) : null}
-                    </View>
-
-                    {/* Amount */}
-                    <Text style={[mStyles.tableCell, { width: 85, fontWeight: '800', color: '#0F172A' }]}>
-                      ₹{tx.amount.toLocaleString()}
-                    </Text>
-
-                    {/* Status Badge */}
-                    <View style={{ width: 120 }}>
+                      </View>
                       <View
                         style={[
                           mStyles.badge,
@@ -1400,48 +1363,139 @@ export function CollectionsTab({ user }: { user: any }) {
                             : isVerified
                             ? '✓ APPROVED'
                             : isPending
-                            ? '⏳ PENDING APPROVAL'
+                            ? '⏳ PENDING'
                             : '✕ REJECTED'}
                         </Text>
                       </View>
+                    </View>
 
-                      {isRejected && tx.rejectionReason && (
-                        <Text style={{ fontSize: 9, color: '#DC2626', marginTop: 2 }} numberOfLines={2}>
-                          Reason: {tx.rejectionReason}
+                    {/* Member & Group Info */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
+                          {tx.subscriber?.fullName || 'Member'}
                         </Text>
-                      )}
+                        <Text style={{ fontSize: 11, color: '#64748B' }}>
+                          {tx.subscriber?.subscriberCode || ''} • {tx.group?.name || 'Group'}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>
+                          Inst #{tx.installmentNo}
+                        </Text>
+                        {tx.installmentType && (
+                          <Text
+                            style={{
+                              fontSize: 9,
+                              fontWeight: '800',
+                              color:
+                                tx.installmentType === 'ADVANCE'
+                                  ? '#16A34A'
+                                  : tx.installmentType === 'ARREARS'
+                                  ? '#EA580C'
+                                  : '#0284C7',
+                            }}
+                          >
+                            {tx.installmentType}
+                          </Text>
+                        )}
+                      </View>
                     </View>
 
-                    {/* Mandatory Remark */}
-                    <View style={{ width: 140, paddingRight: 6 }}>
-                      <Text style={{ fontSize: 11, color: '#1E293B', fontWeight: '600' }} numberOfLines={2}>
-                        {tx.notes || 'No remark'}
-                      </Text>
-                      <Text style={{ fontSize: 9, color: '#64748B', marginTop: 2 }}>
-                        By: {tx.recordedBy?.fullName || 'Staff'}
-                      </Text>
+                    {/* Amount & Payment Mode Row */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 8, borderRadius: 6, marginBottom: 8 }}>
+                      <View>
+                        <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '600' }}>AMOUNT</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '800', color: isVerified ? '#16A34A' : isPending ? '#D97706' : '#DC2626' }}>
+                          ₹{Number(tx.amount || 0).toLocaleString()}
+                          {!isVerified ? ' (Not Counted)' : ''}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ fontSize: 10, color: '#64748B', fontWeight: '600' }}>PAYMENT MODE</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155' }}>
+                          {tx.paymentMode === 'CASH'
+                            ? '💵 Cash'
+                            : tx.paymentMode === 'UPI'
+                            ? '📱 UPI/QR'
+                            : tx.paymentMode === 'SPLIT'
+                            ? '⚖️ Split'
+                            : '🏦 Bank'}
+                        </Text>
+                      </View>
                     </View>
 
-                    {/* Actions */}
-                    <View style={{ flex: 1, minWidth: 200, flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {/* Details: Reference, Remarks, Collector */}
+                    {(tx.externalRef || tx.notes || tx.recordedBy?.fullName) && (
+                      <View style={{ marginBottom: 8, gap: 2 }}>
+                        {tx.externalRef ? (
+                          <Text style={{ fontSize: 11, color: '#475569' }}>
+                            <Text style={{ fontWeight: '600' }}>Ref/UTR:</Text> {tx.externalRef}
+                          </Text>
+                        ) : null}
+                        {tx.notes ? (
+                          <Text style={{ fontSize: 11, color: '#334155' }}>
+                            <Text style={{ fontWeight: '600' }}>Remark:</Text> {tx.notes}
+                          </Text>
+                        ) : null}
+                        <Text style={{ fontSize: 10, color: '#64748B' }}>
+                          Collected by: {tx.recordedBy?.fullName || 'Staff'}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Rejection Reason Notice if Rejected */}
+                    {isRejected && tx.rejectionReason && (
+                      <View style={{ backgroundColor: '#FEE2E2', padding: 8, borderRadius: 6, marginBottom: 8, borderWidth: 1, borderColor: '#FCA5A5' }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#DC2626' }}>
+                          ✕ Rejection Reason: {tx.rejectionReason}
+                        </Text>
+                        <Text style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>
+                          This money is excluded from all counts and member balance.
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Action Buttons Row */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9', alignItems: 'center' }}>
                       {/* View Receipt */}
                       <TouchableOpacity
-                        style={[mStyles.secondaryBtn, { paddingVertical: 5, paddingHorizontal: 8 }]}
+                        style={[mStyles.secondaryBtn, { paddingVertical: 6, paddingHorizontal: 10 }]}
                         onPress={() => {
                           setSelectedTx(tx);
                           setShowReceiptModal(true);
                         }}
                       >
-                        <Text style={[mStyles.secondaryBtnText, { fontSize: 10 }]}>🧾 View Receipt</Text>
+                        <Text style={[mStyles.secondaryBtnText, { fontSize: 11 }]}>🧾 View Receipt</Text>
                       </TouchableOpacity>
+
+                      {/* Photo preview button if attached, or attach screenshot button */}
+                      {tx.receiptPhoto ? (
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#E0F2FE', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#BAE6FD' }}
+                          onPress={() => {
+                            setSelectedTx(tx);
+                            setShowPhotoModal(true);
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#0284C7' }}>📷 Slip</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#FEF3C7', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FCD34D' }}
+                          onPress={() => handlePickReceiptImage(tx)}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#B45309' }}>📷 + Slip</Text>
+                        </TouchableOpacity>
+                      )}
 
                       {/* Staff: Send Receipt to Manager */}
                       {isStaff && isPending && (
                         <TouchableOpacity
-                          style={[mStyles.primaryBtn, { backgroundColor: '#2563EB', paddingVertical: 5, paddingHorizontal: 8 }]}
+                          style={[mStyles.primaryBtn, { backgroundColor: '#2563EB', paddingVertical: 6, paddingHorizontal: 10 }]}
                           onPress={() => handleShareWhatsApp(tx, true)}
                         >
-                          <Text style={[mStyles.primaryBtnText, { fontSize: 10 }]}>📤 Send to Manager</Text>
+                          <Text style={[mStyles.primaryBtnText, { fontSize: 11 }]}>📤 Send to Manager</Text>
                         </TouchableOpacity>
                       )}
 
@@ -1449,20 +1503,20 @@ export function CollectionsTab({ user }: { user: any }) {
                       {isManager && isPending && (
                         <>
                           <TouchableOpacity
-                            style={[mStyles.successBtn, { paddingVertical: 5, paddingHorizontal: 8 }]}
+                            style={[mStyles.successBtn, { paddingVertical: 6, paddingHorizontal: 12 }]}
                             onPress={() => handleApproveTransaction(tx.id)}
                           >
-                            <Text style={[mStyles.successBtnText, { fontSize: 10 }]}>✓ Approve</Text>
+                            <Text style={[mStyles.successBtnText, { fontSize: 11 }]}>✓ Approve</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
-                            style={[mStyles.dangerBtn, { paddingVertical: 5, paddingHorizontal: 8 }]}
+                            style={[mStyles.dangerBtn, { paddingVertical: 6, paddingHorizontal: 12 }]}
                             onPress={() => {
                               setSelectedTx(tx);
                               setShowRejectModal(true);
                             }}
                           >
-                            <Text style={[mStyles.dangerBtnText, { fontSize: 10 }]}>✕ Reject</Text>
+                            <Text style={[mStyles.dangerBtnText, { fontSize: 11 }]}>✕ Reject</Text>
                           </TouchableOpacity>
                         </>
                       )}
@@ -1470,30 +1524,10 @@ export function CollectionsTab({ user }: { user: any }) {
                       {/* Manager: Send Approved Receipt to Member */}
                       {isManager && isVerified && (
                         <TouchableOpacity
-                          style={[mStyles.primaryBtn, { backgroundColor: '#059669', paddingVertical: 5, paddingHorizontal: 8 }]}
+                          style={[mStyles.primaryBtn, { backgroundColor: '#059669', paddingVertical: 6, paddingHorizontal: 10 }]}
                           onPress={() => handleShareWhatsApp(tx, false)}
                         >
-                          <Text style={[mStyles.primaryBtnText, { fontSize: 10 }]}>📲 Send to Member</Text>
-                        </TouchableOpacity>
-                      )}
-
-                      {/* Photo preview button if attached, or attach screenshot button */}
-                      {tx.receiptPhoto ? (
-                        <TouchableOpacity
-                          style={{ backgroundColor: '#E0F2FE', paddingVertical: 5, paddingHorizontal: 8, borderRadius: 6 }}
-                          onPress={() => {
-                            setSelectedTx(tx);
-                            setShowPhotoModal(true);
-                          }}
-                        >
-                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#0284C7' }}>📷 Slip</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity
-                          style={{ backgroundColor: '#FEF3C7', paddingVertical: 5, paddingHorizontal: 8, borderRadius: 6, borderWidth: 1, borderColor: '#FCD34D' }}
-                          onPress={() => handlePickReceiptImage(tx)}
-                        >
-                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#B45309' }}>📷 + Slip</Text>
+                          <Text style={[mStyles.primaryBtnText, { fontSize: 11 }]}>📲 Send to Member</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1530,59 +1564,58 @@ export function CollectionsTab({ user }: { user: any }) {
             </View>
           </View>
 
-          <View style={mStyles.table}>
-            <View style={mStyles.tableHeader}>
-              <Text style={[mStyles.tableHeaderCell, { width: 50 }]}>Select</Text>
-              <Text style={[mStyles.tableHeaderCell, { width: 110 }]}>Receipt #</Text>
-              <Text style={[mStyles.tableHeaderCell, { width: 130 }]}>Member</Text>
-              <Text style={[mStyles.tableHeaderCell, { width: 110 }]}>Ref / UTR</Text>
-              <Text style={[mStyles.tableHeaderCell, { width: 80 }]}>Mode</Text>
-              <Text style={[mStyles.tableHeaderCell, { width: 90 }]}>Amount</Text>
-              <Text style={[mStyles.tableHeaderCell, { flex: 1 }]}>Status</Text>
-            </View>
-            {transactions.map((tx) => (
-              <TouchableOpacity
-                key={tx.id}
-                style={[
-                  mStyles.tableRow,
-                  selectedTxIds.includes(tx.id) && { backgroundColor: '#F0F9FF' },
-                ]}
-                onPress={() => toggleSelectTx(tx.id)}
-              >
-                <Text style={[mStyles.tableCell, { width: 50, fontWeight: '700' }]}>
-                  {selectedTxIds.includes(tx.id) ? '☑️' : '⬜'}
-                </Text>
-                <Text style={[mStyles.tableCell, { width: 110, fontWeight: '700', color: '#0284C7' }]}>
-                  {tx.receiptNo}
-                </Text>
-                <Text style={[mStyles.tableCell, { width: 130 }]}>{tx.subscriber?.fullName}</Text>
-                <Text style={[mStyles.tableCell, { width: 110, fontSize: 11, color: '#475569' }]}>
-                  {tx.externalRef || 'N/A (Cash)'}
-                </Text>
-                <Text style={[mStyles.tableCell, { width: 80, fontSize: 12 }]}>{tx.paymentMode}</Text>
-                <Text style={[mStyles.tableCell, { width: 90, fontWeight: '700' }]}>
-                  ₹{tx.amount.toLocaleString()}
-                </Text>
-                <Text
+          <View style={{ gap: 8 }}>
+            {transactions.map((tx) => {
+              const isSelected = selectedTxIds.includes(tx.id);
+              return (
+                <TouchableOpacity
+                  key={tx.id}
                   style={[
-                    mStyles.tableCell,
-                    {
-                      flex: 1,
-                      fontSize: 11,
-                      color:
-                        tx.verificationStatus === 'VERIFIED'
-                          ? '#16A34A'
-                          : tx.verificationStatus === 'REJECTED'
-                          ? '#DC2626'
-                          : '#D97706',
-                      fontWeight: '700',
-                    },
+                    mStyles.card,
+                    { padding: 12, marginBottom: 0 },
+                    isSelected && { backgroundColor: '#F0F9FF', borderColor: '#0284C7' },
                   ]}
+                  onPress={() => toggleSelectTx(tx.id)}
                 >
-                  {tx.verificationStatus}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ fontSize: 18 }}>{isSelected ? '☑️' : '⬜'}</Text>
+                      <Text style={{ fontWeight: '800', color: '#0284C7', fontSize: 13 }}>{tx.receiptNo}</Text>
+                    </View>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '800',
+                        color:
+                          tx.verificationStatus === 'VERIFIED'
+                            ? '#16A34A'
+                            : tx.verificationStatus === 'REJECTED'
+                            ? '#DC2626'
+                            : '#D97706',
+                      }}
+                    >
+                      {tx.verificationStatus === 'VERIFIED'
+                        ? '✓ APPROVED'
+                        : tx.verificationStatus === 'REJECTED'
+                        ? '✕ REJECTED'
+                        : '⏳ PENDING'}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{tx.subscriber?.fullName}</Text>
+                      <Text style={{ fontSize: 11, color: '#64748B' }}>
+                        {tx.paymentMode} • Ref: {tx.externalRef || 'N/A (Cash)'}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A' }}>
+                      ₹{tx.amount.toLocaleString()}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       )}
@@ -2129,17 +2162,22 @@ const localStyles = StyleSheet.create({
   receiptRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: 4,
   },
   receiptLabel: {
     fontSize: 12,
     color: '#64748B',
     fontWeight: '600',
+    minWidth: 120,
   },
   receiptValue: {
     fontSize: 12,
     color: '#0F172A',
     fontWeight: '700',
+    flexShrink: 1,
+    textAlign: 'right',
   },
   receiptTotalBox: {
     marginTop: 6,

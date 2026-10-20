@@ -48,7 +48,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
         prisma.paymentTransaction.findMany({
           where: {
             ...whereCompany,
-            verificationStatus: { not: 'REVERSED' },
+            verificationStatus: 'VERIFIED',
+            isReversed: false,
             createdAt: {
               gte: new Date(`${todayStr}T00:00:00.000Z`),
               lte: new Date(`${todayStr}T23:59:59.999Z`),
@@ -96,7 +97,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       prisma.paymentTransaction.findMany({
         where: {
           recordedByUserId: staffId,
-          verificationStatus: { not: 'REVERSED' },
+          isReversed: false,
           createdAt: {
             gte: new Date(`${todayStr}T00:00:00.000Z`),
             lte: new Date(`${todayStr}T23:59:59.999Z`),
@@ -105,17 +106,24 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       }),
     ]);
 
-    const todayAmountCollected = todayTransactions.reduce((acc, t) => acc + t.amount, 0);
-    const cashInHand = todayTransactions.filter(t => t.paymentMode === 'CASH').reduce((acc, t) => acc + t.amount, 0);
+    // Only VERIFIED transactions count. REJECTED collections NEVER count.
+    const approvedTransactions = todayTransactions.filter((t) => t.verificationStatus === 'VERIFIED');
+    const pendingTransactions = todayTransactions.filter((t) => t.verificationStatus === 'PENDING_VERIFICATION');
+
+    const todayAmountCollected = approvedTransactions.reduce((acc, t) => acc + t.amount, 0);
+    const cashInHand = approvedTransactions.filter((t) => t.paymentMode === 'CASH').reduce((acc, t) => acc + t.amount, 0);
+    const pendingApprovalAmount = pendingTransactions.reduce((acc, t) => acc + t.amount, 0);
 
     return res.json({
       success: true,
       data: {
         role,
         assignedSubscribers,
-        todayCollectionsCount: todayTransactions.length,
+        todayCollectionsCount: approvedTransactions.length,
         todayAmountCollected,
         cashInHand,
+        pendingApprovalCount: pendingTransactions.length,
+        pendingApprovalAmount,
       },
     });
   } catch (err: any) {

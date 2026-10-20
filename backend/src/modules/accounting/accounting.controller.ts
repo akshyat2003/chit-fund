@@ -672,7 +672,7 @@ export const getFinancialStatements = async (req: AuthRequest, res: Response) =>
       prisma.account.findMany({ where: { companyId } }),
       prisma.auction.findMany({ where: { group: { companyId }, status: 'CONFIRMED' } }),
       prisma.paymentTransaction.aggregate({
-        where: { companyId, isReversed: false },
+        where: { companyId, isReversed: false, verificationStatus: 'VERIFIED' },
         _sum: { amount: true },
       }),
       prisma.expense.aggregate({

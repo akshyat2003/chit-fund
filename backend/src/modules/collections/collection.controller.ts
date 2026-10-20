@@ -193,21 +193,35 @@ export const listTransactions = async (req: AuthRequest, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    const digitalCount = transactions.filter((t) => t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI' || t.paymentMode === 'SPLIT').length;
-    const pendingCount = transactions.filter((t) => t.verificationStatus === 'PENDING_VERIFICATION').length;
-    const approvedCount = transactions.filter((t) => t.verificationStatus === 'VERIFIED').length;
-    const rejectedCount = transactions.filter((t) => t.verificationStatus === 'REJECTED').length;
-    const cashCount = transactions.filter((t) => t.paymentMode === 'CASH').length;
+    const approvedTransactions = transactions.filter((t) => t.verificationStatus === 'VERIFIED' && !t.isReversed);
+    const approvedCount = approvedTransactions.length;
+    const approvedAmount = approvedTransactions.reduce((acc, t) => acc + t.amount, 0);
+
+    const pendingTransactions = transactions.filter((t) => t.verificationStatus === 'PENDING_VERIFICATION');
+    const pendingCount = pendingTransactions.length;
+    const pendingAmount = pendingTransactions.reduce((acc, t) => acc + t.amount, 0);
+
+    const rejectedTransactions = transactions.filter((t) => t.verificationStatus === 'REJECTED');
+    const rejectedCount = rejectedTransactions.length;
+    const rejectedAmount = rejectedTransactions.reduce((acc, t) => acc + t.amount, 0);
+
+    const digitalCount = approvedTransactions.filter((t) => t.paymentMode === 'BANK_TRANSFER' || t.paymentMode === 'UPI' || t.paymentMode === 'SPLIT').length;
+    const cashCount = approvedTransactions.filter((t) => t.paymentMode === 'CASH').length;
+    const approvedCashAmount = approvedTransactions.filter((t) => t.paymentMode === 'CASH').reduce((acc, t) => acc + t.amount, 0);
 
     return res.json({
       success: true,
       count: transactions.length,
       stats: {
         digitalCount,
-        pendingCount,
-        approvedCount,
-        rejectedCount,
         cashCount,
+        approvedCount,
+        approvedAmount,
+        pendingCount,
+        pendingAmount,
+        rejectedCount,
+        rejectedAmount,
+        approvedCashAmount,
       },
       data: transactions,
     });
